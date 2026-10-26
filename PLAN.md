@@ -73,6 +73,32 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
 - **L4 codegen + example app** — gate: `go build ./example/...`, `ks check` clean,
   `ks test` green on the reference app, `ks diff` non-empty vs. base.
 
+## Status
+- **L1 done** `ks`, `policy`, `model`, `spec` — DSL builds a canonical model from the
+  reference app specs; policy compiles to SQL / Go eval / widening analysis. Tests green.
+- **L2 done** `compile` (KS-SPEC/SEC/DATA checks w/ diagnostics), `migrate` (DDL + RLS +
+  §13.2 classification), `diff` (risk-ranked report, text/md/json), `checker` (catalog +
+  AST analyzers + facts). Tests green.
+- **L3 next** `runtime` on pgx, then `codegen` + `cmd/ks`.
+
+## Deviations from the spec text (all deliberate, all recorded)
+1. Checker analyzers use stdlib `go/ast` + `go/parser`, not `x/tools/go/analysis` (§2.10).
+2. `s.Email(name)` is the field builder, so the email effect is `s.EmailEffect()`; SMS is
+   `s.SMEffect`→`s.SMSEffect`. Same reason: one package holds both (§5.2 vs §5.8).
+3. `s.TTL(d)` returns one `Expiry` value usable in both `s.Sessions` and `s.Cache`.
+4. App-level actors need a table, so `s.Account("User", ...)` exists (§4.2 "actor types"):
+   a tenant-scoped resource whose id is the actor id.
+5. Extra rule IDs beyond §14.3: KS-SPEC-005/006, KS-SEC-007/008/009, KS-DATA-004,
+   KS-CODE-005, KS-MIG-003. They are in `checker/rules.go` and `ks explain`.
+6. Role checks compile to an EXISTS over `ks_membership` (immediate revocation) rather
+   than a role array on the session; `RunAs(System)` uses the `app.actor_system` GUC.
+7. Diff category for schema rows is `migration` (matches the §15.3 sample output).
+
+## Decisions to keep
+- `policy` SQL text uses the `__KS_ROOT__.` marker + `?` binds; `Place` renumbers to `$n`.
+- Framework tables are `ks_*` and created by the same generated migration stream.
+- Actor GUCs: `app.tenant_id`, `app.actor_id`, `app.actor_system`, `app.cross_tenant`.
+
 ## Deliberate scope calls (recorded so it looks unfinished rather than forgotten)
 In: spec DSL, model+canonical hash, policy->SQL/Go/compare, codegen (types/db/ctx/routes/main/
 migrations/TS client/openapi/AGENTS.md), pipeline, scoped queries + RLS, invariants (CHECK +

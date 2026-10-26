@@ -281,3 +281,31 @@ func TestLiteralRoundTripIsStable(t *testing.T) {
 		t.Fatal("fixture time invalid")
 	}
 }
+
+func TestPolicyTargetInlinesLiteralsAndBindsOnlyActor(t *testing.T) {
+	s, err := TableSQL(Or(Role("admin"), Role("accountant")), invoiceTable, TargetPolicy, "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(s.Text, "?") != len(s.Binds) {
+		t.Fatalf("placeholders %d != binds %d: %s", strings.Count(s.Text, "?"), len(s.Binds), s.Text)
+	}
+	for _, b := range s.Binds {
+		if b.Kind == BindLit {
+			t.Fatalf("spec literals must be inlined in a policy fragment: %s", s.Text)
+		}
+	}
+	if !strings.Contains(s.Text, "'admin'") {
+		t.Fatalf("role literal missing: %s", s.Text)
+	}
+	n, err := TableSQL(Cmp(OpIn, FieldRef("status"), Literal(ListLit("string", []Lit{StringLit("draft"), StringLit("sent")}))), invoiceTable, TargetPolicy, "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Text != "t.status IN ('draft','sent')" {
+		t.Fatalf("in-list should inline: %s", n.Text)
+	}
+	if len(n.Binds) != 0 {
+		t.Fatalf("no actor reference here, got %v", n.Binds)
+	}
+}

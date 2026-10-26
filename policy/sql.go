@@ -19,7 +19,14 @@ const (
 	// TargetRLS inlines literals and reads actor values from the transaction's
 	// SET LOCAL GUCs, which is the database-side backstop (§8.5).
 	TargetRLS
+	// TargetPolicy is what generated code embeds: spec literals are inlined (they
+	// come from the model, never from a request) and only actor values stay bound,
+	// which keeps every generated fragment to at most three parameters.
+	TargetPolicy
 )
+
+// IsPolicy reports whether a target keeps actor references as parameters.
+func (t Target) bindsActor() bool { return t == TargetQuery || t == TargetPolicy }
 
 // SQL is a compiled fragment: text with ? placeholders plus ordered bindings.
 type SQL struct {
@@ -88,8 +95,22 @@ func (c *comp) fail(format string, args ...any) {
 	}
 }
 
+// add materializes one operand. Query and policy targets keep parameters; the DDL
+// and RLS targets must be self-contained SQL text.
 func (c *comp) add(b Bind) string {
 	if c.target == TargetQuery {
+		c.binds = append(c.binds, b)
+		return "?"
+	}
+	if c.target == TargetPolicy {
+		if b.Kind == BindLit {
+			lit, err := litSQL(b.Lit, b.Cast)
+			if err != nil {
+				c.fail("%v", err)
+				return "null"
+			}
+			return lit
+		}
 		c.binds = append(c.binds, b)
 		return "?"
 	}
@@ -333,9 +354,18 @@ func (c *comp) expr(n *Node) string {
 			c.fail("in: needs a non-empty list")
 			return "false"
 		}
-		if c.target == TargetQuery {
+		if c.target == TargetQuery || c.target == TargetPolicy {
 			holes := make([]string, len(list.List))
 			for i, v := range list.List {
+				if c.target == TargetPolicy {
+					lit, err := litSQL(v, "")
+					if err != nil {
+						c.fail("%v", err)
+						return "false"
+					}
+					holes[i] = lit
+					continue
+				}
 				c.binds = append(c.binds, Bind{Kind: BindLit, Lit: v})
 				holes[i] = "?"
 			}
@@ -441,12 +471,16 @@ func litOf(n *Node) Lit {
 // role compiles a role test as a membership lookup plus the system shortcut.
 // Bind order must match placeholder order, so the shortcut is added first.
 func (c *comp) role(names []string) string {
-	if c.target == TargetQuery {
+	if c.target == TargetQuery || c.target == TargetPolicy {
 		sys := c.add(Bind{Kind: BindActorSystem})
 		ten := c.add(Bind{Kind: BindActorTenant})
 		act := c.add(Bind{Kind: BindActorID})
 		holes := make([]string, len(names))
 		for i, n := range names {
+			if c.target == TargetPolicy {
+				holes[i] = quote(n)
+				continue
+			}
 			c.binds = append(c.binds, Bind{Kind: BindLit, Lit: StringLit(n)})
 			holes[i] = "?"
 		}
