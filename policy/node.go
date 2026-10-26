@@ -444,6 +444,30 @@ func canonicalize(n *Node) {
 	}
 	switch n.Op {
 	case OpAnd, OpOr:
+		var kids []*Node
+		seen := map[string]bool{}
+		for _, k := range n.Kids {
+			// AND with a true clause, or OR with a false clause, is the other clause.
+			if (n.Op == OpAnd && k.Op == OpAlways) || (n.Op == OpOr && k.Op == OpNever) {
+				continue
+			}
+			// AND with a false clause, or OR with a true clause, collapses.
+			if (n.Op == OpAnd && k.Op == OpNever) || (n.Op == OpOr && k.Op == OpAlways) {
+				n.Op, n.Kids = k.Op, nil
+				return
+			}
+			c := k.String()
+			if seen[c] {
+				continue
+			}
+			seen[c] = true
+			kids = append(kids, k)
+		}
+		if len(kids) == 1 {
+			*n = *kids[0]
+			return
+		}
+		n.Kids = kids
 		sort.SliceStable(n.Kids, func(i, j int) bool { return n.Kids[i].String() < n.Kids[j].String() })
 	case OpImplies:
 		// a -> b  ==  !a | b ; store in the canonical disjunctive form

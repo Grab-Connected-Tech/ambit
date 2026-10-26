@@ -3,6 +3,7 @@ package policy
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Target decides how operands are materialized.
@@ -239,8 +240,14 @@ func (c *comp) operand(n *Node) string {
 	case OpLit:
 		return c.add(Bind{Kind: BindLit, Lit: n.Values[0]})
 	case OpActorID:
+		if !c.allowsActorRefs() {
+			return "false"
+		}
 		return c.add(Bind{Kind: BindActorID})
 	case OpActorTenant:
+		if !c.allowsActorRefs() {
+			return "false"
+		}
 		return c.add(Bind{Kind: BindActorTenant})
 	case OpNow:
 		return "now()"
@@ -318,12 +325,7 @@ func (c *comp) expr(n *Node) string {
 	case OpRole:
 		return c.role(n.Roles)
 	case OpOwner:
-		f, ok := c.t.Lookup(n.Path[0])
-		if !ok {
-			c.fail("owner(): unknown field %q", n.Path[0])
-			return "false"
-		}
-		return rootMarker + "." + f.Column + " = " + c.add(Bind{Kind: BindActorID})
+		return ownerSQL(c, n.Path[0])
 	case OpIn:
 		left := c.setOperand(n.Kids[0])
 		list := n.Kids[1].Values[0]
@@ -358,8 +360,14 @@ func (c *comp) setOperand(n *Node) string {
 	case OpField:
 		return c.path(n.Path)
 	case OpActorID:
+		if !c.allowsActorRefs() {
+			return "false"
+		}
 		return c.add(Bind{Kind: BindActorID})
 	case OpActorTenant:
+		if !c.allowsActorRefs() {
+			return "false"
+		}
 		return c.add(Bind{Kind: BindActorTenant})
 	case OpNow:
 		return "now()"
@@ -385,21 +393,12 @@ func (c *comp) cmp(n *Node) string {
 		return fmt.Sprintf("(%s LIKE (%s || '%%'))", lhs, rhs)
 	}
 	rhsLit := litOf(b)
-	cast := ""
-	switch rhsLit.Kind {
-	case "time":
-		cast = "timestamptz"
-	case "int":
-		cast = "bigint"
-	}
-	rhs := c.add(Bind{Kind: BindLit, Lit: rhsLit, Cast: cast})
-	if a.Op == OpField {
-		f, ok := c.resolveField(a.Path)
-		if ok {
+	rhs := c.add(Bind{Kind: BindLit, Lit: rhsLit})
+	// A single-segment field selects its comparison column by literal kind (money
+	// compares on minor units). Multi-segment paths already rendered a subselect.
+	if a.Op == OpField && len(a.Path) == 1 {
+		if f, ok := c.t.Lookup(a.Path[0]); ok {
 			lhs = rootMarker + "." + f.ColumnFor(rhsLit.Kind)
-			if f.Kind == "email" || f.Kind == "text" {
-				// text comparisons stay byte-exact; enum/text equality is plain
-			}
 		}
 	}
 	op := map[string]string{
@@ -440,40 +439,66 @@ func litOf(n *Node) Lit {
 }
 
 // role compiles a role test as a membership lookup plus the system shortcut.
+// Bind order must match placeholder order, so the shortcut is added first.
 func (c *comp) role(names []string) string {
-	list := ListLit("string", func() []Lit {
-		out := make([]Lit, len(names))
-		for i, n := range names {
-			out[i] = StringLit(n)
-		}
-		return out
-	}())
-	var exists string
 	if c.target == TargetQuery {
+		sys := c.add(Bind{Kind: BindActorSystem})
+		ten := c.add(Bind{Kind: BindActorTenant})
+		act := c.add(Bind{Kind: BindActorID})
 		holes := make([]string, len(names))
 		for i, n := range names {
 			c.binds = append(c.binds, Bind{Kind: BindLit, Lit: StringLit(n)})
 			holes[i] = "?"
 		}
-		exists = fmt.Sprintf(
-			"EXISTS (SELECT 1 FROM %s m WHERE m.tenant_id = %s AND m.actor_id = %s AND m.role IN (%s))",
-			membershipTable,
-			c.add(Bind{Kind: BindActorTenant}),
-			c.add(Bind{Kind: BindActorID}),
-			strings.Join(holes, ","),
-		)
-		return "((" + c.add(Bind{Kind: BindActorSystem}) + ") OR " + exists + ")"
+		return "((" + sys + ") OR EXISTS (SELECT 1 FROM " + membershipTable +
+			" m WHERE m.tenant_id = " + ten + " AND m.actor_id = " + act +
+			" AND m.role IN (" + strings.Join(holes, ",") + ")))"
 	}
-	arr, err := litSQL(list, "")
+	if c.err != nil {
+		return "false"
+	}
+	if !c.allowsActorRefs() {
+		return "false"
+	}
+	arr, err := litSQL(ListLit("string", strLits(names)), "")
 	if err != nil {
 		c.fail("%v", err)
 		return "false"
 	}
-	exists = fmt.Sprintf(
-		"EXISTS (SELECT 1 FROM %s m WHERE m.tenant_id = %s AND m.actor_id = %s AND m.role = ANY(%s))",
-		membershipTable, gucTenantID, gucActorID, arr,
-	)
-	return "((" + gucIsSystem + ") OR " + exists + ")"
+	return "((" + gucIsSystem + ") OR EXISTS (SELECT 1 FROM " + membershipTable +
+		" m WHERE m.tenant_id = " + gucTenantID + " AND m.actor_id = " + gucActorID +
+		" AND m.role = ANY(" + arr + ")))"
+}
+
+func strLits(names []string) []Lit {
+	out := make([]Lit, len(names))
+	for i, n := range names {
+		out[i] = StringLit(n)
+	}
+	return out
+}
+
+// allowsActorRefs reports whether actor-dependent SQL may be emitted at all.
+func (c *comp) allowsActorRefs() bool {
+	if c.target == TargetDDL {
+		c.fail("a role or actor rule cannot become a database CHECK constraint")
+		return false
+	}
+	return true
+}
+
+// OwnerSQL renders owner(<field>).
+func ownerSQL(c *comp, field string) string {
+	f, ok := c.t.Lookup(field)
+	if !ok {
+		c.fail("owner(): unknown field %q", field)
+		return "false"
+	}
+	if c.target == TargetDDL {
+		c.fail("owner() cannot appear in a CHECK constraint")
+		return "false"
+	}
+	return rootMarker + "." + f.Column + " = " + c.add(Bind{Kind: BindActorID})
 }
 
 // Place rewrites ? placeholders into $n parameters starting at offset, appending
@@ -563,7 +588,11 @@ func litGo(l Lit) (any, error) {
 	case "string":
 		return l.Text, nil
 	case "time":
-		return l.Text, nil
+		t, err := time.Parse(time.RFC3339Nano, l.Text)
+		if err != nil {
+			return nil, fmt.Errorf("policy: bad time literal %q", l.Text)
+		}
+		return t, nil
 	case "money":
 		minor, cur, ok := splitMoney(l.Text)
 		if !ok {
@@ -606,4 +635,24 @@ func TenantFilter(target Target, crossTenant bool) *SQL {
 // the tenant boundary, plus the explicit cross-tenant opt-in for declared actions.
 func RLSPredicate() string {
 	return "(" + rootMarker + ".tenant_id = " + gucTenantID + " OR " + gucCross + ")"
+}
+
+// WithRoot replaces the root marker with a table alias, so the same compiled rule
+// serves the main table and correlated subqueries. An empty alias drops the prefix.
+func (s *SQL) WithRoot(alias string) *SQL {
+	prefix := alias + "."
+	if alias == "" {
+		prefix = ""
+	}
+	text := strings.ReplaceAll(s.Text, rootMarker+".", prefix)
+	return &SQL{Text: text, Binds: append([]Bind(nil), s.Binds...)}
+}
+
+// TableSQL compiles a rule against a table and immediately binds its root alias.
+func TableSQL(n *Node, t *Table, target Target, alias string) (*SQL, error) {
+	s, err := Compile(n, t, target)
+	if err != nil {
+		return nil, err
+	}
+	return s.WithRoot(alias), nil
 }

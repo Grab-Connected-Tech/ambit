@@ -55,11 +55,12 @@ func compareAt(old, new *Node, depth int) (Relation, string) {
 	if oc == nc {
 		return Equal, ""
 	}
+	// covers(wide, narrow) means "wide accepts at least what narrow accepts".
 	if covers(new, old) {
-		return Narrowed, describe(old, new, "tightened")
+		return Widened, describe(old, new, "loosened")
 	}
 	if covers(old, new) {
-		return Widened, describe(old, new, "loosened")
+		return Narrowed, describe(old, new, "tightened")
 	}
 	return Unknown, describe(old, new, "changed")
 }
@@ -103,15 +104,16 @@ func covers(wide, narrow *Node) bool {
 		}
 		return true
 	case wide.Op == OpAnd:
-		// Each conjunct on the wide side is weaker than the whole conjunction.
-		if anyCovers(wide.Kids, narrow) {
-			return true
-		}
-		if narrow.Op != OpAnd {
-			return false
-		}
+		// A conjunction accepts less than any single conjunct, so every conjunct
+		// on the wide side must still cover the narrow side.
 		for _, a := range wide.Kids {
-			if !anyCovers(narrow.Kids, a) {
+			if narrow.Op == OpAnd {
+				if !anyCovers(narrow.Kids, a) {
+					return false
+				}
+				continue
+			}
+			if !covers(a, narrow) {
 				return false
 			}
 		}

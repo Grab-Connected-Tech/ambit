@@ -52,7 +52,7 @@ func (m Money) String() string {
 	if v < 0 {
 		sign, v = "-", -v
 	}
-	return fmt.Sprintf("%s%s.%02d %s", sign, v/100, v%100, m.Currency)
+	return fmt.Sprintf("%s%d.%02d %s", sign, v/100, v%100, m.Currency)
 }
 
 // IsValid reports a sane currency code.

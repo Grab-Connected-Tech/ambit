@@ -114,7 +114,7 @@ func BudgetExceeded(what string, limit int) *Error {
 
 // NotImplemented is returned by action stubs that ks gen wrote but nobody filled in.
 func NotImplemented() *Error {
-	return &Error{Code: CodeNotImplemented, Status: http.StatusInternalServerError, Message: "Action not implemented."}
+	return &Error{Code: CodeNotImplemented, Status: http.StatusNotImplemented, Message: "Action not implemented."}
 }
 
 // InternalError wraps an unexpected failure; its message is never shown to callers.
