@@ -359,6 +359,14 @@ type Passwords struct {
 
 // ---- lookup helpers ----
 
+// Name returns the app name.
+func (a *App) Name() string {
+	if a == nil {
+		return ""
+	}
+	return a.App.Name
+}
+
 // Qual formats a qualified name such as "billing.Invoice".
 func Qual(module, name string) string { return module + "." + name }
 
