@@ -1,0 +1,5 @@
+*.test
+/dist/
+.DS_Store
+/example/myapp/.ks/
+tmp/
