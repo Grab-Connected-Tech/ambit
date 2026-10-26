@@ -372,7 +372,8 @@ func SplitRef(ref string) (module, name string) {
 	return "", ref
 }
 
-// FindResource locates a resource by qualified name.
+// FindResource locates a resource by qualified name. App-level resources are
+// addressed as "app.Org" from specs and by bare name elsewhere (§4.2).
 func (a *App) FindResource(ref string) *Resource {
 	for m := range a.Modules {
 		for r := range a.Modules[m].Resources {
@@ -381,9 +382,16 @@ func (a *App) FindResource(ref string) *Resource {
 			}
 		}
 	}
+	_, name := SplitRef(ref)
+	isTenant := func(n string) bool { return a.App.Tenant != "" && n == a.App.Tenant }
+	isAccount := func(n string) bool { return a.Account != nil && n == a.Account.Name }
 	for _, fw := range a.Framework() {
-		if fw.Name == ref || fw.Table == ref {
-			return &Resource{Name: fw.Name, Table: fw.Table, Fields: fw.Fields, Tenant: fw.Name != "Membership"}
+		if fw.Name == ref || fw.Name == name || fw.Table == ref {
+			return &Resource{
+				Name: fw.Name, Table: fw.Table, Fields: fw.Fields,
+				Tenant:  isTenant(fw.Name) || isAccount(fw.Name),
+				Account: isAccount(fw.Name),
+			}
 		}
 	}
 	return nil
