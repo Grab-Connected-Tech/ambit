@@ -56,6 +56,9 @@ func (a *App) PolicyTables() map[string]*policy.Table {
 	return out
 }
 
+// Encrypted reports whether the value is stored as ciphertext.
+func (f Field) Encrypted() bool { return f.Type.Encrypted }
+
 // Columns returns the storage columns for a field, expanding money into its pair.
 func (f Field) StorageColumns() []string {
 	if len(f.Columns) > 0 {

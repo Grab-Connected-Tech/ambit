@@ -174,13 +174,17 @@ func TestAccessRulesAreDenyByDefaultAndNormalized(t *testing.T) {
 	if inv.Access.FieldRead[0].Field != "notes" || inv.Access.FieldRead[1].Field != "tax_id" {
 		t.Fatalf("field rules out of order: %s %s", inv.Access.FieldRead[0].Field, inv.Access.FieldRead[1].Field)
 	}
-	// A resource with no access block at all denies everything.
-	if got := a.FindResource("app.Org"); got != nil {
-		t.Fatal("the tenant resource is app-level, not a module resource")
+	// App-level resources resolve by qualified name but are not module resources.
+	org := a.FindResource("app.Org")
+	if org == nil || !org.Tenant {
+		t.Fatalf("tenant resource: %+v", org)
 	}
-	org := a.Tenant
-	if org == nil {
-		t.Fatal("tenant resource missing")
+	for _, m := range a.Modules {
+		for _, r := range m.Resources {
+			if r.Name == "Org" || r.Name == "User" {
+				t.Fatalf("app-level resource leaked into module %s", m.Name)
+			}
+		}
 	}
 }
 
