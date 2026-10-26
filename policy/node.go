@@ -468,6 +468,16 @@ func canonicalize(n *Node) {
 			return
 		}
 		n.Kids = kids
+		// role(a) | role(b) is one test against two roles, so merge them: this is
+		// what makes "admin or accountant" compare equal however it was written.
+		if n.Op == OpOr && allRoles(n.Kids) {
+			var roles []string
+			for _, k := range n.Kids {
+				roles = append(roles, k.Roles...)
+			}
+			*n = Node{Op: OpRole, Roles: dedup(roles)}
+			return
+		}
 		sort.SliceStable(n.Kids, func(i, j int) bool { return n.Kids[i].String() < n.Kids[j].String() })
 	case OpImplies:
 		// a -> b  ==  !a | b ; store in the canonical disjunctive form
@@ -496,6 +506,29 @@ func Normalize(n *Node) *Node {
 	c := n.Clone()
 	canonicalize(c)
 	return c
+}
+
+func allRoles(kids []*Node) bool {
+	for _, k := range kids {
+		if k.Op != OpRole {
+			return false
+		}
+	}
+	return len(kids) > 0
+}
+
+func dedup(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, v := range in {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // MarshalJSON keeps nodes byte-stable.
