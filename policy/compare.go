@@ -57,12 +57,12 @@ func compareAt(old, new *Node, depth int) (Relation, string) {
 	}
 	// covers(wide, narrow) means "wide accepts at least what narrow accepts".
 	if covers(new, old) {
-		return Widened, describe(old, new, "loosened")
+		return Widened, describe(old, new)
 	}
 	if covers(old, new) {
-		return Narrowed, describe(old, new, "tightened")
+		return Narrowed, describe(old, new)
 	}
-	return Unknown, describe(old, new, "changed")
+	return Unknown, describe(old, new)
 }
 
 // covers reports whether every actor and row that satisfies narrow also satisfies
@@ -214,13 +214,13 @@ func subset(a, b []string) bool {
 	return true
 }
 
-func describe(old, new *Node, verb string) string {
-	o, n := Canonical(old), Canonical(new)
-	diff := explainDelta(old, new)
-	if diff == "" {
-		return verb + ": " + o + " -> " + n
+// describe names the concrete difference, with no verdict word: the caller already
+// knows whether the rule widened or narrowed.
+func describe(old, new *Node) string {
+	if d := explainDelta(old, new); d != "" {
+		return d
 	}
-	return verb + ": " + diff
+	return Canonical(old) + " -> " + Canonical(new)
 }
 
 // explainDelta names the concrete difference when one is obvious, which is what
@@ -313,3 +313,6 @@ func minus(a, b []string) []string {
 	sort.Strings(out)
 	return out
 }
+
+// AnyNode is a convenience for callers that need a placeholder rule.
+func AnyNode() *Node { return Always() }
