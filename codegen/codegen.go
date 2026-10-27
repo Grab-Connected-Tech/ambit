@@ -204,6 +204,9 @@ func Generate(o Options) (*Result, error) {
 	if err := write(filepath.Join(goDir, "rules_test.go"), rulesTest(app), true); err != nil {
 		return nil, err
 	}
+	if err := write(filepath.Join(goDir, "bench_test.go"), benchTest(app, o), true); err != nil {
+		return nil, err
+	}
 
 	// The migrations directory is a package that embeds its plan files, so the app
 	// binary can apply them (§18.3).

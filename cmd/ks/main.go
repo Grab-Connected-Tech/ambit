@@ -40,6 +40,7 @@ const usage = `usage: ks <command> [flags]
   keys new|rotate                   manage the keys of Encrypted() fields
   docs --llm [--out file]           write the single-file framework reference for models
   perf [--min-rows n]               explain captured queries; flag scans that need an index
+  bench [<module.Action>] [--max-p95 ms]  load-test actions: latency percentiles, allocations
   outbox list|inspect|replay        operate on pending and dead-lettered effects
   jobs list|inspect|replay          operate on jobs
 
@@ -61,7 +62,7 @@ func main() {
 		"init": cmdInit, "gen": cmdGen, "check": cmdCheck, "test": cmdTest, "diff": cmdDiff,
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
 		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
-		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs, "perf": cmdPerf,
+		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs, "perf": cmdPerf, "bench": cmdBench,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {

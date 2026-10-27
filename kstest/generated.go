@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -634,4 +635,56 @@ func randomValue(rng *rand.Rand, f model.Field, ids map[string][]ks.ID, now time
 		return ks.NewID(), true
 	}
 	return nil, false
+}
+
+// Bench measures an action through the full pipeline (§11.4): one actor holding every
+// role, inputs drawn as Fuzz draws them but only from the actor's own tenant, so most
+// calls succeed. It reports latency percentiles and the share of calls that failed;
+// go test -benchmem adds allocations per call. Rate limits are lifted: they would
+// measure the limiter, not the action.
+func Bench[C, In, Out any](b *testing.B, app *model.App, wrap func(func(*C, In) (Out, error)) *runtime.Handler, fn func(*C, In) (Out, error)) {
+	e := New(b, app)
+	h := wrap(fn)
+	h.Spec.Limits.RateLimit = nil
+	tenant := e.Tenant()
+	actor := e.Actor(tenant, toAny(app.Roles)...)
+	ids := map[string][]ks.ID{}
+	for _, f := range h.Spec.Input {
+		if f.Ref != nil {
+			for i := 0; i < 5; i++ {
+				ids[f.Ref.Resource] = append(ids[f.Ref.Resource], e.Fixture(f.Ref.Resource, tenant))
+			}
+		}
+	}
+	e.App.OnCall = nil // traces are not what is measured
+	rng := rand.New(rand.NewSource(1))
+	bodies := make([][]byte, 64)
+	for i := range bodies {
+		body := map[string]any{}
+		for _, f := range h.Spec.Input {
+			if v, ok := randomValue(rng, f, ids, e.Clock.Now()); ok && (!f.Optional || rng.Intn(2) == 0) {
+				body[f.Name] = v
+			}
+		}
+		bodies[i], _ = json.Marshal(body)
+	}
+	lat := make([]time.Duration, 0, b.N)
+	failed := 0
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		start := time.Now()
+		_, err := e.App.Run(context.Background(), h, actor, &runtime.Call{Actor: actor, Body: bodies[i%len(bodies)], Key: string(ks.NewID())}, nil)
+		lat = append(lat, time.Since(start))
+		if err != nil {
+			failed++
+		}
+	}
+	b.StopTimer()
+	sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
+	at := func(p float64) float64 { return float64(lat[int(p*float64(len(lat)-1))].Microseconds()) / 1000 }
+	b.ReportMetric(at(0.50), "p50-ms")
+	b.ReportMetric(at(0.95), "p95-ms")
+	b.ReportMetric(at(0.99), "p99-ms")
+	b.ReportMetric(float64(failed)/float64(b.N), "err/op")
 }

@@ -431,3 +431,33 @@ USER nonroot:nonroot
 ENTRYPOINT ["/server"]
 `)
 }
+
+// benchTest emits gen/bench_test.go: one benchmark per action, through the real
+// implementation the entrypoint names, for ks bench (§11.4). It is an external test
+// package, so it may import the modules, which import gen.
+func benchTest(app *model.App, o Options) []byte {
+	var b strings.Builder
+	b.WriteString(header + "\npackage gen_test\n\nimport (\n\t\"testing\"\n\n")
+	mods := append([]model.Module(nil), app.Modules...)
+	sort.Slice(mods, func(i, j int) bool { return mods[i].Name < mods[j].Name })
+	var runs []string
+	for _, m := range mods {
+		alias := pkgName(o.moduleImport(m.Name))
+		acts := append([]model.Action(nil), m.Actions...)
+		sort.Slice(acts, func(i, j int) bool { return acts[i].Name < acts[j].Name })
+		for _, a := range acts {
+			if a.Kind == model.KindSchedule {
+				continue
+			}
+			runs = append(runs, fmt.Sprintf("\tb.Run(%q, func(b *testing.B) { kstest.Bench(b, gen.Model, gen.%sHandler, %s.Actions.%s) })\n",
+				model.Qual(m.Name, a.Name), a.Name, alias, a.Name))
+		}
+		if len(acts) > 0 {
+			b.WriteString("\t" + alias + " \"" + o.moduleImport(m.Name) + "\"\n")
+		}
+	}
+	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"keystone.dev/keystone/kstest\"\n)\n\n")
+	b.WriteString("// BenchmarkActions measures every action through the full pipeline; ks bench runs one.\n")
+	b.WriteString("func BenchmarkActions(b *testing.B) {\n" + strings.Join(runs, "") + "}\n")
+	return []byte(b.String())
+}
