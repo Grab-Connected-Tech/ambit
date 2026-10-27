@@ -38,6 +38,7 @@ const usage = `usage: ks <command> [flags]
   client ts --out <dir>             write the TypeScript client elsewhere
   build [--out bin/app]             produce the production binary
   keys new|rotate                   manage the keys of Encrypted() fields
+  docs --llm [--out file]           write the single-file framework reference for models
   outbox list|inspect|replay        operate on pending and dead-lettered effects
   jobs list|inspect|replay          operate on jobs
 
@@ -59,7 +60,7 @@ func main() {
 		"init": cmdInit, "gen": cmdGen, "check": cmdCheck, "test": cmdTest, "diff": cmdDiff,
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
 		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
-		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew,
+		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {
