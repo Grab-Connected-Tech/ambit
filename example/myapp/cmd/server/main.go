@@ -24,6 +24,7 @@ func main() {
 		gen.CountDraftsHandler(billing.Actions.CountDrafts),
 		gen.ListInvoicesHandler(billing.Actions.ListInvoices),
 		gen.MarkPaidHandler(billing.Actions.MarkPaid),
+		gen.RefundChargeHandler(billing.Actions.RefundCharge),
 		gen.SendInvoiceHandler(billing.Actions.SendInvoice),
 		gen.SendRemindersHandler(billing.Actions.SendReminders),
 		gen.CreateCustomerHandler(customers.Actions.CreateCustomer),

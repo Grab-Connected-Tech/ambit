@@ -65,6 +65,20 @@ func refSourceNames(app *model.App, a *model.Action) []refSource {
 	return out
 }
 
+// compensates reports whether some immediate effect names the job as its compensation.
+func compensates(app *model.App, job string) bool {
+	for _, m := range app.Modules {
+		for _, a := range m.Actions {
+			for _, e := range a.Effects {
+				if e.Compensates == job {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func writeAction(b *strings.Builder, app *model.App, module string, a *model.Action) error {
 	name := a.Name
 	ref := model.Qual(module, name)
@@ -76,6 +90,11 @@ func writeAction(b *strings.Builder, app *model.App, module string, a *model.Act
 		b.WriteString("// the action runs, so an action never re-checks shape (§7.1).\n")
 		b.WriteString("type " + name + "Input struct {\n")
 		inputStruct(b, a, app)
+		if compensates(app, ref) {
+			// A compensation job receives the immediate effect it undoes (§10.2).
+			b.WriteString("\t// Effect is the immediate effect whose action did not commit.\n\tEffect runtime.EffectCall `json:\"effect\"`\n" +
+				"\t// Result is what the provider returned when the effect ran.\n\tResult runtime.EffectResult `json:\"result\"`\n")
+		}
 		if a.Kind == model.KindQuery {
 			// A list takes a cursor and a size without the spec naming them: the runtime
 			// clamps the size to the configured maximum, so a client cannot ask for the
@@ -167,7 +186,7 @@ func writeAction(b *strings.Builder, app *model.App, module string, a *model.Act
 	b.WriteString("\t\tSpec: mustAction(" + fmt.Sprintf("%q", ref) + "),\n")
 	b.WriteString("\t\tHandle: func(c *runtime.Call) (any, error) {\n")
 	b.WriteString("\t\t\tvar args " + name + "Input\n")
-	if len(a.Input) > 0 || a.Kind == model.KindQuery {
+	if len(a.Input) > 0 || a.Kind == model.KindQuery || compensates(app, ref) {
 		b.WriteString("\t\t\tif err := runtime.DecodeInput(c, &args); err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
 		b.WriteString("\t\t\tif err := args.Validate(); err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
 	}

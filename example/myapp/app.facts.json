@@ -1,6 +1,6 @@
 {
   "app": "app",
-  "modelHash": "e1a0ff4b9cb8eec38c9fa2d8ac503be36f66d36c2958200b64443ee2fa4e23b3",
+  "modelHash": "6f11a9db8f5216ad535f57fbf218776b43a4e171976a07280386823201692ccc",
   "generated": "v0.1",
   "deps": [
     {
@@ -35,104 +35,105 @@
   ],
   "imports": [
     "context",
+    "errors",
     "strings",
     "testing",
     "time"
   ],
   "queries": [
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q()",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q()",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q()",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent))",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent)).\n\tOrderBy(gen.Invoices.CreatedAt.Asc())",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent)).\n\tOrderBy(gen.Invoices.CreatedAt.Asc()).\n\tEach(c, 200, func(inv *gen.Invoice) error {\n\t\t_, err := c.Email.Send(c, []byte(\"{}\"))\n\t\treturn err\n\t})",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q().OrderBy(gen.Invoices.CreatedAt.Desc())",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q().Where(gen.Invoices.Status.Eq(gen.InvoiceStatusDraft))",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Q().Where(gen.Invoices.Status.Eq(gen.InvoiceStatusDraft)).Count(c)",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tks.Set(gen.InvoiceStatusPaid),\n\tPaidAt:\tks.Set(c.Clock.Now()),\n}.Assignments())",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tks.Set(gen.InvoiceStatusSent),\n\tSentAt:\tks.Set(c.Clock.Now()),\n}.Assignments())",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.SendReminders",
+      "action": "billing.RefundCharge",
       "sql": "in.Status.Get()",
       "table": "",
       "rows": 0,

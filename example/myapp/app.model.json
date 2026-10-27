@@ -890,6 +890,14 @@
           ],
           "effects": [
             {
+              "type": "http",
+              "mode": "immediate",
+              "hosts": [
+                "api.psp.example"
+              ],
+              "compensates": "billing.RefundCharge"
+            },
+            {
               "type": "webhook",
               "mode": "deferred",
               "topic": "invoice.paid"
@@ -907,6 +915,28 @@
             "queryBudget": 8
           },
           "idempotent": true
+        },
+        {
+          "name": "RefundCharge",
+          "kind": "job",
+          "output": {},
+          "effects": [
+            {
+              "type": "http",
+              "mode": "deferred",
+              "hosts": [
+                "api.psp.example"
+              ]
+            }
+          ],
+          "limits": {},
+          "retry": {
+            "maxAttempts": 8,
+            "backoff": "exponential",
+            "base": "1s",
+            "cap": "10m0s"
+          },
+          "runAs": "system"
         },
         {
           "name": "SendInvoice",

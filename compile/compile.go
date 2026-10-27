@@ -277,6 +277,16 @@ func checkOwnership(a *model.App) Diags {
 							"Enqueue takes a s.Job"))
 					}
 				}
+				if e.Compensates != "" {
+					if e.Mode != "immediate" {
+						d = append(d, bad("KS-SPEC-005", decl, "only an immediate effect can need compensating; a deferred one never runs before commit",
+							"drop Compensate, or make the effect Immediate()"))
+					} else if m2, j := a.FindAction(e.Compensates); m2 == nil || j.Kind != model.KindJob {
+						d = append(d, bad("KS-SPEC-002", decl,
+							fmt.Sprintf("the compensation %s is not a declared job", e.Compensates),
+							"name a s.Job as module.Job; it receives the effect call and its result"))
+					}
+				}
 			}
 		}
 	}

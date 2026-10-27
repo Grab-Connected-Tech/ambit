@@ -62,7 +62,12 @@ var MarkPaid = s.Mutation("MarkPaid",
 	s.Returns(Invoice),
 	s.Requires(app.Admin.Or(app.Accountant)),
 	s.Writes(Invoice),
-	s.Effects(s.Webhook(s.Topic("invoice.paid"))),
+	s.Effects(
+		s.Webhook(s.Topic("invoice.paid")),
+		// Confirming the capture is immediate: if the payment write then fails, the
+		// runtime queues RefundCharge, because the PSP call cannot be rolled back.
+		s.HTTP(s.Hosts("api.psp.example")).Immediate().Compensate("billing.RefundCharge"),
+	),
 	s.Errors("already_paid", "amount_mismatch"),
 	s.QueryBudget(8),
 	s.Idempotent(),
@@ -92,6 +97,14 @@ var SendReminders = s.Job("SendReminders",
 	s.Effects(s.EmailEffect()),
 	s.Retry(s.MaxAttempts(5), s.Exponential(s.Second, 10*s.Minute)),
 	s.Concurrency(s.Key("customer"), 1),
+)
+
+// RefundCharge undoes a confirmed capture whose MarkPaid did not commit. It receives the
+// effect call and the PSP's response.
+var RefundCharge = s.Job("RefundCharge",
+	s.RunAs(s.System),
+	s.Effects(s.HTTP(s.Hosts("api.psp.example"))),
+	s.Retry(s.MaxAttempts(8), s.Exponential(s.Second, 10*s.Minute)),
 )
 
 // DailyReminders is the schedule that starts the job (§10.5).

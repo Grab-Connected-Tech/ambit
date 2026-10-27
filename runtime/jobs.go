@@ -390,17 +390,27 @@ func (s *Schedules) Tick(ctx context.Context, now time.Time) (int, error) {
 }
 
 func (s *Schedules) enqueueJobNoTx(ctx context.Context, call JobCall) error {
+	return s.A.enqueueOutside(ctx, call)
+}
+
+// enqueueOutside queues a job in a transaction of its own, for work that must happen
+// whatever became of the caller's transaction: a schedule slot, or a compensation for an
+// immediate effect whose action rolled back (§10.2, §10.5).
+func (a *App) enqueueOutside(ctx context.Context, call JobCall) error {
+	if call.ID.IsNil() {
+		call.ID = ks.NewID()
+	}
 	if call.Args == nil {
 		call.Args = []byte("{}")
 	}
 	if call.MaxAttempts == 0 {
 		call.MaxAttempts = 5
 	}
-	err := s.A.inSystemScope(ctx, func(tx pgx.Tx) error {
+	err := a.inSystemScope(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO ks_jobs (id, tenant_id, action, args, priority, state, run_after, attempts, max_attempts, backoff, base_delay, cap_delay, invocation_id, policy, created_at)
 	         VALUES ($1,$2,$3,$4,5,'queued',now(),0,$5,'exponential','1 second','10 minutes',$6,'{}'::jsonb,now())`,
-			call.ID, nil, call.Action, call.Args, call.MaxAttempts, call.Invocation)
+			call.ID, call.Tenant.OrNil(), call.Action, call.Args, call.MaxAttempts, call.Invocation)
 		return err
 	})
 	return translate(err)

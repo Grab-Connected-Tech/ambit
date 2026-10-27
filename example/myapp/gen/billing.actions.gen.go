@@ -259,6 +259,8 @@ type MarkPaidCtx struct {
 	DB    MarkPaidDB
 	Log   *slog.Logger
 	Clock ks.Clock
+	// HTTP runs the http effect declared in the spec.
+	HTTP runtime.EffectHandle
 	// Webhook runs the webhook effect declared in the spec.
 	Webhook runtime.EffectHandle
 }
@@ -266,6 +268,7 @@ type MarkPaidCtx struct {
 // bindEffects attaches each declared effect to this action's transaction, so a
 // deferred effect is recorded by the same commit that writes the row (§10.1).
 func (c *MarkPaidCtx) bindEffects(d *runtime.DB) {
+	c.HTTP = runtime.EffectHandle{Type: model.EffectHTTP, Mode: "immediate", Hosts: []string{"api.psp.example"}, DB: d}
 	c.Webhook = runtime.EffectHandle{Type: model.EffectWebhook, Mode: "deferred", Hosts: nil, DB: d}
 }
 
@@ -314,6 +317,75 @@ func MarkPaidHandler(fn func(*MarkPaidCtx, MarkPaidInput) (*Invoice, error)) *ru
 				return nil, err
 			}
 			ctx := &MarkPaidCtx{Context: c.Context, Actor: c.Actor, DB: newMarkPaidDB(c.DB), Log: c.Log, Clock: c.Clock}
+			ctx.bindEffects(c.DB)
+			return fn(ctx, args)
+		},
+	}
+}
+
+// RefundChargeInput is the action's argument list. Fields are validated before
+// the action runs, so an action never re-checks shape (§7.1).
+type RefundChargeInput struct {
+	// Effect is the immediate effect whose action did not commit.
+	Effect runtime.EffectCall `json:"effect"`
+	// Result is what the provider returned when the effect ran.
+	Result runtime.EffectResult `json:"result"`
+}
+
+func (in *RefundChargeInput) Validate() *ks.Error {
+	if in == nil {
+		return ks.Invalid("body", "the request has no body")
+	}
+	return nil
+}
+
+// RefundChargeDB is the action's door to data. It carries exactly the resources the
+// spec declared, and a resource listed only in Reads has no writer, so an action
+// cannot write something it never asked to (§7.1).
+type RefundChargeDB struct {
+}
+
+// RefundChargeCtx is everything an action may reach. It embeds context.Context, so a
+// cancellation or a deadline propagates to every query without the action threading
+// anything (§7.2).
+type RefundChargeCtx struct {
+	context.Context
+	Actor ks.Actor
+	DB    RefundChargeDB
+	Log   *slog.Logger
+	Clock ks.Clock
+	// HTTP runs the http effect declared in the spec.
+	HTTP runtime.EffectHandle
+}
+
+// bindEffects attaches each declared effect to this action's transaction, so a
+// deferred effect is recorded by the same commit that writes the row (§10.1).
+func (c *RefundChargeCtx) bindEffects(d *runtime.DB) {
+	c.HTTP = runtime.EffectHandle{Type: model.EffectHTTP, Mode: "deferred", Hosts: []string{"api.psp.example"}, DB: d}
+}
+
+func newRefundChargeDB(d *runtime.DB) RefundChargeDB {
+	var v RefundChargeDB
+	return v
+}
+
+// RefundChargeHandler wraps a written action function as a runtime handler. Passing
+// the implementation here is what asserts its signature: a missing or mistyped
+// action fails the build, not the request (§7.2).
+func RefundChargeHandler(fn func(*RefundChargeCtx, RefundChargeInput) (struct{}, error)) *runtime.Handler {
+	return &runtime.Handler{
+		Ref: "billing.RefundCharge", Module: "billing", Name: "RefundCharge",
+		Kind: model.KindJob, Path: "/api/billing/RefundCharge",
+		Spec: mustAction("billing.RefundCharge"),
+		Handle: func(c *runtime.Call) (any, error) {
+			var args RefundChargeInput
+			if err := runtime.DecodeInput(c, &args); err != nil {
+				return nil, err
+			}
+			if err := args.Validate(); err != nil {
+				return nil, err
+			}
+			ctx := &RefundChargeCtx{Context: c.Context, Actor: c.Actor, DB: newRefundChargeDB(c.DB), Log: c.Log, Clock: c.Clock}
 			ctx.bindEffects(c.DB)
 			return fn(ctx, args)
 		},

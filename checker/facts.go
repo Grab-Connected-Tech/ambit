@@ -35,8 +35,9 @@ var (
 	declRe    = regexp.MustCompile(`^\s*(\w+)\s*=\s*s\.(Query|Mutation|Job|Schedule)\("(\w+)"`)
 	implRe    = regexp.MustCompile(`^func\s+([A-Z]\w*)\s*\(`)
 	requireRe = regexp.MustCompile(`env\.Call\([^,]+,\s*(actions\.)?([A-Z]\w*)`)
-	// kstest.Call(env, actor, gen.SendInvoiceHandler, ...) names the action by its adapter.
-	kstestCallRe = regexp.MustCompile(`kstest\.Call\([^,]+,[^,]+,\s*gen\.([A-Z]\w*)Handler`)
+	// A test that wraps an action in its generated adapter (kstest.Call(env, actor,
+	// gen.SendInvoiceHandler, ...), or a job handed to a worker) runs it.
+	kstestCallRe = regexp.MustCompile(`gen\.([A-Z]\w*)Handler\b`)
 )
 
 // hashMarker returns the content hash recorded in a generated file.

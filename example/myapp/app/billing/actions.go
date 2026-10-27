@@ -18,12 +18,14 @@ var Actions = struct {
 	ListInvoices  func(*gen.ListInvoicesCtx, gen.ListInvoicesInput) (*runtime.PageOf[gen.Invoice], error)
 	CountDrafts   func(*gen.CountDraftsCtx, gen.CountDraftsInput) (gen.CountDraftsOut, error)
 	SendReminders func(*gen.SendRemindersCtx, gen.SendRemindersInput) (struct{}, error)
+	RefundCharge  func(*gen.RefundChargeCtx, gen.RefundChargeInput) (struct{}, error)
 }{
 	SendInvoice:   sendInvoice,
 	MarkPaid:      markPaid,
 	ListInvoices:  listInvoices,
 	CountDrafts:   countDrafts,
 	SendReminders: sendReminders,
+	RefundCharge:  refundCharge,
 }
 
 // sendInvoice moves a draft to sent and queues the email. The status test happens before
@@ -65,6 +67,11 @@ func markPaid(c *gen.MarkPaidCtx, in gen.MarkPaidInput) (*gen.Invoice, error) {
 	if inv.Amount != in.Amount {
 		return nil, gen.ErrMarkPaidAmountMismatch()
 	}
+	// Confirm the capture with the PSP before recording it. The call happens now and cannot
+	// be rolled back, so the spec names RefundCharge to undo it if the write below fails.
+	if _, err := c.HTTP.Send(c, []byte(`{"capture":"`+in.PspChargeID+`"}`), "api.psp.example"); err != nil {
+		return nil, err
+	}
 	return c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{
 		Status: ks.Set(gen.InvoiceStatusPaid),
 		PaidAt: ks.Set(c.Clock.Now()),
@@ -99,5 +106,12 @@ func sendReminders(c *gen.SendRemindersCtx, in gen.SendRemindersInput) (struct{}
 			_, err := c.Email.Send(c, []byte("{}"))
 			return err
 		})
+	return struct{}{}, err
+}
+
+// refundCharge runs when a confirmed capture's MarkPaid did not commit: the money moved,
+// the invoice did not, so the capture is refunded (§10.2).
+func refundCharge(c *gen.RefundChargeCtx, in gen.RefundChargeInput) (struct{}, error) {
+	_, err := c.HTTP.Send(c, append([]byte(`{"refund":`), append(in.Effect.Payload, '}')...), "api.psp.example")
 	return struct{}{}, err
 }

@@ -250,6 +250,8 @@ type DB struct {
 	Audit         []AuditRecord
 	EffectsQueued []EffectCall
 	JobsQueued    []JobCall
+	// Compensations are queued only if the transaction does not commit.
+	Compensations []JobCall
 	traceID       string
 	action        string
 	invocation    ks.ID
@@ -716,6 +718,12 @@ func (d *DB) CallEffect(ctx context.Context, call EffectCall) (EffectResult, err
 		return res, err
 	}
 	call.Payload = firstJSON(call.Payload)
+	// The effect happened and cannot be unsent: if this transaction later rolls back,
+	// the declared compensation runs instead (§10.2).
+	if job := compensationFor(d.app, call); job != "" {
+		args, _ := json.Marshal(map[string]any{"effect": call, "result": res})
+		d.Compensations = append(d.Compensations, JobCall{Action: job, Tenant: d.actor.Tenant, Args: args, Invocation: d.invocation})
+	}
 	return res, d.RecordEffect(ctx, call)
 }
 

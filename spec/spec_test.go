@@ -223,7 +223,8 @@ func TestActionDeclarations(t *testing.T) {
 	}
 
 	_, mark := a.FindAction("billing.MarkPaid")
-	if mark == nil || len(mark.Effects) != 1 || mark.Effects[0].Type != model.EffectWebhook {
+	if mark == nil || len(mark.Effects) != 2 || mark.Effects[0].Type != model.EffectWebhook ||
+		mark.Effects[1].Mode != "immediate" || mark.Effects[1].Compensates != "billing.RefundCharge" {
 		t.Fatalf("markpaid effects: %+v", mark.Effects)
 	}
 	if !mark.Idempotent || mark.Limits.QueryBudget != 8 {

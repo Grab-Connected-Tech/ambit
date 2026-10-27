@@ -561,13 +561,16 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	}
 	if callErr != nil {
 		a.Rollback(ctx, tx)
+		a.compensate(ctx, d)
 		return out, callErr
 	}
 	if opts.NoCommit {
 		a.Rollback(ctx, tx)
+		a.compensate(ctx, d)
 		return out, nil
 	}
 	if err := a.Commit(ctx, d, tx); err != nil {
+		a.compensate(ctx, d)
 		return out, err
 	}
 	if h.Spec.Idempotent && in.Key != "" {

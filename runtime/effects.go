@@ -158,6 +158,23 @@ func (d *DB) actionApp() *model.App { return d.app }
 
 // declaresEffect is the runtime half of the capability check: a host outside the
 // allowlist is refused here, not merely discouraged (§5.8).
+// compensationFor names the job an immediate effect declared with Compensate().
+func compensationFor(a *model.App, call EffectCall) string {
+	if a == nil {
+		return ""
+	}
+	_, act := a.FindAction(call.Action)
+	if act == nil {
+		return ""
+	}
+	for _, e := range act.Effects {
+		if e.Type == call.Type && e.Mode == "immediate" && e.Compensates != "" {
+			return e.Compensates
+		}
+	}
+	return ""
+}
+
 func declaresEffect(a *model.App, call EffectCall) error {
 	if a == nil || call.Action == "" {
 		return nil
@@ -637,4 +654,19 @@ func isV6Local(ip net.IP) bool {
 		return false
 	}
 	return ip.IsUnspecified()
+}
+
+// compensate queues the compensations of immediate effects whose transaction did not
+// commit. It runs on a fresh context: the request's may already be cancelled, and a
+// compensation that is lost leaves the outside world wrong.
+func (a *App) compensate(ctx context.Context, d *DB) {
+	for _, job := range d.Compensations {
+		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		if err := a.enqueueOutside(bg, job); err != nil {
+			a.Log.Error("compensation not queued", "job", job.Action, "invocation", job.Invocation, "err", err)
+			a.metric("ks_compensation_lost", 1)
+		}
+		cancel()
+	}
+	d.Compensations = nil
 }

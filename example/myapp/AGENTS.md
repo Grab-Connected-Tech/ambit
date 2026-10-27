@@ -13,7 +13,7 @@ when the spec changes; edit the spec, not this file.
 
 ## Modules
 
-- **billing** — resources Invoice; actions CountDrafts, DailyReminders, ListInvoices, MarkPaid, SendInvoice, SendReminders
+- **billing** — resources Invoice; actions CountDrafts, DailyReminders, ListInvoices, MarkPaid, RefundCharge, SendInvoice, SendReminders
 - **customers** — resources Customer; actions CreateCustomer, GetCustomer, ListCustomers
 
 ## Rules

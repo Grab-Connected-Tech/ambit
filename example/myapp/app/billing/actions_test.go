@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -87,6 +88,7 @@ func TestAnotherTenantCannotSeeTheInvoice(t *testing.T) {
 
 func TestMarkPaid(t *testing.T) {
 	w := setup(t)
+	w.env.StubHTTP("api.psp.example", []byte(`{"captured":true}`))
 	_, err := kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid,
 		gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: ks.MoneyOf(4000, "USD"), PspChargeID: "ch_1"})
 	if ks.AsError(err).Code != "amount_mismatch" {
@@ -157,6 +159,7 @@ func TestSendRemindersRunsAsSystem(t *testing.T) {
 func TestFuzzBillingActions(t *testing.T) {
 	env := kstest.New(t, gen.Model)
 	kstest.Fuzz(env, gen.SendInvoiceHandler, Actions.SendInvoice, 40)
+	env.StubHTTP("api.psp.example", []byte(`{"captured":true}`))
 	kstest.Fuzz(env, gen.MarkPaidHandler, Actions.MarkPaid, 40)
 	kstest.Fuzz(env, gen.ListInvoicesHandler, Actions.ListInvoices, 40)
 }
@@ -215,5 +218,58 @@ func TestEncryptedFieldsRoundTripThroughTheRuntime(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAFailedPaymentWriteRefundsTheCapture(t *testing.T) {
+	w := setup(t)
+	w.env.StubHTTP("api.psp.example", []byte(`{"captured":true}`))
+	refunds := func() int {
+		var n int
+		w.env.QueryRow(`SELECT count(*) FROM ks_jobs WHERE action = 'billing.RefundCharge'`, nil, &n)
+		return n
+	}
+	// The capture is confirmed, then the action fails: the transaction rolls back, the
+	// capture cannot, so its compensation is queued.
+	failing := func(c *gen.MarkPaidCtx, in gen.MarkPaidInput) (*gen.Invoice, error) {
+		if _, err := c.HTTP.Send(c, []byte(`{"capture":"ch_9"}`), "api.psp.example"); err != nil {
+			return nil, err
+		}
+		return nil, gen.ErrMarkPaidAmountMismatch()
+	}
+	in := gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: ks.MoneyOf(5000, "USD"), PspChargeID: "ch_9"}
+	if _, err := kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, failing, in); err == nil {
+		t.Fatal("the action fails")
+	}
+	if n := refunds(); n != 1 {
+		t.Fatalf("one refund is queued after a rolled-back capture, got %d", n)
+	}
+	// The worker runs the compensation as the tenant's system actor; its refund is an
+	// effect like any other.
+	worker := w.env.App.NewWorker()
+	jobs, err := worker.Claim(context.Background(), 10)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("claim: %d jobs, %v", len(jobs), err)
+	}
+	h := gen.RefundChargeHandler(Actions.RefundCharge)
+	w.env.App.Handlers[h.Ref] = h
+	if err := worker.Run(context.Background(), jobs[0]); err != nil {
+		t.Fatalf("refund job: %v cause=%v", err, errors.Unwrap(err))
+	}
+	var refund bool
+	for _, e := range w.env.Effects() {
+		if strings.Contains(string(e.Payload), `"refund"`) && strings.Contains(string(e.Payload), "ch_9") {
+			refund = true
+		}
+	}
+	if !refund {
+		t.Fatalf("the refund effect names the capture: %+v", w.env.Effects())
+	}
+	// A payment that commits queues nothing.
+	if _, err := kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid, in); err != nil {
+		t.Fatal(err)
+	}
+	if n := refunds(); n != 1 {
+		t.Fatalf("a committed capture is not refunded, got %d refund jobs", n)
 	}
 }
