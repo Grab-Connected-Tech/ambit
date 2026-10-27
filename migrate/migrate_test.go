@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 func intp(i int) *int { return &i }

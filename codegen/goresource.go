@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // This file writes the resource half of the gen package: the row struct, its enum types,
@@ -38,7 +38,7 @@ type col struct {
 func writeGoResources(b *strings.Builder, app *model.App, module string, resources []model.Resource) error {
 	b.WriteString(header + "\n")
 	b.WriteString("package gen\n\n")
-	b.WriteString("import (\n\t\"encoding/json\"\n\t\"time\"\n\n\t\"github.com/abhilashiig/ambit/am\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
+	b.WriteString("import (\n\t\"encoding/json\"\n\t\"time\"\n\n\t\"github.com/Grab-Connected-Tech/ambit/am\"\n\t\"github.com/Grab-Connected-Tech/ambit/runtime\"\n)\n\n")
 	b.WriteString("var (\n\t_ = json.RawMessage{}\n\t_ = time.Now\n\t_ = runtime.Always\n)\n\n")
 	for i := range resources {
 		if err := writeResource(b, app, module, &resources[i]); err != nil {

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 )
 
 func TestOTLPExportsActionAndQuerySpansWithoutArguments(t *testing.T) {

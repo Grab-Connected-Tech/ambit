@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abhilashiig/ambit/policy"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 // stripLits removes SQL literals from rule text, leaving the structure: which columns and

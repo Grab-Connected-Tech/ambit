@@ -20,8 +20,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/migrate"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/migrate"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // Options says where the app lives and what to write.
@@ -360,7 +360,7 @@ func loadModelByRunning(o Options, dir string) (*model.App, error) {
 	for _, p := range spec {
 		b.WriteString("\t_ \"" + p + "\"\n")
 	}
-	b.WriteString("\n\t\"github.com/abhilashiig/ambit/spec\"\n)\n\nfunc main() {\n" +
+	b.WriteString("\n\t\"github.com/Grab-Connected-Tech/ambit/spec\"\n)\n\nfunc main() {\n" +
 		"\tapp, err := spec.App()\n" +
 		"\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"spec:\", err)\n\t\tos.Exit(1)\n\t}\n" +
 		"\traw := app.Bytes()\n" +
@@ -410,7 +410,7 @@ func specImports(dir, importPath string) bool {
 	if name == "main" {
 		return false
 	}
-	return strings.Contains(line, "github.com/abhilashiig/ambit/spec")
+	return strings.Contains(line, "github.com/Grab-Connected-Tech/ambit/spec")
 }
 
 func orDefault(v, def string) string {
@@ -473,12 +473,12 @@ func moduleOfImport(importPath string) string {
 }
 
 // hasGoMod reports whether a module root directory of that import path exists in this
-// checkout: github.com/abhilashiig/ambit/example/myapp -> ./example/myapp.
+// checkout: github.com/Grab-Connected-Tech/ambit/example/myapp -> ./example/myapp.
 func hasGoMod(modulePath string) bool {
-	if !strings.HasPrefix(modulePath, "github.com/abhilashiig/ambit") {
+	if !strings.HasPrefix(modulePath, "github.com/Grab-Connected-Tech/ambit") {
 		return false
 	}
-	rel := strings.TrimPrefix(modulePath, "github.com/abhilashiig/ambit")
+	rel := strings.TrimPrefix(modulePath, "github.com/Grab-Connected-Tech/ambit")
 	rel = strings.TrimPrefix(rel, "/")
 	if rel == "" {
 		_, err := os.Stat("go.mod")

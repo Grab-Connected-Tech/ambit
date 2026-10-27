@@ -22,13 +22,13 @@ func cmdUpgrade(args []string) error {
 		version = "latest"
 	}
 	steps := [][]string{
-		{"go", "get", "github.com/abhilashiig/ambit@" + version},
+		{"go", "get", "github.com/Grab-Connected-Tech/ambit@" + version},
 		{"go", "mod", "tidy"},
 	}
 	// An app built against a local checkout (a replace in go.mod) already has the new
 	// source; there is no version to fetch.
-	if out, err := exec.Command("go", "list", "-m", "-f", "{{if .Replace}}{{.Replace.Path}}{{end}}", "github.com/abhilashiig/ambit").Output(); err == nil && len(strings.TrimSpace(string(out))) > 0 {
-		fmt.Println("github.com/abhilashiig/ambit is replaced by", strings.TrimSpace(string(out)), "- regenerating against it")
+	if out, err := exec.Command("go", "list", "-m", "-f", "{{if .Replace}}{{.Replace.Path}}{{end}}", "github.com/Grab-Connected-Tech/ambit").Output(); err == nil && len(strings.TrimSpace(string(out))) > 0 {
+		fmt.Println("github.com/Grab-Connected-Tech/ambit is replaced by", strings.TrimSpace(string(out)), "- regenerating against it")
 		steps = nil
 	}
 	for _, s := range steps {
@@ -39,13 +39,13 @@ func cmdUpgrade(args []string) error {
 		}
 	}
 	// Regenerate with the new framework: run the new am, not this one.
-	gen := exec.Command("go", "run", "github.com/abhilashiig/ambit/cmd/am", "gen")
+	gen := exec.Command("go", "run", "github.com/Grab-Connected-Tech/ambit/cmd/am", "gen")
 	gen.Stdout, gen.Stderr = os.Stdout, os.Stderr
 	if err := gen.Run(); err != nil {
 		return fmt.Errorf("am gen with the new version: %w", err)
 	}
 	if all, _ := migrations(); len(all) > 0 {
-		plan := exec.Command("go", "run", "github.com/abhilashiig/ambit/cmd/am", "migrate", "plan", "--name", "framework_upgrade")
+		plan := exec.Command("go", "run", "github.com/Grab-Connected-Tech/ambit/cmd/am", "migrate", "plan", "--name", "framework_upgrade")
 		plan.Stdout, plan.Stderr = os.Stdout, os.Stderr
 		if err := plan.Run(); err != nil {
 			return err

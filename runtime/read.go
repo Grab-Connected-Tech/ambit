@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 )
 
 // PageOf is one keyset page (§8.1). There is no offset pagination anywhere.

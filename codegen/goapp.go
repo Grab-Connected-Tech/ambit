@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // writeGoApp emits gen/app.gen.go: the model itself, the small helpers generated code
@@ -24,7 +24,7 @@ func writeGoApp(b *strings.Builder, app *model.App, o Options) error {
 	b.WriteString("package gen\n\n")
 	b.WriteString("import (\n" +
 		"\t\"context\"\n\t\"encoding/json\"\n\t\"fmt\"\n\t\"os\"\n\t\"regexp\"\n\t\"strconv\"\n\t\"sync\"\n\t\"time\"\n\n" +
-		"\t\"github.com/abhilashiig/ambit/am\"\n\t\"github.com/abhilashiig/ambit/model\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
+		"\t\"github.com/Grab-Connected-Tech/ambit/am\"\n\t\"github.com/Grab-Connected-Tech/ambit/model\"\n\t\"github.com/Grab-Connected-Tech/ambit/runtime\"\n)\n\n")
 	fmt.Fprintf(b, "// AppName is the value declared in the app spec.\nconst AppName = %q\n\n", app.App.Name)
 	fmt.Fprintf(b, "// ModelHash is the canonical identity of this app's model; am check recomputes it (§6.1).\nconst ModelHash = %q\n\n", app.Hash())
 	b.WriteString("// modelJSON is the app model, compiled from the spec when am gen ran. Everything here\n")
@@ -222,7 +222,7 @@ func writeGoMain(b *strings.Builder, app *model.App, o Options) error {
 		imp := o.moduleImport(m.Name)
 		b.WriteString("\t" + pkgName(imp) + " \"" + imp + "\"\n")
 	}
-	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"" + o.migrationsImport() + "\"\n\t\"github.com/abhilashiig/ambit/migrate/run\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
+	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"" + o.migrationsImport() + "\"\n\t\"github.com/Grab-Connected-Tech/ambit/migrate/run\"\n\t\"github.com/Grab-Connected-Tech/ambit/runtime\"\n)\n\n")
 	b.WriteString("func main() {\n\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n\tdefer stop()\n\n")
 	// The binary carries its migrations: "myapp migrate apply" is the release step (§18.3).
 	b.WriteString("\tif len(os.Args) > 1 && os.Args[1] == \"migrate\" {\n\t\tos.Exit(run.Main(ctx, migrations.FS, gen.Config().DatabaseURL, os.Args[2:]))\n\t}\n\n")
@@ -251,7 +251,7 @@ func writeGoMain(b *strings.Builder, app *model.App, o Options) error {
 // cases from the model, so the tests regenerate with the spec and cannot drift from it.
 func rulesTest(app *model.App) []byte {
 	var b strings.Builder
-	b.WriteString(header + "\npackage gen\n\nimport (\n\t\"testing\"\n\n\t\"github.com/abhilashiig/ambit/amtest\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
+	b.WriteString(header + "\npackage gen\n\nimport (\n\t\"testing\"\n\n\t\"github.com/Grab-Connected-Tech/ambit/amtest\"\n\t\"github.com/Grab-Connected-Tech/ambit/runtime\"\n)\n\n")
 	b.WriteString("// TestGeneratedRules proves tenant isolation, the access matrix, field rules,\n// invariants, authorization and input validation for every declaration (§16.2).\n")
 	b.WriteString("func TestGeneratedRules(t *testing.T) {\n")
 	// The tenant and the account are resources too, with rules of their own.
@@ -310,7 +310,7 @@ func writeActionStubs(app *model.App, o Options) ([]string, error) {
 		var b strings.Builder
 		b.WriteString("// This file holds the " + m.Name + " module's action implementations. am gen wrote it\n")
 		b.WriteString("// once as a starting point; it is yours now and regeneration leaves it alone (§17.1).\n")
-		b.WriteString("package " + pkgName(imp) + "\n\nimport (\n\t\"" + o.genImport() + "\"\n\t\"github.com/abhilashiig/ambit/am\"\n")
+		b.WriteString("package " + pkgName(imp) + "\n\nimport (\n\t\"" + o.genImport() + "\"\n\t\"github.com/Grab-Connected-Tech/ambit/am\"\n")
 		usesRuntime := false
 		for _, a := range list {
 			if out, _ := outputType(app, &a); strings.Contains(out, "runtime.") {
@@ -318,7 +318,7 @@ func writeActionStubs(app *model.App, o Options) ([]string, error) {
 			}
 		}
 		if usesRuntime {
-			b.WriteString("\t\"github.com/abhilashiig/ambit/runtime\"\n")
+			b.WriteString("\t\"github.com/Grab-Connected-Tech/ambit/runtime\"\n")
 		}
 		b.WriteString(")\n\nvar Actions = struct {\n")
 		sig := func(a model.Action) string {
@@ -460,7 +460,7 @@ func benchTest(app *model.App, o Options) []byte {
 			b.WriteString("\t" + alias + " \"" + o.moduleImport(m.Name) + "\"\n")
 		}
 	}
-	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"github.com/abhilashiig/ambit/amtest\"\n)\n\n")
+	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"github.com/Grab-Connected-Tech/ambit/amtest\"\n)\n\n")
 	b.WriteString("// BenchmarkActions measures every action through the full pipeline; am bench runs one.\n")
 	b.WriteString("func BenchmarkActions(b *testing.B) {\n" + strings.Join(runs, "") + "}\n")
 	return []byte(b.String())

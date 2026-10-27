@@ -3,7 +3,7 @@ package codegen
 import (
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // splitRef divides "billing.Invoice" into its module and name.

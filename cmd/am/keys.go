@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 // cmdKeys manages the keys of Encrypted() fields (§9.4):

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // Keyring holds the key-encryption keys for Encrypted() fields (§9.4). Every value is

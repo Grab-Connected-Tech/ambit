@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // frameworkCodes are the error codes any action can return (§12.2).

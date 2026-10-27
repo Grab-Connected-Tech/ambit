@@ -3,7 +3,7 @@ package runtime
 import (
 	"strings"
 
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 )
 
 // Col is a typed column descriptor: the generated `gen.Invoices.Status` in

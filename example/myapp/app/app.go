@@ -3,7 +3,7 @@
 package app
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 )
 
 // Org is the tenant: the top-level isolation boundary.

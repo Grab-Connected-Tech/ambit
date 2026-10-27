@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // writeGoActions emits, for one module's actions, the generated contract: the context
@@ -16,7 +16,7 @@ func writeGoActions(b *strings.Builder, app *model.App, module string, actions [
 	b.WriteString(header + "\n")
 	b.WriteString("package gen\n\n")
 	b.WriteString("import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"log/slog\"\n\t\"time\"\n\n" +
-		"\t\"github.com/abhilashiig/ambit/am\"\n\t\"github.com/abhilashiig/ambit/model\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
+		"\t\"github.com/Grab-Connected-Tech/ambit/am\"\n\t\"github.com/Grab-Connected-Tech/ambit/model\"\n\t\"github.com/Grab-Connected-Tech/ambit/runtime\"\n)\n\n")
 	b.WriteString("var (\n\t_ = context.Background\n\t_ = slog.Default\n\t_ = time.Now\n\t_ = json.Marshal\n\t_ = model.KindQuery\n)\n\n")
 	for i := range actions {
 		if err := writeAction(b, app, module, &actions[i]); err != nil {

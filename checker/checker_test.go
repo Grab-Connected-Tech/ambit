@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abhilashiig/ambit/compile"
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/compile"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 // app is the model the analyzers reason about: one module, one resource with a
@@ -99,7 +99,7 @@ func show(d []compile.Diag) string {
 const goodAction = `package actions
 
 import (
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 	"myapp/app/billing/gen"
 )
 
@@ -129,7 +129,7 @@ const goodTest = `package actions_test
 import (
 	"testing"
 
-	"github.com/abhilashiig/ambit/amtest"
+	"github.com/Grab-Connected-Tech/ambit/amtest"
 	"myapp/app/billing/actions"
 	"myapp/app/billing/gen"
 )
@@ -153,7 +153,7 @@ func specFiles(extra map[string]string) map[string]string {
 	base := map[string]string{
 		"app/app.go": `package app
 
-import s "github.com/abhilashiig/ambit/spec"
+import s "github.com/Grab-Connected-Tech/ambit/spec"
 
 var Org = s.TenantResource("Org", s.Fields(s.Text("name").MaxLen(200)))
 var Admin = s.Role("admin")
@@ -162,7 +162,7 @@ var Member = s.Role("member")
 		"app/billing/spec.go": `package billing
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 	"myapp/app"
 )
 
@@ -485,7 +485,7 @@ func TestSpecFileMustStayDeclarative(t *testing.T) {
 import (
 	"os"
 
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 	"myapp/app"
 )
 

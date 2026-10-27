@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 )
 
 // Assignment is one column write produced from a generated Patch type. A patch field

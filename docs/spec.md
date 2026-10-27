@@ -9,7 +9,7 @@ declarations once at build time and compiles them into `app.model.json`.
 package billing
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 
 	"myapp/app"
 	"myapp/app/customers"

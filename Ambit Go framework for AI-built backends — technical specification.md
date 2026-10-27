@@ -75,13 +75,13 @@ Humans own the spec, agents own the action code, and everything else is derived 
 
 | Component | Package or command | Responsibility |
 | --- | --- | --- |
-| Spec library | `github.com/abhilashiig/ambit/spec` | Builder functions used in spec files. Pure declarations, no runtime behavior. |
+| Spec library | `github.com/Grab-Connected-Tech/ambit/spec` | Builder functions used in spec files. Pure declarations, no runtime behavior. |
 | Spec compiler | `am gen` | Executes spec packages, validates them, emits `app.model.json`. |
 | Code generator | `am gen` | Generates Go types, scoped DB access, routing, codecs, validators, contexts and clients from the app model. |
 | Checker | `am check` | Runs the Go compiler plus Ambit analyzers over all code; emits structured diagnostics. |
 | Migration engine | `am migrate` | Diffs app models against the live schema, classifies changes, plans and applies migrations. |
 | Behavior differ | `am diff` | Compares app models and code between two git revisions; produces a risk-ranked report. |
-| Runtime | `github.com/abhilashiig/ambit/runtime` | HTTP server, auth, request pipeline, transactions, policy enforcement, outbox, jobs, telemetry. |
+| Runtime | `github.com/Grab-Connected-Tech/ambit/runtime` | HTTP server, auth, request pipeline, transactions, policy enforcement, outbox, jobs, telemetry. |
 | Test harness | `am test` | Ephemeral Postgres, fixtures, effect fakes, generated policy and invariant tests. |
 | Dev server | `am dev` | Hot reload, introspection API for agents, trace viewer, seed data. |
 | Agent tooling | `am context`, `am explain` | Compact module context, rule explanations, generated `AGENTS.md`. |
@@ -152,14 +152,14 @@ myapp/
 
 ## 5. Spec language
 
-The spec is restricted, declarative Go written with builder functions from `github.com/abhilashiig/ambit/spec`, conventionally imported as `s`. Spec files contain only package-level `var` declarations whose values are spec builder calls, literals and references to other spec values. The checker rejects anything else (AM-SPEC-001).
+The spec is restricted, declarative Go written with builder functions from `github.com/Grab-Connected-Tech/ambit/spec`, conventionally imported as `s`. Spec files contain only package-level `var` declarations whose values are spec builder calls, literals and references to other spec values. The checker rejects anything else (AM-SPEC-001).
 
 ### 5.1 App-level declarations
 
 ```go
 package app
 
-import s "github.com/abhilashiig/ambit/spec"
+import s "github.com/Grab-Connected-Tech/ambit/spec"
 
 var Org = s.TenantResource("Org",
 	s.Fields(s.Text("name").MaxLen(200)),
@@ -284,7 +284,7 @@ Effects are deferred by default: recorded in the outbox and run after commit. `I
 package billing
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 	"myapp/app"
 	"myapp/app/customers"
 )
@@ -483,7 +483,7 @@ func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, 
 
 ### 7.4 Import rules for action code
 
-Action packages may import their own module's `gen`, other modules' `gen` types, `github.com/abhilashiig/ambit/am`, a pure standard-library allowlist (`strings`, `strconv`, `errors`, `fmt`, `slices`, `maps`, `sort`, `math`, `unicode`, `regexp`, `time` types) and third-party packages listed under `allowedImports` in `am.yaml`. Everything that reaches the outside world is banned: `database/sql`, pgx, `net`, `net/http`, `os`, `os/exec`, `syscall`, `unsafe`, `reflect` and `plugin` (AM-SEC-001). Calling `time.Now` is banned in favor of `c.Clock` so tests control time (AM-CODE-004), and `go` statements are banned in favor of `Enqueue` (AM-PERF-003).
+Action packages may import their own module's `gen`, other modules' `gen` types, `github.com/Grab-Connected-Tech/ambit/am`, a pure standard-library allowlist (`strings`, `strconv`, `errors`, `fmt`, `slices`, `maps`, `sort`, `math`, `unicode`, `regexp`, `time` types) and third-party packages listed under `allowedImports` in `am.yaml`. Everything that reaches the outside world is banned: `database/sql`, pgx, `net`, `net/http`, `os`, `os/exec`, `syscall`, `unsafe`, `reflect` and `plugin` (AM-SEC-001). Calling `time.Now` is banned in favor of `c.Clock` so tests control time (AM-CODE-004), and `go` statements are banned in favor of `Enqueue` (AM-PERF-003).
 
 ## 8. Data layer
 

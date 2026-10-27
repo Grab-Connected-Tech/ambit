@@ -3,7 +3,7 @@ package spec
 import (
 	"time"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // Effect is a declared side effect (§5.8). Effects are deferred by default: the

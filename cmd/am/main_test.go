@@ -24,7 +24,7 @@ func TestFlagsAcceptPositionalsAnywhere(t *testing.T) {
 }
 
 func TestToolDiagsReadCompilerPositions(t *testing.T) {
-	d := toolDiags("GO-BUILD", []byte("# github.com/abhilashiig/ambit/x\n./app/billing/actions.go:12:3: undefined: foo\nplain line\n"))
+	d := toolDiags("GO-BUILD", []byte("# github.com/Grab-Connected-Tech/ambit/x\n./app/billing/actions.go:12:3: undefined: foo\nplain line\n"))
 	if len(d) != 2 {
 		t.Fatalf("got %d diagnostics: %+v", len(d), d)
 	}

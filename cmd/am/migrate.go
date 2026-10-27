@@ -13,10 +13,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/migrate"
-	"github.com/abhilashiig/ambit/migrate/run"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/migrate"
+	"github.com/Grab-Connected-Tech/ambit/migrate/run"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // A migration is three files under migrations/ sharing a numbered prefix (§13.1):

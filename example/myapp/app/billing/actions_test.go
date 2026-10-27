@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/amtest"
-	"github.com/abhilashiig/ambit/example/myapp/app"
-	"github.com/abhilashiig/ambit/example/myapp/gen"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/amtest"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 // world is one tenant with an accountant, a plain member and a draft invoice.

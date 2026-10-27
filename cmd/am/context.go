@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 const conventions = `// Conventions (see AGENTS.md):

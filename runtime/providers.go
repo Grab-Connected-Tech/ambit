@@ -23,7 +23,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // providersFromConfig builds the providers am.yaml configures under effects (§10.3,

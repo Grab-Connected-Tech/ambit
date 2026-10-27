@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 )
 
 // The OTLP trace exporter of §18.1, on the standard library: spans are encoded as

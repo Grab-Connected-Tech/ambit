@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 // SchemaVersion is the format version of the model document.

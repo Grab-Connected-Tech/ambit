@@ -14,7 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhilashiig/ambit/compile"
+	"github.com/Grab-Connected-Tech/ambit/compile"
 )
 
 // cmdPerf explains the query shapes am test captured against a seeded database and flags

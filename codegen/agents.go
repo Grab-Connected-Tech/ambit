@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/abhilashiig/ambit/checker"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/checker"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // AgentsMarkdown writes the instructions an agent reads before touching the app (§17.3).

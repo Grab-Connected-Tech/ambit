@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/abhilashiig/ambit/checker"
+	"github.com/Grab-Connected-Tech/ambit/checker"
 )
 
 // llmBudget is §17.5's ceiling, in the usual four-bytes-per-token estimate.
@@ -91,9 +91,9 @@ func cmdDocs(args []string) error {
 
 // frameworkDir is the source of the Ambit the app builds against.
 func frameworkDir() (string, error) {
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/abhilashiig/ambit").Output()
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/Grab-Connected-Tech/ambit").Output()
 	if err != nil || strings.TrimSpace(string(out)) == "" {
-		return "", fmt.Errorf("cannot find the github.com/abhilashiig/ambit source (run inside an app module): %v", err)
+		return "", fmt.Errorf("cannot find the github.com/Grab-Connected-Tech/ambit source (run inside an app module): %v", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -117,7 +117,7 @@ func packageDoc(b *bytes.Buffer, dir, title string, keep map[string]bool) error 
 		}
 		files = append(files, f)
 	}
-	pkg, err := doc.NewFromFiles(fset, files, "github.com/abhilashiig/ambit/"+filepath.Base(dir))
+	pkg, err := doc.NewFromFiles(fset, files, "github.com/Grab-Connected-Tech/ambit/"+filepath.Base(dir))
 	if err != nil {
 		return err
 	}

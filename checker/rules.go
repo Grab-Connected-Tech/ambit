@@ -78,7 +78,7 @@ an action could open a socket, the access rules would be advisory.`,
 )`,
 		`import (
     "strings"
-    "github.com/abhilashiig/ambit/am"
+    "github.com/Grab-Connected-Tech/ambit/am"
     "myapp/app/billing/gen"
 )`, "actions"},
 	{"AM-SEC-002", "error", "environment or secret read outside generated config", "9.4",

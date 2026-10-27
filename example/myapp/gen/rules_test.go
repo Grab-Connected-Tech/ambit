@@ -5,8 +5,8 @@ package gen
 import (
 	"testing"
 
-	"github.com/abhilashiig/ambit/amtest"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/amtest"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 // TestGeneratedRules proves tenant isolation, the access matrix, field rules,

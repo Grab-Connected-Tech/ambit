@@ -9,13 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	billing "github.com/abhilashiig/ambit/example/myapp/app/billing"
-	customers "github.com/abhilashiig/ambit/example/myapp/app/customers"
+	billing "github.com/Grab-Connected-Tech/ambit/example/myapp/app/billing"
+	customers "github.com/Grab-Connected-Tech/ambit/example/myapp/app/customers"
 
-	"github.com/abhilashiig/ambit/example/myapp/gen"
-	"github.com/abhilashiig/ambit/example/myapp/migrations"
-	"github.com/abhilashiig/ambit/migrate/run"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/migrations"
+	"github.com/Grab-Connected-Tech/ambit/migrate/run"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 func main() {

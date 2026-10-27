@@ -19,8 +19,8 @@ import (
 
 	"crypto/pbkdf2"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // Auth resolves a request into an actor (§3.3 step 3). Unknown or expired credentials

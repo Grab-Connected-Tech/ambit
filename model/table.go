@@ -3,7 +3,7 @@ package model
 import (
 	"strings"
 
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 // PolicyTable projects a resource into the small schema the SQL compiler needs.

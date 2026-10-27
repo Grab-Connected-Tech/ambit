@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 )
 
 // Config is the validated view of am.yaml (§18.2). Action code never sees a secret:

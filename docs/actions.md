@@ -9,8 +9,8 @@ package billing
 
 import (
 	"myapp/gen"
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 var Actions = struct {

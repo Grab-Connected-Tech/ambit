@@ -36,13 +36,13 @@ func cmdInit(args []string) error {
 	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
 		version = bi.Main.Version
 	}
-	gomod := fmt.Sprintf("module %s\n\ngo 1.24\n\nrequire github.com/abhilashiig/ambit %s\n", *module, version)
+	gomod := fmt.Sprintf("module %s\n\ngo 1.24\n\nrequire github.com/Grab-Connected-Tech/ambit %s\n", *module, version)
 	if *framework != "" {
 		abs, err := filepath.Abs(*framework)
 		if err != nil {
 			return err
 		}
-		gomod += "\nreplace github.com/abhilashiig/ambit => " + abs + "\n"
+		gomod += "\nreplace github.com/Grab-Connected-Tech/ambit => " + abs + "\n"
 	}
 	files := map[string]string{
 		"go.mod":                   gomod,
@@ -86,7 +86,7 @@ const initApp = `// Package app holds the app-level spec: actors, roles, tenancy
 package app
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 )
 
 // Org is the tenant: the top-level isolation boundary.
@@ -123,7 +123,7 @@ const initTasks = `// Package tasks is the example module. Humans own this spec;
 package tasks
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 
 	"MODULE/app"
 )
@@ -179,7 +179,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/abhilashiig/ambit/cmd/am@latest
+      - run: go install github.com/Grab-Connected-Tech/ambit/cmd/am@latest
       - run: am gen && git diff --exit-code
       - run: am check --strict
       - run: am test

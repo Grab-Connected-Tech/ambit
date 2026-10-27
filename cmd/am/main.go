@@ -15,12 +15,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/checker"
-	"github.com/abhilashiig/ambit/codegen"
-	"github.com/abhilashiig/ambit/compile"
-	"github.com/abhilashiig/ambit/diff"
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/checker"
+	"github.com/Grab-Connected-Tech/ambit/codegen"
+	"github.com/Grab-Connected-Tech/ambit/compile"
+	"github.com/Grab-Connected-Tech/ambit/diff"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 const usage = `usage: am <command> [flags]
