@@ -352,21 +352,13 @@ func acceptsGzip(r *http.Request) bool {
 }
 
 // setSecurityHeaders is the deny-by-default baseline from §9.3.
-func setSecurityHeaders(w http.ResponseWriter, r *http.Request) {
+func setSecurityHeaders(w http.ResponseWriter, _ *http.Request) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 	h.Set("Referrer-Policy", "same-origin")
 	h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 	h.Set("Cache-Control", "no-store")
-	if origin := r.Header.Get("Origin"); origin != "" && !originAllowed(origin) {
-		h.Set("X- CSRF-Rejected", "true")
-	}
-}
-
-func originAllowed(origin string) bool {
-	return strings.HasPrefix(origin, "https://") || strings.HasPrefix(origin, "http://localhost") ||
-		strings.HasPrefix(origin, "http://127.0.0.1")
 }
 
 // limit enforces the in-flight ceiling; excess requests get 503 with Retry-After rather

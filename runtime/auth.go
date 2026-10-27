@@ -43,6 +43,9 @@ func (a *App) Authenticate(r *http.Request) (am.Actor, error) {
 		a.Auth = a.newAuth()
 	}
 	if c, err := r.Cookie(a.Auth.CookieName); err == nil && c.Value != "" {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !SameOrigin(r) {
+			return am.Actor{}, am.Forbidden("cross-origin request with a session cookie")
+		}
 		return a.Auth.resolveSession(r.Context(), c.Value)
 	}
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {

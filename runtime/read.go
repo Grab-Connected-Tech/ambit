@@ -334,46 +334,6 @@ func (b *Query[T]) cursorKeys(terms []orderTerm, last *T) []cursorValue {
 	return out
 }
 
-// hidden reports which projection positions the field-level read rules remove.
-func (v *View[T]) hidden(ctx context.Context) (map[int]bool, error) {
-	if len(v.t.FieldRead) == 0 {
-		return nil, nil
-	}
-	// Field rules are evaluated as part of the projection with CASE, so the value is
-	// never fetched. A rule that references the actor is resolved once per request.
-	hide := map[int]bool{}
-	a := actorValues(v.db.actor)
-	params := []any{}
-	for _, fr := range v.t.FieldRead {
-		sql, next, err := bind(fr.Frag, params, a, 0)
-		if err != nil {
-			return nil, err
-		}
-		params = next
-		if !evalTrue(sql, params) {
-			hide[fr.Index] = true
-		}
-	}
-	return hide, nil
-}
-
-// evalTrue decides a field rule in Go for the projection: the same expression the
-// database would apply, evaluated against the actor (§5.4 has one meaning).
-func evalTrue(sql string, params []any) bool {
-	// Rules that reference only roles and the actor resolve without a row.
-	return !strings.Contains(sql, "false") && len(params) >= 0
-}
-
-func (v *View[T]) projection(hide map[int]bool) []int {
-	out := make([]int, 0, len(v.t.Columns))
-	for i := range v.t.Columns {
-		if !hide[i] {
-			out = append(out, i)
-		}
-	}
-	return out
-}
-
 // selectExpr renders the projection, wrapping a column that a FieldRead rule hides in
 // a CASE, so a hidden value is never fetched (§5.6, §9.1 excessive data exposure).
 func (v *View[T]) selectExpr(b *sqlBuilder) (string, error) {

@@ -411,9 +411,10 @@ type sqlBuilder struct {
 // text replaces each ? in a fragment with the next $n, appending its value.
 func (b *sqlBuilder) text(sql string, args ...any) (string, error) {
 	var out strings.Builder
-	n := 0
+	n, quoted := 0, false
 	for i := 0; i < len(sql); i++ {
-		if sql[i] != '?' {
+		quoted = quoted != (sql[i] == '\'')
+		if sql[i] != '?' || quoted {
 			out.WriteByte(sql[i])
 			continue
 		}
@@ -433,10 +434,11 @@ func (b *sqlBuilder) frag(f Frag) (string, error) {
 		return "true", nil
 	}
 	sql := f.SQL
-	marker := 0
+	marker, quoted := 0, false
 	var out strings.Builder
 	for i := 0; i < len(sql); i++ {
-		if sql[i] != '?' {
+		quoted = quoted != (sql[i] == '\'')
+		if sql[i] != '?' || quoted {
 			out.WriteByte(sql[i])
 			continue
 		}
@@ -622,27 +624,6 @@ func (v *View[T]) selectList(hide map[int]bool) string {
 		parts = append(parts, "t.id")
 	}
 	return strings.Join(parts, ", ")
-}
-
-// fieldRules evaluates the FieldRead predicates, returning the positions to hide.
-func (v *View[T]) fieldRules(params []any) (map[int]bool, []any, error) {
-	hide := map[int]bool{}
-	if len(v.t.FieldRead) == 0 {
-		return hide, params, nil
-	}
-	a := actorValues(v.db.actor)
-	for _, fr := range v.t.FieldRead {
-		sql, next, err := bind(Frag{SQL: fr.SQL, Binds: fr.Binds}, params, a, 0)
-		if err != nil {
-			return nil, params, err
-		}
-		// A field rule that cannot be evaluated in the projection becomes a CASE
-		// expression, so a hidden value never travels over the wire.
-		params = append(params, next[len(params):]...)
-		_ = sql
-		hide[fr.Index] = true
-	}
-	return hide, params, nil
 }
 
 // whereAssembles builds the full WHERE clause for a scoped read.

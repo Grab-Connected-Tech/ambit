@@ -543,10 +543,13 @@ func Place(s *SQL, offset int, av ActorValues) (string, []any, error) {
 	binds := append([]Bind(nil), s.Binds...)
 	out := strings.Builder{}
 	args := make([]any, 0, len(binds))
-	i, n := 0, offset
+	i, n, quoted := 0, offset, false
 	for i < len(s.Text) {
 		c := s.Text[i]
-		if c != '?' {
+		// A ? inside a quoted spec literal is data, not a placeholder; '' escapes
+		// toggle twice and stay quoted.
+		quoted = quoted != (c == '\'')
+		if c != '?' || quoted {
 			out.WriteByte(c)
 			i++
 			continue

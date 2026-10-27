@@ -309,3 +309,15 @@ func TestPolicyTargetInlinesLiteralsAndBindsOnlyActor(t *testing.T) {
 		t.Fatalf("no actor reference here, got %v", n.Binds)
 	}
 }
+
+// A ? inside an inlined literal is data, not a placeholder.
+func TestPlaceSkipsQuotedQuestionMark(t *testing.T) {
+	sql, args, err := Place(&SQL{Text: "t.status = 'a?b''?' AND t.actor = ?", Binds: []Bind{{Kind: BindActorID}}}, 0,
+		ActorValues{ID: []byte("u")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql != "t.status = 'a?b''?' AND t.actor = $1" || len(args) != 1 {
+		t.Fatalf("got %q %v", sql, args)
+	}
+}
