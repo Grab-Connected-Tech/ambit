@@ -83,8 +83,19 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
   jobs, outbox, schedules w/ advisory lock, budgets, rate limits, audit, metrics, drain.
   `go test ./runtime` runs a real-Postgres integration suite (temp DB per test, non-owner
   role so RLS is actually tested) and skips cleanly without `KS_TEST_DB_URL`. Green.
-- **L4 next** `codegen` (the `gen` package the example app imports), then `cmd/ks` wiring,
-  then the example app built end to end.
+- **L4 done** `codegen` (types, scoped views, contexts, adapters, entrypoint, SQL, OpenAPI,
+  TS client, AGENTS.md, action stubs, `gen/rules_test.go`), `cmd/ks` (init gen check test
+  diff dev context explain migrate plan|verify|apply|status client build), `kstest`
+  (per-test DB cloned from a schema template, non-owner role, fake clock, recording
+  effects, generated §16.2 rule tests, seeded fuzz). Gate met on `example/myapp`:
+  `go build ./example/...`, `ks gen` byte-stable, `ks check --strict` clean, `ks test`
+  green, `ks diff` non-empty vs. base. Run the suite with
+  `KS_TEST_DB_URL=postgres://$USER@localhost:5432/postgres?sslmode=disable go test ./...`.
+
+## Open decision
+- The tenant table (`org`) gets `ks_public` RLS (`USING (true)`): the query layer's tenant
+  filter isolates orgs, but the database backstop does not. Tightening it means org
+  creation (signup) must run cross-tenant or as system. See `migrate.tenantTableDDL`.
 
 ## Deviations from the spec text (all deliberate, all recorded)
 1. Checker analyzers use stdlib `go/ast` + `go/parser`, not `x/tools/go/analysis` (§2.10).
@@ -111,6 +122,25 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
   rules are ANDed into the UPDATE's WHERE, so a refused write changes no row.
 - `Buckets` caches rate-limit *denials* only. A cached allowance is wrong across
   instances, and refilling a cached bucket stretches the declared limit.
+- **Projection order:** `codegen.resourceColumns` must equal `runtime.ColumnsOf` to the
+  position (a generated scanner indexes by position); `codegen_test.go` and the runtime
+  table tests are the drift check. The model spells framework fields in snake case, and a
+  money field's real column pair is `f.Columns` (`amount_minor`, `amount_currency`).
+- Org and User are app-level (`model.Tenant`) but carry their declared `Access`, are
+  tenant-scoped (deviation 4), and a missing rule denies (`BuildTable`, `policy.Compare`).
+- Model loading compiles the spec packages with every file importing `.../gen` stubbed
+  out (`go run -overlay`): spec and actions share a package, so dropping whole packages
+  silently loses modules.
+- Actions may live in `app/<module>/actions.go` as an `Actions` struct (the spec's
+  `var X = s.Mutation(...)` would collide with a same-named func); the checker treats
+  `app/<module>/*.go` as action code and counts `kstest.Call(env, a, gen.XHandler, ...)`
+  as a test of X. Schedules get a generated adapter but no entrypoint: they enqueue a job.
+- `/_ks/*` introspection is on only with `KS_DEV=1` in the environment, never by config.
+- `kstest` keeps one `ks_tmpl_<ddl hash>` database per schema on the test server (reused
+  across runs; safe to drop) and connects as the `ks_test_app` role it creates.
+- Migrations are `migrations/NNNN_name.{plan.json,sql,model.json}`; apply executes the
+  plan file, checksums it into `ks_migrations` (edited ⇒ KS-MIG-002), and runs backfills
+  between expand statements and constraints using each step's `backfill.set`.
 - Framework (`ks_*`) tables the runtime writes outside a request use the permissive RLS
   policy; their own predicates decide visibility. `ks_membership`/`ks_audit` stay
   tenant-scoped, so tests read them through `harness.look` (a system+cross tx).
@@ -120,8 +150,12 @@ In: spec DSL, model+canonical hash, policy->SQL/Go/compare, codegen (types/db/ct
 migrations/TS client/openapi/AGENTS.md), pipeline, scoped queries + RLS, invariants (CHECK +
 deferred), optimistic concurrency, audit, outbox, jobs, schedules w/ advisory-lock leader,
 sessions/API tokens/OIDC-shape, rate limits, budgets, checker (KS-* catalog), diff, migrate
-plan/apply/status, kstest harness, CLI.
+plan/verify/apply/status, kstest harness, CLI.
 Thin: OIDC = code+PKCE flow against any discovery doc, no vendor presets. `ks dev` = run+watch
 +introspection endpoints, no MCP. Telemetry = slog JSON + Prometheus-text metrics + trace IDs
-(no OTLP exporter). Property tests = one seeded fuzz. Backfills = plan + resumable batch job.
+(no OTLP exporter). Property tests = one seeded fuzz (tenant isolation + no 500s). Backfills =
+plan + resumable batch job. Generated access tests cover role-only rules and two invariant
+shapes; other rules are skipped with the rule printed. `ks test` uses `KS_TEST_DB_URL` rather
+than starting its own Postgres. Not built: `ks new`, `perf`, `bench`, `outbox|jobs` ops, `keys
+rotate`, `docs --llm`, `upgrade` (§19 rows outside the v0.1 list above).
 Out (v1 per spec): cross-row aggregate invariants, GraphQL, multi-DB, real-time, multi-region.
