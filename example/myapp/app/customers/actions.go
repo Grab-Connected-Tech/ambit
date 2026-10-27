@@ -24,10 +24,8 @@ func createCustomer(c *gen.CreateCustomerCtx, in gen.CreateCustomerInput) (*gen.
 		runtime.SetColumn("name", in.Name),
 		runtime.SetColumn("email", in.Email),
 	}
-	if in.Owner.Present() {
-		v, _ := in.Owner.Get()
-		sets = append(sets, runtime.SetColumn("owner_id", v.Bytes()))
-	}
+	// The owner is required on the row but optional in the input: it defaults to the caller.
+	sets = append(sets, runtime.SetColumn("owner_id", in.Owner.Or(c.Actor.ID).Bytes()))
 	return c.DB.Customers.Insert(c, sets)
 }
 

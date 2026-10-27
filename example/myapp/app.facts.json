@@ -173,13 +173,6 @@
     },
     {
       "action": "customers.ListCustomers",
-      "sql": "in.Owner.Get()",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "customers.ListCustomers",
       "sql": "in.Q.Get()",
       "table": "",
       "rows": 0,

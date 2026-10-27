@@ -62,3 +62,10 @@ func TestInputIsValidatedBeforeTheAction(t *testing.T) {
 		t.Fatalf("got %v, want invalid", err)
 	}
 }
+
+func TestFuzzCustomerActions(t *testing.T) {
+	env := kstest.New(t, gen.Model)
+	kstest.Fuzz(env, gen.GetCustomerHandler, Actions.GetCustomer, 40)
+	kstest.Fuzz(env, gen.CreateCustomerHandler, Actions.CreateCustomer, 40)
+	kstest.Fuzz(env, gen.ListCustomersHandler, Actions.ListCustomers, 40)
+}

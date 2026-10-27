@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/rand"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -503,4 +506,131 @@ func short(v any) any {
 		return s[:12] + "…"
 	}
 	return v
+}
+
+// Fuzz runs an action repeatedly with random valid inputs as random actors in two tenants,
+// and asserts after every run that it did not fail internally and that no response holds
+// a row of a tenant other than the caller's (§16.4). Ids in the input are drawn from rows
+// of both tenants, so a missing scope shows up as a leak. KS_FUZZ_SEED replays a run.
+//
+// ponytail: the property is tenant isolation plus "no 500"; invariants rely on the
+// database's CHECKs and the pre-commit check rather than being re-evaluated here.
+func Fuzz[C, In, Out any](e *Env, wrap func(func(*C, In) (Out, error)) *runtime.Handler, fn func(*C, In) (Out, error), runs int) {
+	e.T.Helper()
+	seed := time.Now().UnixNano()
+	if v, err := strconv.ParseInt(os.Getenv("KS_FUZZ_SEED"), 10, 64); err == nil {
+		seed = v
+	}
+	rng := rand.New(rand.NewSource(seed))
+	h := wrap(fn)
+	tenants := []ks.ID{e.Tenant(), e.Tenant()}
+	ids := map[string][]ks.ID{} // referenced resource -> rows across both tenants
+	for _, f := range h.Spec.Input {
+		if f.Ref == nil {
+			continue
+		}
+		for _, t := range tenants {
+			for i := 0; i < 3; i++ {
+				ids[f.Ref.Resource] = append(ids[f.Ref.Resource], e.Fixture(f.Ref.Resource, t))
+			}
+		}
+	}
+	for run := 0; run < runs; run++ {
+		tenant := tenants[rng.Intn(len(tenants))]
+		var roles []any
+		for _, r := range e.Model.Roles {
+			if rng.Intn(2) == 0 {
+				roles = append(roles, r)
+			}
+		}
+		actor := e.Actor(tenant, roles...)
+		body := map[string]any{}
+		for _, f := range h.Spec.Input {
+			if f.Optional && rng.Intn(2) == 0 {
+				continue
+			}
+			if v, ok := randomValue(rng, f, ids, e.Clock.Now()); ok {
+				body[f.Name] = v
+			}
+		}
+		raw, _ := json.Marshal(body)
+		out, err := e.App.Run(context.Background(), h, actor, &runtime.Call{Actor: actor, Body: raw, Key: string(ks.NewID())}, nil)
+		if code(err) == ks.CodeInternal {
+			e.T.Fatalf("seed %d run %d: %s as %v with %s failed internally: %v", seed, run, h.Ref, actor.Roles, raw, errors.Unwrap(err))
+		}
+		if err != nil || len(out.Body) == 0 {
+			continue
+		}
+		var tree any
+		if json.Unmarshal(out.Body, &tree) == nil {
+			if leaked := foreignTenant(tree, string(tenant)); leaked != "" {
+				e.T.Fatalf("seed %d run %d: %s as tenant %s returned a row of tenant %s", seed, run, h.Ref, tenant, leaked)
+			}
+		}
+	}
+}
+
+// foreignTenant finds a TenantID in a response that is not the caller's.
+func foreignTenant(v any, mine string) string {
+	switch v := v.(type) {
+	case map[string]any:
+		for k, x := range v {
+			if s, ok := x.(string); ok && (k == "TenantID" || k == "tenant_id") && s != "" && s != mine {
+				return s
+			}
+			if leaked := foreignTenant(x, mine); leaked != "" {
+				return leaked
+			}
+		}
+	case []any:
+		for _, x := range v {
+			if leaked := foreignTenant(x, mine); leaked != "" {
+				return leaked
+			}
+		}
+	}
+	return ""
+}
+
+// randomValue draws a value the field's declaration accepts.
+func randomValue(rng *rand.Rand, f model.Field, ids map[string][]ks.ID, now time.Time) (any, bool) {
+	if f.Ref != nil {
+		pool := ids[f.Ref.Resource]
+		if len(pool) == 0 {
+			return nil, false
+		}
+		return pool[rng.Intn(len(pool))], true
+	}
+	switch f.Type.Kind {
+	case model.KindText, model.KindURL:
+		n := 1 + rng.Intn(16)
+		if f.Type.MaxLen != nil && *f.Type.MaxLen < n {
+			n = *f.Type.MaxLen
+		}
+		letters := make([]byte, n)
+		for i := range letters {
+			letters[i] = byte('a' + rng.Intn(26))
+		}
+		if f.Type.Kind == model.KindURL {
+			return "https://example.test/" + string(letters), true
+		}
+		return string(letters), true
+	case model.KindEmail:
+		return fmt.Sprintf("u%d@example.test", rng.Intn(1_000_000)), true
+	case model.KindInt:
+		return rng.Intn(1000), true
+	case model.KindBool:
+		return rng.Intn(2) == 0, true
+	case model.KindEnum:
+		if len(f.Type.Values) > 0 {
+			return f.Type.Values[rng.Intn(len(f.Type.Values))], true
+		}
+	case model.KindMoney:
+		return ks.MoneyOf(int64(1+rng.Intn(100000)), currency(f)), true
+	case model.KindTimestamp:
+		return now.Add(time.Duration(rng.Intn(1000)) * time.Hour), true
+	case model.KindID:
+		return ks.NewID(), true
+	}
+	return nil, false
 }

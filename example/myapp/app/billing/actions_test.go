@@ -150,3 +150,10 @@ func TestSendRemindersRunsAsSystem(t *testing.T) {
 		t.Fatalf("one open invoice, %d reminders", n)
 	}
 }
+
+func TestFuzzBillingActions(t *testing.T) {
+	env := kstest.New(t, gen.Model)
+	kstest.Fuzz(env, gen.SendInvoiceHandler, Actions.SendInvoice, 40)
+	kstest.Fuzz(env, gen.MarkPaidHandler, Actions.MarkPaid, 40)
+	kstest.Fuzz(env, gen.ListInvoicesHandler, Actions.ListInvoices, 40)
+}
