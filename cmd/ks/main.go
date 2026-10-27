@@ -25,6 +25,8 @@ import (
 const usage = `usage: ks <command> [flags]
 
   init <name>                       create a new app
+  new module <name>                 add a module with an empty spec
+  new action <module>.<Action>      add an action declaration and its stub
   gen                               compile the spec and regenerate code
   check [--strict]                  compile, vet and analyze
   test                              run generated and written tests
@@ -36,6 +38,8 @@ const usage = `usage: ks <command> [flags]
   client ts --out <dir>             write the TypeScript client elsewhere
   build [--out bin/app]             produce the production binary
   keys new|rotate                   manage the keys of Encrypted() fields
+  outbox list|inspect|replay        operate on pending and dead-lettered effects
+  jobs list|inspect|replay          operate on jobs
 
 Every command accepts --json.
 `
@@ -55,6 +59,7 @@ func main() {
 		"init": cmdInit, "gen": cmdGen, "check": cmdCheck, "test": cmdTest, "diff": cmdDiff,
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
 		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
+		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {

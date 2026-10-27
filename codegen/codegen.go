@@ -143,12 +143,18 @@ func Generate(o Options) (*Result, error) {
 		"\treturn id\n}\n\n"
 	_ = helper
 	for _, m := range app.Modules {
-		var rb strings.Builder
-		if err := writeGoResources(&rb, app, m.Name, m.Resources); err != nil {
-			return nil, err
-		}
-		if err := write(filepath.Join(goDir, strings.ToLower(m.Name)+".resources.gen.go"), []byte(rb.String()), true); err != nil {
-			return nil, err
+		resPath := filepath.Join(goDir, strings.ToLower(m.Name)+".resources.gen.go")
+		if len(m.Resources) == 0 {
+			// A module of actions only has no resources file; drop one left from before.
+			_ = os.Remove(filepath.Join(o.Dir, resPath))
+		} else {
+			var rb strings.Builder
+			if err := writeGoResources(&rb, app, m.Name, m.Resources); err != nil {
+				return nil, err
+			}
+			if err := write(resPath, []byte(rb.String()), true); err != nil {
+				return nil, err
+			}
 		}
 		if len(m.Actions) == 0 {
 			continue
