@@ -127,9 +127,9 @@ func resourceSchema(res *model.Resource) any {
 	props := map[string]any{}
 	var required []string
 	for _, f := range res.Fields {
-		props[f.Name] = typeSchema(&f)
+		props[wireName(&f)] = typeSchema(&f)
 		if !f.Optional && f.Name != "id" && f.Name != "version" {
-			required = append(required, f.Name)
+			required = append(required, wireName(&f))
 		}
 	}
 	sort.Strings(required)
@@ -155,9 +155,13 @@ func typeSchema(f *model.Field) any {
 		t["type"] = "integer"
 	case model.KindBool:
 		t["type"] = "boolean"
-	case model.KindDecimal, model.KindMoney:
+	case model.KindMoney:
+		t["type"] = "object"
+		t["properties"] = map[string]any{"minor": map[string]any{"type": "integer"}, "currency": map[string]any{"type": "string"}}
+		t["required"] = []string{"currency", "minor"}
+	case model.KindDecimal:
 		t["type"] = "string"
-		t["format"] = string(f.Type.Kind)
+		t["format"] = "decimal"
 	case model.KindTimestamp:
 		t["type"] = "string"
 		t["format"] = "date-time"

@@ -18,13 +18,13 @@ var (
 
 // Org is one row of .Org (table org).
 type Org struct {
-	ID        ks.ID
-	TenantID  ks.ID
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Version   ks.Version
-	Name      string
-	Plan      OrgPlan
+	ID        ks.ID      `json:"id"`
+	TenantID  ks.ID      `json:"tenant_id"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Version   ks.Version `json:"version"`
+	Name      string     `json:"name"`
+	Plan      OrgPlan    `json:"plan"`
 }
 
 // OrgPlan is the domain of Org.plan.
@@ -108,15 +108,15 @@ func ScopedOrgs(d *runtime.DB) *OrgView {
 
 // User is one row of .User (table user_account).
 type User struct {
-	ID           ks.ID
-	TenantID     ks.ID
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Version      ks.Version
-	Email        string
-	Name         ks.Opt[string]
-	LastLogin    ks.Opt[time.Time]
-	PasswordHash ks.Opt[string]
+	ID           ks.ID             `json:"id"`
+	TenantID     ks.ID             `json:"tenant_id"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+	Version      ks.Version        `json:"version"`
+	Email        string            `json:"email"`
+	Name         ks.Opt[string]    `json:"name"`
+	LastLogin    ks.Opt[time.Time] `json:"last_login"`
+	PasswordHash ks.Opt[string]    `json:"passwordHash"`
 }
 
 // UserPatch is the set of columns an update may change. A field that is unset

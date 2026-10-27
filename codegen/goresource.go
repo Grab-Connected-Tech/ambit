@@ -212,23 +212,23 @@ func writeWithLoader(b *strings.Builder, name string, f *model.Field) {
 // generated scanner indexes by position, so the two must agree exactly (§6, §7.1).
 func resourceColumns(app *model.App, module string, res *model.Resource) []col {
 	out := []col{
-		{fields: "ID ks.ID", descName: "ID", descType: "runtime.IDCol",
+		{fields: "ID ks.ID `json:\"id\"`", descName: "ID", descType: "runtime.IDCol",
 			expr: fmt.Sprintf("runtime.NewIDCol(\"t.id\", %q)", model.Qual(module, res.Name)),
 			scan: func(k int) string { return fmt.Sprintf("out.ID = row.ID(%d)", k) }},
 	}
 	if res.Tenant {
-		out = append(out, col{index: 1, fields: "TenantID ks.ID", descName: "TenantID", descType: "runtime.IDCol",
+		out = append(out, col{index: 1, fields: "TenantID ks.ID `json:\"tenant_id\"`", descName: "TenantID", descType: "runtime.IDCol",
 			expr: "runtime.NewIDCol(\"t.tenant_id\", \"\")",
 			scan: func(k int) string { return fmt.Sprintf("out.TenantID = row.ID(%d)", k) }})
 	}
 	for _, c := range []col{
-		{fields: "CreatedAt time.Time", descName: "CreatedAt", descType: "runtime.Col[time.Time]",
+		{fields: "CreatedAt time.Time `json:\"created_at\"`", descName: "CreatedAt", descType: "runtime.Col[time.Time]",
 			expr: "runtime.NewCol[time.Time](\"t.created_at\")",
 			scan: func(k int) string { return fmt.Sprintf("out.CreatedAt = row.Time(%d)", k) }},
-		{fields: "UpdatedAt time.Time", descName: "UpdatedAt", descType: "runtime.Col[time.Time]",
+		{fields: "UpdatedAt time.Time `json:\"updated_at\"`", descName: "UpdatedAt", descType: "runtime.Col[time.Time]",
 			expr: "runtime.NewCol[time.Time](\"t.updated_at\")",
 			scan: func(k int) string { return fmt.Sprintf("out.UpdatedAt = row.Time(%d)", k) }},
-		{fields: "Version ks.Version", descName: "Version", descType: "runtime.Col[ks.Version]",
+		{fields: "Version ks.Version `json:\"version\"`", descName: "Version", descType: "runtime.Col[ks.Version]",
 			expr: "runtime.NewCol[ks.Version](\"t.version\")",
 			scan: func(k int) string { return fmt.Sprintf("out.Version = ks.Version(row.Int(%d))", k) }},
 	} {
@@ -286,11 +286,13 @@ func declaredColumn(res *model.Resource, f *model.Field) col {
 	if c.gotype == "enum" {
 		c.gotype = enumType(res, f)
 	}
-	c.fields = g + " " + optOr(f, c.gotype)
+	// Wire names are the declared field names; a reference carries its id under the
+	// column name, so the loaded row can sit under the field name (§12).
+	c.fields = g + " " + optOr(f, c.gotype) + " `json:\"" + f.Name + "\"`"
 	if c.ref {
-		c.fields = g + " ks.ID\n// " + strings.TrimSuffix(g, "ID") + " is loaded by With" + res.Name +
+		c.fields = g + " ks.ID `json:\"" + f.Column + "\"`\n// " + strings.TrimSuffix(g, "ID") + " is loaded by With" + res.Name +
 			strings.TrimSuffix(g, "ID") + ", and is nil until a query asks for it (§8.2).\n" +
-			strings.TrimSuffix(g, "ID") + " *" + refName(f)
+			strings.TrimSuffix(g, "ID") + " *" + refName(f) + " `json:\"" + f.Name + ",omitempty\"`"
 	}
 	c.scan = scanFor(f, g, c.gotype)
 	sql := "t." + f.Column

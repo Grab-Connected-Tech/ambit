@@ -187,3 +187,24 @@ func TestGeneratedTableAgreesWithModelRules(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeInputIsStrict(t *testing.T) {
+	type in struct {
+		Name  string `json:"name"`
+		Limit int    `json:"limit"`
+	}
+	var v in
+	if err := runtime.DecodeInput(&runtime.Call{Body: []byte(`{"name":"a","nmae":"b"}`)}, &v); err == nil {
+		t.Fatal("an unknown field must be refused")
+	}
+	if err := runtime.DecodeInput(&runtime.Call{Body: []byte("{\"name\":\"\xff\"}")}, &v); err == nil {
+		t.Fatal("invalid UTF-8 must be refused")
+	}
+	if err := runtime.DecodeInput(&runtime.Call{Body: []byte(`{"name":"a"} {}`)}, &v); err == nil {
+		t.Fatal("trailing data must be refused")
+	}
+	v = in{}
+	if err := runtime.DecodeInput(&runtime.Call{Query: map[string][]string{"name": {"12"}, "limit": {"10"}}}, &v); err != nil || v.Limit != 10 || v.Name != "12" {
+		t.Fatalf("query parameters: %+v %v", v, err)
+	}
+}

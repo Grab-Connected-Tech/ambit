@@ -1,16 +1,19 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -88,8 +91,11 @@ type Handler struct {
 // constructible from a URL alone (§3.3).
 func DecodeInput(c *Call, dst any) error {
 	if len(c.Body) > 0 {
-		if err := json.Unmarshal(c.Body, dst); err != nil {
-			return ks.Invalid("body", "the request body is not valid JSON: "+err.Error())
+		if !utf8.Valid(c.Body) {
+			return ks.Invalid("body", "the request body is not valid UTF-8")
+		}
+		if err := strictJSON(c.Body, dst); err != nil {
+			return ks.Invalid("body", "the request body does not fit the input: "+err.Error())
 		}
 		return nil
 	}
@@ -99,12 +105,48 @@ func DecodeInput(c *Call, dst any) error {
 	return decodeQuery(dst, c.Query)
 }
 
+// strictJSON decodes exactly one JSON value and refuses fields the input does not
+// declare, so a typo in a client is an error rather than a silently ignored value (§9.3).
+func strictJSON(raw []byte, dst any) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if dec.More() {
+		return errors.New("trailing data after the JSON value")
+	}
+	return nil
+}
+
+// decodeQuery reads query parameters as strings first; a parameter that fills a number,
+// boolean or object field (limit=10) is then read as the JSON literal it spells.
 func decodeQuery(dst any, q map[string][]string) error {
 	raw, err := json.Marshal(flatQuery(q))
 	if err != nil {
 		return ks.Invalid("query", err.Error())
 	}
-	if err := json.Unmarshal(raw, dst); err != nil {
+	if err := strictJSON(raw, dst); err == nil {
+		return nil
+	}
+	// Decide per parameter, probing a fresh value of the input's type: "12" stays a string
+	// for a text field and becomes 12 for a number field.
+	typed := map[string]any{}
+	for k, v := range flatQuery(q) {
+		typed[k] = v
+		s, ok := v.(string)
+		if !ok || !json.Valid([]byte(s)) {
+			continue
+		}
+		probe := reflect.New(reflect.TypeOf(dst).Elem()).Interface()
+		if one, _ := json.Marshal(map[string]any{k: s}); strictJSON(one, probe) != nil {
+			typed[k] = json.RawMessage(s)
+		}
+	}
+	if raw, err = json.Marshal(typed); err == nil {
+		err = strictJSON(raw, dst)
+	}
+	if err != nil {
 		return ks.Invalid("query", "a query parameter does not fit: "+err.Error())
 	}
 	return nil

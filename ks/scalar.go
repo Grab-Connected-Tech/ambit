@@ -34,8 +34,8 @@ func ScanID(v any) (ID, error) {
 
 // Money is an exact monetary amount in minor units with a currency code.
 type Money struct {
-	Minor    int64
-	Currency string
+	Minor    int64  `json:"minor"`
+	Currency string `json:"currency"`
 }
 
 // MoneyOf builds a Money value.

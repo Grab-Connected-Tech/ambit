@@ -120,14 +120,25 @@
       "billing.Invoice": {
         "properties": {
           "amount": {
-            "format": "money",
-            "type": "string"
+            "properties": {
+              "currency": {
+                "type": "string"
+              },
+              "minor": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "currency",
+              "minor"
+            ],
+            "type": "object"
           },
           "created_at": {
             "format": "date-time",
             "type": "string"
           },
-          "customer": {
+          "customer_id": {
             "format": "uuid",
             "type": "string"
           },
@@ -177,7 +188,7 @@
         "required": [
           "amount",
           "created_at",
-          "customer",
+          "customer_id",
           "status",
           "tenant_id",
           "updated_at"
@@ -206,7 +217,7 @@
             "maxLength": 200,
             "type": "string"
           },
-          "owner": {
+          "owner_id": {
             "format": "uuid",
             "type": "string"
           },
@@ -226,7 +237,7 @@
           "created_at",
           "email",
           "name",
-          "owner",
+          "owner_id",
           "tenant_id",
           "updated_at"
         ],
@@ -333,8 +344,19 @@
             "name": "amount",
             "required": true,
             "schema": {
-              "format": "money",
-              "type": "string"
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "minor": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "currency",
+                "minor"
+              ],
+              "type": "object"
             }
           },
           {

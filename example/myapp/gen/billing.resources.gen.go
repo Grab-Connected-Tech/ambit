@@ -18,20 +18,20 @@ var (
 
 // Invoice is one row of billing.Invoice (table invoice).
 type Invoice struct {
-	ID         ks.ID
-	TenantID   ks.ID
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Version    ks.Version
-	Amount     ks.Money
-	CustomerID ks.ID
+	ID         ks.ID      `json:"id"`
+	TenantID   ks.ID      `json:"tenant_id"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	Version    ks.Version `json:"version"`
+	Amount     ks.Money   `json:"amount"`
+	CustomerID ks.ID      `json:"customer_id"`
 	// Customer is loaded by WithInvoiceCustomer, and is nil until a query asks for it (§8.2).
-	Customer *Customer
-	Notes    ks.Opt[string]
-	PaidAt   ks.Opt[time.Time]
-	SentAt   ks.Opt[time.Time]
-	Status   InvoiceStatus
-	TaxId    ks.Opt[string]
+	Customer *Customer         `json:"customer,omitempty"`
+	Notes    ks.Opt[string]    `json:"notes"`
+	PaidAt   ks.Opt[time.Time] `json:"paid_at"`
+	SentAt   ks.Opt[time.Time] `json:"sent_at"`
+	Status   InvoiceStatus     `json:"status"`
+	TaxId    ks.Opt[string]    `json:"tax_id"`
 }
 
 // InvoiceStatus is the domain of Invoice.status.

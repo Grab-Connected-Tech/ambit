@@ -18,17 +18,17 @@ var (
 
 // Customer is one row of customers.Customer (table customer).
 type Customer struct {
-	ID         ks.ID
-	TenantID   ks.ID
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Version    ks.Version
-	Email      string
-	ExternalId ks.Opt[string]
-	Name       string
-	OwnerID    ks.ID
+	ID         ks.ID          `json:"id"`
+	TenantID   ks.ID          `json:"tenant_id"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	Version    ks.Version     `json:"version"`
+	Email      string         `json:"email"`
+	ExternalId ks.Opt[string] `json:"external_id"`
+	Name       string         `json:"name"`
+	OwnerID    ks.ID          `json:"owner_id"`
 	// Owner is loaded by WithCustomerOwner, and is nil until a query asks for it (§8.2).
-	Owner *User
+	Owner *User `json:"owner,omitempty"`
 }
 
 // CustomerPatch is the set of columns an update may change. A field that is unset

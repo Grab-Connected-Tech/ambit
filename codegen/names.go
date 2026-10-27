@@ -139,3 +139,13 @@ func pkgName(importPath string) string {
 func errorCtor(action, code string) string {
 	return "Err" + action + ident(code)
 }
+
+// wireName is a resource field's JSON key in responses: the declared name, except that a
+// reference carries its id under the column (customer_id) and the loaded row under the
+// name. Generated structs, OpenAPI and the TypeScript client all use it (§12).
+func wireName(f *model.Field) string {
+	if f.Type.Kind == model.KindRef {
+		return f.Column
+	}
+	return f.Name
+}

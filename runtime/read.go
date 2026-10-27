@@ -14,8 +14,8 @@ import (
 
 // PageOf is one keyset page (§8.1). There is no offset pagination anywhere.
 type PageOf[T any] struct {
-	Rows       []*T
-	NextCursor string
+	Rows       []*T   `json:"rows"`
+	NextCursor string `json:"nextCursor,omitempty"`
 }
 
 // Get fetches one row by id. A row the actor may not see is indistinguishable from
