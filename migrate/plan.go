@@ -52,8 +52,12 @@ type Backfill struct {
 	Table  string `json:"table"`
 	Column string `json:"column"`
 	From   string `json:"from,omitempty"`
-	Batch  int    `json:"batch"`
-	Job    string `json:"job"`
+	// Set is the SQL expression each null row receives. The plan fills it when the model
+	// knows the value (a declared default, a source column); otherwise the reviewer writes
+	// it into the plan file before applying, and apply refuses an empty one (§13.3).
+	Set   string `json:"set"`
+	Batch int    `json:"batch"`
+	Job   string `json:"job"`
 }
 
 // Plan is the ordered set of steps between two models.
@@ -320,8 +324,12 @@ func addColumnStep(n model.Resource, f model.Field, ref string, a *model.App) St
 					quoteIdent(n.Table), quoteIdent(n.Table+"_"+f.Column+"_not_null"), quoteIdent(firstColumn(f))),
 				fmt.Sprintf("ALTER TABLE %s VALIDATE CONSTRAINT %s;",
 					quoteIdent(n.Table), quoteIdent(n.Table+"_"+f.Column+"_not_null")),
+				// With the validated CHECK in place Postgres sets NOT NULL without a scan,
+				// and the helper constraint has done its job.
+				fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;", quoteIdent(n.Table), quoteIdent(firstColumn(f))),
+				fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s;", quoteIdent(n.Table), quoteIdent(n.Table+"_"+f.Column+"_not_null")),
 			},
-			Backfill: &Backfill{Table: n.Table, Column: f.Column, Batch: 1000, Job: "ks_backfill_column"},
+			Backfill: &Backfill{Table: n.Table, Column: firstColumn(f), Batch: 1000, Job: "ks_backfill_column"},
 		}
 	}
 }
@@ -389,7 +397,7 @@ func alterColumnSteps(n model.Resource, old, f model.Field, ref string, a *model
 		steps = append(steps, Step{
 			Class: NeedsBackfill, Subject: subject, Detail: "field becomes required",
 			NeedsFlag: "--plan",
-			Backfill:  &Backfill{Table: n.Table, Column: firstColumn(f), Batch: 1000, Job: "ks_backfill_set_default"},
+			Backfill:  &Backfill{Table: n.Table, Column: firstColumn(f), Set: strings.TrimPrefix(defaultSQL(f), " DEFAULT "), Batch: 1000, Job: "ks_backfill_set_default"},
 			Phases: []string{
 				"1. backfill nulls to the declared default in batches of 1000",
 				"2. SET NOT NULL with a validated CHECK",

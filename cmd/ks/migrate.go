@@ -320,6 +320,10 @@ func migrateApply(ctx context.Context, url string, allowed map[string]bool, asJS
 			if s.NeedsFlag != "" && !allowed[s.NeedsFlag] {
 				return fmt.Errorf("KS-MIG-001: %s_%s step %q (%s) needs %s", m.Version, m.Name, s.Detail, s.Class, s.NeedsFlag)
 			}
+			if s.Backfill != nil && strings.TrimSpace(s.Backfill.Set) == "" {
+				return fmt.Errorf("%s_%s step %q backfills %s.%s: write the value each existing row gets into the plan's backfill.set",
+					m.Version, m.Name, s.Detail, s.Backfill.Table, s.Backfill.Column)
+			}
 		}
 		if err := applyOne(ctx, conn, m, allowed["--allow-destructive"]); err != nil {
 			return fmt.Errorf("%s_%s: %w", m.Version, m.Name, err)
@@ -366,6 +370,14 @@ func applyOne(ctx context.Context, conn *pgx.Conn, m migration, destructive bool
 		}
 		time.Sleep(time.Duration(attempt*attempt) * 500 * time.Millisecond)
 	}
+	// Backfills run between the expand statements and the constraints that need them.
+	for _, s := range m.Plan.Steps {
+		if s.Backfill != nil {
+			if err := backfill(ctx, conn, m.Version, *s.Backfill); err != nil {
+				return fmt.Errorf("backfill %s.%s: %w", s.Backfill.Table, s.Backfill.Column, err)
+			}
+		}
+	}
 	for _, stmt := range outside {
 		if _, err := conn.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("%w\n  in: %s", err, firstLine(stmt))
@@ -376,6 +388,55 @@ func applyOne(ctx context.Context, conn *pgx.Conn, m migration, destructive bool
 		m.Version, m.Name, m.Checksum, m.Plan.ModelHash, destructive)
 	return err
 }
+
+// backfill fills a column's nulls in batches keyed by primary key, one transaction per
+// batch, recording the cursor in ks_backfills so an interrupted run resumes where it
+// stopped rather than starting over (§13.3).
+func backfill(ctx context.Context, conn *pgx.Conn, version string, b migrate.Backfill) error {
+	if b.Batch <= 0 {
+		b.Batch = 1000
+	}
+	// The migration role writes every tenant's rows.
+	if _, err := conn.Exec(ctx, "SELECT set_config('ks.cross_tenant', 'on', false)"); err != nil {
+		return err
+	}
+	var cursor string
+	err := conn.QueryRow(ctx, `INSERT INTO ks_backfills (id, version, column_name, cursor) VALUES ($1, $2, $3, '""')
+		ON CONFLICT (version, column_name) DO UPDATE SET updated_at = now()
+		RETURNING coalesce(cursor #>> '{}', '')`, ks.NewID(), version, b.Table+"."+b.Column).Scan(&cursor)
+	if err != nil {
+		return err
+	}
+	table, col := quoteIdent(b.Table), quoteIdent(b.Column)
+	for {
+		var last string
+		var n int64
+		err := pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+			err := tx.QueryRow(ctx, fmt.Sprintf(`WITH batch AS (
+				SELECT id FROM %[1]s WHERE %[2]s IS NULL AND ($1 = '' OR id > $1::uuid) ORDER BY id LIMIT %[3]d FOR UPDATE)
+				, done AS (UPDATE %[1]s t SET %[2]s = %[4]s FROM batch WHERE t.id = batch.id RETURNING t.id)
+				SELECT coalesce(max(id::text), ''), count(*) FROM done`, table, col, b.Batch, b.Set), cursor).Scan(&last, &n)
+			if err != nil || n == 0 {
+				return err
+			}
+			_, err = tx.Exec(ctx, `UPDATE ks_backfills SET cursor = to_jsonb($3::text), rows_done = rows_done + $4, state = 'running', updated_at = now()
+				WHERE version = $1 AND column_name = $2`, version, b.Table+"."+b.Column, last, n)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		cursor = last
+	}
+	_, err = conn.Exec(ctx, `UPDATE ks_backfills SET state = 'done', updated_at = now() WHERE version = $1 AND column_name = $2`,
+		version, b.Table+"."+b.Column)
+	return err
+}
+
+func quoteIdent(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
 
 func firstLine(s string) string {
 	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
