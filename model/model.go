@@ -64,6 +64,17 @@ type Tenant struct {
 	Name   string  `json:"name"`
 	Table  string  `json:"table"`
 	Fields []Field `json:"fields"`
+	// Access is what the spec declared for an app-level resource (the tenant and the
+	// account); the framework's own Membership has none.
+	Access *Access `json:"access,omitempty"`
+}
+
+// AccessOrNone returns the declared access, or no rules (every operation denied).
+func (t Tenant) AccessOrNone() Access {
+	if t.Access == nil {
+		return Access{}
+	}
+	return *t.Access
 }
 
 // Module is one folder of spec plus actions (§4).
@@ -405,7 +416,7 @@ func (a *App) FindResource(ref string) *Resource {
 				Name: fw.Name, Table: fw.Table, Fields: fw.Fields,
 				Tenant:  isTenant(fw.Name) || isAccount(fw.Name),
 				Account: isAccount(fw.Name),
-				Access:  Access{Read: policy.Always()},
+				Access:  fw.AccessOrNone(),
 			}
 		}
 	}
@@ -545,7 +556,7 @@ func (a *App) AllResources() []struct {
 		out = append(out, struct {
 			Ref      string
 			Resource *Resource
-		}{fw.Name, &Resource{Name: fw.Name, Table: fw.Table, Fields: fw.Fields}})
+		}{fw.Name, &Resource{Name: fw.Name, Table: fw.Table, Fields: fw.Fields, Access: fw.AccessOrNone()}})
 	}
 	return out
 }
@@ -668,20 +679,28 @@ func normalizeNodes(a *App) {
 			*n = policy.Normalize(*n)
 		}
 	}
+	access := func(ac *Access) {
+		fix(&ac.Read)
+		fix(&ac.Create)
+		fix(&ac.Update)
+		fix(&ac.UpdateAfter)
+		fix(&ac.Delete)
+		for i := range ac.FieldRead {
+			fix(&ac.FieldRead[i].Expr)
+		}
+		for i := range ac.FieldWrite {
+			fix(&ac.FieldWrite[i].Expr)
+		}
+	}
+	for _, t := range []*Tenant{a.Tenant, a.Account} {
+		if t != nil && t.Access != nil {
+			access(t.Access)
+		}
+	}
 	for m := range a.Modules {
 		for r := range a.Modules[m].Resources {
 			res := &a.Modules[m].Resources[r]
-			fix(&res.Access.Read)
-			fix(&res.Access.Create)
-			fix(&res.Access.Update)
-			fix(&res.Access.UpdateAfter)
-			fix(&res.Access.Delete)
-			for i := range res.Access.FieldRead {
-				fix(&res.Access.FieldRead[i].Expr)
-			}
-			for i := range res.Access.FieldWrite {
-				fix(&res.Access.FieldWrite[i].Expr)
-			}
+			access(&res.Access)
 			for i := range res.Indexes {
 				if res.Indexes[i].Where != nil {
 					res.Indexes[i].Where = policy.Normalize(res.Indexes[i].Where)

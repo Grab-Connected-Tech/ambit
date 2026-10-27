@@ -244,7 +244,11 @@ func Encrypted(inner *Field) *Field {
 	if inner == nil {
 		return &Field{name: "encrypted", err: "Encrypted() needs a field to wrap"}
 	}
-	f := &Field{name: inner.name, typ: model.Type{Kind: inner.typ.Kind, Encrypted: true, Inner: &inner.typ, Values: inner.typ.Values}}
+	// The whole inner type carries over (MaxLen, Pattern, ...): input validation still
+	// applies to the plaintext, while DDL skips CHECKs that would see ciphertext.
+	t := inner.typ
+	t.Encrypted, t.Inner = true, &inner.typ
+	f := &Field{name: inner.name, typ: t}
 	f.optional, f.def, f.unique, f.immutable, f.sensitive, f.err = inner.optional, inner.def, inner.unique, inner.immutable, true, inner.err
 	f.refTo, f.onDelete, f.copyFrom = inner.refTo, inner.onDelete, inner.copyFrom
 	return f

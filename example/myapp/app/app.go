@@ -25,7 +25,7 @@ var User = s.Account("User",
 		s.Email("email").Unique(),
 		s.Text("name").MaxLen(200).Optional(),
 		s.Timestamp("last_login").Optional(),
-		s.Text("passwordHash").Optional().Sensitive(),
+		s.Text("passwordHash").Optional().MaxLen(200).Sensitive(),
 	),
 	// Sign-up creates exactly one account per call, so Create is open and the
 	// signup action itself carries a mandatory rate limit (KS-SEC-005).

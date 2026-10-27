@@ -42,18 +42,22 @@ func compareAt(old, new *Node, depth int) (Relation, string) {
 	if depth > 12 {
 		return Unknown, "rules differ in a shape that comparison cannot follow"
 	}
-	if old == nil && new == nil {
-		return Equal, ""
-	}
+	// No rule denies, exactly as Never() does, so the two compare equal.
 	if old == nil {
-		return Widened, "rule added where access was denied"
+		old = Never()
 	}
 	if new == nil {
-		return Narrowed, "rule removed, access falls back to deny"
+		new = Never()
 	}
 	oc, nc := Canonical(old), Canonical(new)
 	if oc == nc {
 		return Equal, ""
+	}
+	if old.Op == OpNever {
+		return Widened, "rule added where access was denied"
+	}
+	if new.Op == OpNever {
+		return Narrowed, "rule removed, access falls back to deny"
 	}
 	// covers(wide, narrow) means "wide accepts at least what narrow accepts".
 	if covers(new, old) {

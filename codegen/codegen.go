@@ -22,7 +22,6 @@ import (
 
 	"keystone.dev/keystone/migrate"
 	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
 )
 
 // Options says where the app lives and what to write.
@@ -196,6 +195,12 @@ func Generate(o Options) (*Result, error) {
 		return nil, err
 	}
 
+	stubs, err := writeActionStubs(app, o)
+	if err != nil {
+		return nil, err
+	}
+	res.Files = append(res.Files, stubs...)
+
 	ddl := migrate.DDL(app)
 	// One file per generated schema pass: the DDL is the model's own answer to "what does
 	// the database look like", and ks migrate applies it inside a single transaction.
@@ -259,6 +264,9 @@ func readModulePath(dir string) string {
 	}
 	return ""
 }
+
+// LoadModel reads the app model from its spec without writing anything.
+func LoadModel(o Options) (*model.App, error) { return o.resolve() }
 
 func (o Options) resolve() (*model.App, error) {
 	if o.Model != nil {
@@ -411,7 +419,7 @@ func appLevelResources(app *model.App) []model.Resource {
 		out = append(out, model.Resource{
 			Name: name, Table: t.Table, Tenant: true,
 			Fields: fields, Timestamps: true, Versioned: true,
-			Access: model.Access{Read: policy.Always()},
+			Access: t.AccessOrNone(),
 		})
 	}
 	add(app.App.Tenant, app.Tenant)

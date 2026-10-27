@@ -34,7 +34,7 @@ CREATE TABLE "user_account" (
   "email" text NOT NULL CHECK ("email" ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
   "name" text CHECK (length("name") <= 200),
   "last_login" timestamptz,
-  "password_hash" text,
+  "password_hash" text CHECK (length("password_hash") <= 200),
   CONSTRAINT "user_account_pk" PRIMARY KEY (id)
 );
 

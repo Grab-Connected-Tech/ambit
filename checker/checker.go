@@ -157,13 +157,18 @@ func (v *visitor) classify() {
 		v.kind = fileTest
 		v.inActions = strings.Contains(v.path, "/actions/")
 		v.action = strings.TrimSuffix(base, "_test.go")
-	case strings.HasSuffix(base, ".gen.go") || strings.Contains(v.path, "/gen/"):
+	case strings.HasSuffix(base, ".gen.go") || strings.Contains(v.path, "/gen/") || isGenerated(v.file):
+		// The generated entrypoint (cmd/server/main.go) lives outside gen/.
 		v.kind = fileGenerated
 	case strings.Contains(v.path, "/actions/"):
 		v.kind = fileAction
 		v.action = strings.TrimSuffix(base, ".go")
 	case strings.HasSuffix(base, "spec.go") || strings.HasSuffix(base, "app.go"):
 		v.kind = fileSpec
+	case len(strings.Split(v.path, "/")) == 3 && strings.HasPrefix(v.path, "app/"):
+		// A module that keeps its actions beside its spec (app/<module>/actions.go).
+		v.kind = fileAction
+		v.module = strings.Split(v.path, "/")[1]
 	}
 	if data, err := os.ReadFile(v.abs); err == nil {
 		v.lines = strings.Split(string(data), "\n")
@@ -506,10 +511,11 @@ func (v *visitor) checkActionFuncs() {
 	ast.Inspect(v.file, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.FuncDecl:
-			if x.Recv != nil || !x.Name.IsExported() {
+			if x.Recv != nil {
 				return true
 			}
-			v.action = x.Name.Name
+			// sendInvoice in a module package implements SendInvoice.
+			v.action = strings.ToUpper(x.Name.Name[:1]) + x.Name.Name[1:]
 		case *ast.SwitchStmt:
 			v.checkEnumSwitch(x)
 		}
@@ -649,6 +655,19 @@ func allowedThirdParty(p string, list []string) bool {
 
 // moduleOf maps a path to the module that owns it: the folder holding actions/ or
 // gen/, or the file's own folder when it is a spec.
+// isGenerated reports a file carrying Go's standard generated-code header.
+func isGenerated(f *ast.File) bool {
+	for _, c := range f.Comments {
+		if c.Pos() > f.Package {
+			break
+		}
+		if strings.HasPrefix(c.Text(), "Code generated") && strings.Contains(c.Text(), "DO NOT EDIT") {
+			return true
+		}
+	}
+	return false
+}
+
 func moduleOf(path string) string {
 	parts := strings.Split(filepath.ToSlash(path), "/")
 	for i, p := range parts {

@@ -166,15 +166,11 @@ func App() (*model.App, error) {
 	}
 
 	if registry.accountRes != nil {
-		a.Account = &model.Tenant{Name: registry.accountRes.name, Table: accountTable(registry.accountRes), Fields: resourceFields(registry.accountRes)}
+		a.Account = appResource(registry.accountRes, accountTable(registry.accountRes))
 	}
 	if registry.tenant != nil {
 		a.App.Tenant = registry.tenant.name
-		a.Tenant = &model.Tenant{
-			Name:   registry.tenant.name,
-			Table:  snake(registry.tenant.name),
-			Fields: resourceFields(registry.tenant),
-		}
+		a.Tenant = appResource(registry.tenant, snake(registry.tenant.name))
 	}
 	a.Membership = &model.Tenant{Name: "Membership", Table: "ks_membership", Fields: membershipFields()}
 
@@ -265,13 +261,15 @@ func membershipFields() []model.Field {
 func intPtr(i int) *int { return &i }
 
 // resourceFields returns the model fields for the tenant table.
-func resourceFields(d *ResourceDecl) []model.Field {
+// appResource builds an app-level resource (the tenant or the account), keeping the
+// access rules its declaration carries.
+func appResource(d *ResourceDecl, table string) *model.Tenant {
 	res, err := buildResource(d)
 	if err != nil {
 		specErr("%v", err)
-		return nil
+		return &model.Tenant{Name: d.name, Table: table}
 	}
-	return res.Fields
+	return &model.Tenant{Name: d.name, Table: table, Fields: res.Fields, Access: &res.Access}
 }
 
 // Dump writes the declared app as JSON; this is what the generated dump program calls.

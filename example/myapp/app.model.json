@@ -102,7 +102,24 @@
           "text": "free"
         }
       }
-    ]
+    ],
+    "access": {
+      "read": {
+        "op": "role",
+        "roles": [
+          "member"
+        ]
+      },
+      "update": {
+        "op": "role",
+        "roles": [
+          "admin"
+        ]
+      },
+      "delete": {
+        "op": "never"
+      }
+    }
   },
   "membership": {
     "name": "Membership",
@@ -236,12 +253,69 @@
         "goName": "PasswordHash",
         "column": "password_hash",
         "type": {
-          "kind": "text"
+          "kind": "text",
+          "maxLen": 200
         },
         "optional": true,
         "sensitive": true
       }
-    ]
+    ],
+    "access": {
+      "read": {
+        "op": "or",
+        "kids": [
+          {
+            "op": "owner",
+            "path": [
+              "id"
+            ]
+          },
+          {
+            "op": "role",
+            "roles": [
+              "admin"
+            ]
+          }
+        ]
+      },
+      "create": {
+        "op": "always"
+      },
+      "update": {
+        "op": "or",
+        "kids": [
+          {
+            "op": "owner",
+            "path": [
+              "id"
+            ]
+          },
+          {
+            "op": "role",
+            "roles": [
+              "admin"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "op": "role",
+        "roles": [
+          "admin"
+        ]
+      },
+      "fieldRead": [
+        {
+          "field": "passwordHash",
+          "expr": {
+            "op": "role",
+            "roles": [
+              "admin"
+            ]
+          }
+        }
+      ]
+    }
   },
   "identity": {
     "sessions": {
@@ -367,6 +441,7 @@
               "column": "tax_id",
               "type": {
                 "kind": "text",
+                "maxLen": 40,
                 "encrypted": true,
                 "inner": {
                   "kind": "text",
