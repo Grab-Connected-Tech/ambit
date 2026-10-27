@@ -1,0 +1,551 @@
+{
+  "components": {
+    "schemas": {
+      "Membership": {
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "role": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "role",
+          "tenant_id"
+        ],
+        "type": "object"
+      },
+      "Org": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "plan": {
+            "enum": [
+              "enterprise",
+              "free",
+              "pro"
+            ],
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "name",
+          "plan",
+          "tenant_id",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "User": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_login": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "passwordHash": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "email",
+          "tenant_id",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "billing.Invoice": {
+        "properties": {
+          "amount": {
+            "format": "money",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customer": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "notes": {
+            "maxLength": 2000,
+            "type": "string",
+            "x-sensitive": true
+          },
+          "paid_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "paid",
+              "sent",
+              "void"
+            ],
+            "type": "string"
+          },
+          "tax_id": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "created_at",
+          "customer",
+          "status",
+          "tenant_id",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "customers.Customer": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "type": "string"
+          },
+          "external_id": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "owner": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "email",
+          "name",
+          "owner",
+          "tenant_id",
+          "updated_at"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "5 resources, 3 roles",
+    "title": "app"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/billing/CountDrafts": {
+      "get": {
+        "operationId": "billing.CountDrafts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "success"
+          },
+          "422": {
+            "description": "a declared failure"
+          }
+        },
+        "summary": "Reads CountDrafts"
+      }
+    },
+    "/api/billing/ListInvoices": {
+      "get": {
+        "operationId": "billing.ListInvoices",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "draft",
+                "paid",
+                "sent",
+                "void"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "items": {
+                        "$ref": "#/components/schemas/Invoice"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "success"
+          },
+          "422": {
+            "description": "a declared failure"
+          }
+        },
+        "summary": "Reads ListInvoices"
+      }
+    },
+    "/api/billing/MarkPaid": {
+      "post": {
+        "description": "Declared failures: already_paid, amount_mismatch",
+        "operationId": "billing.MarkPaid",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "body",
+            "name": "amount",
+            "required": true,
+            "schema": {
+              "format": "money",
+              "type": "string"
+            }
+          },
+          {
+            "in": "body",
+            "name": "psp_charge_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            },
+            "description": "success"
+          },
+          "422": {
+            "description": "a declared failure"
+          }
+        },
+        "summary": "Mutates MarkPaid"
+      }
+    },
+    "/api/billing/SendInvoice": {
+      "post": {
+        "description": "Declared failures: not_draft",
+        "operationId": "billing.SendInvoice",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            },
+            "description": "success"
+          },
+          "422": {
+            "description": "a declared failure"
+          }
+        },
+        "summary": "Mutates SendInvoice"
+      }
+    },
+    "/api/customers/CreateCustomer": {
+      "post": {
+        "description": "Declared failures: email_taken",
+        "operationId": "customers.CreateCustomer",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "in": "body",
+            "name": "email",
+            "required": true,
+            "schema": {
+              "format": "email",
+              "type": "string"
+            }
+          },
+          {
+            "in": "body",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            },
+            "description": "success"
+          },
+          "422": {
+            "description": "a declared failure"
+          }
+        },
+        "summary": "Mutates CreateCustomer"
+      }
+    },
+    "/api/customers/GetCustomer": {
+      "get": {
+        "operationId": "customers.GetCustomer",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            },
+            "description": "success"
+          },
+          "422": {
+            "description": "a declared failure"
+          }
+        },
+        "summary": "Reads GetCustomer"
+      }
+    },
+    "/api/customers/ListCustomers": {
+      "get": {
+        "operationId": "customers.ListCustomers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "items": {
+                        "$ref": "#/components/schemas/Customer"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "success"
+          },
+          "422": {
+            "description": "a declared failure"
+          }
+        },
+        "summary": "Reads ListCustomers"
+      }
+    }
+  }
+}

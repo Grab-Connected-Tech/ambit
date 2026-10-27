@@ -35,6 +35,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 	if len(t.Columns) == 0 {
 		t.Columns = ColumnsOf(res)
 	}
+
 	if len(t.Sensitive) == 0 {
 		for _, c := range t.Columns {
 			if c.Sensitive {
@@ -43,22 +44,31 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 		}
 	}
 	alias := "t"
+	// Rules are normalised before they are compiled: an Or of two Role tests and a single
+	// role-set test mean the same thing, and the SQL should not depend on which spelling
+	// the spec happened to use or on whether a checker already normalised the model.
+	norm := func(n *policy.Node) *policy.Node {
+		if n == nil {
+			return nil
+		}
+		return policy.Normalize(n)
+	}
 	if t.All.SQL == "" {
-		t.All = mustFrag(policy.TableSQL(res.Access.Read, app.PolicyTable(ref), policy.TargetPolicy, alias))
+		t.All = mustFrag(policy.TableSQL(norm(res.Access.Read), app.PolicyTable(ref), policy.TargetPolicy, alias))
 	}
 	if t.Create.SQL == "" {
-		t.Create = mustFrag(policy.TableSQL(res.Access.Create, app.PolicyTable(ref), policy.TargetPolicy, alias))
+		t.Create = mustFrag(policy.TableSQL(norm(res.Access.Create), app.PolicyTable(ref), policy.TargetPolicy, alias))
 	}
 	if t.Update.SQL == "" {
-		t.Update = mustFrag(policy.TableSQL(res.Access.Update, app.PolicyTable(ref), policy.TargetPolicy, alias))
+		t.Update = mustFrag(policy.TableSQL(norm(res.Access.Update), app.PolicyTable(ref), policy.TargetPolicy, alias))
 	}
 	if t.Delete.SQL == "" {
-		t.Delete = mustFrag(policy.TableSQL(res.Access.Delete, app.PolicyTable(ref), policy.TargetPolicy, alias))
+		t.Delete = mustFrag(policy.TableSQL(norm(res.Access.Delete), app.PolicyTable(ref), policy.TargetPolicy, alias))
 	}
 	// UpdateAfter is a rule over the row after the write, which is what makes it a
 	// forbidden transition rather than an invariant breach (§5.6).
 	if t.UpdateAfter.SQL == "" && res.Access.UpdateAfter != nil {
-		t.UpdateAfter = mustFrag(policy.TableSQL(res.Access.UpdateAfter, app.PolicyTable(ref), policy.TargetPolicy, alias))
+		t.UpdateAfter = mustFrag(policy.TableSQL(norm(res.Access.UpdateAfter), app.PolicyTable(ref), policy.TargetPolicy, alias))
 	}
 	if len(t.FieldRead) == 0 {
 		for _, fr := range res.Access.FieldRead {
@@ -68,7 +78,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 			}
 			t.FieldRead = append(t.FieldRead, FieldFrag{
 				Field: fr.Field, Column: col, Index: idx,
-				Frag: mustFrag(policy.TableSQL(fr.Expr, app.PolicyTable(ref), policy.TargetPolicy, alias)),
+				Frag: mustFrag(policy.TableSQL(norm(fr.Expr), app.PolicyTable(ref), policy.TargetPolicy, alias)),
 			})
 		}
 	}
@@ -80,7 +90,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 			}
 			t.FieldWrite = append(t.FieldWrite, FieldFrag{
 				Field: fw.Field, Column: col,
-				Frag: mustFrag(policy.TableSQL(fw.Expr, app.PolicyTable(ref), policy.TargetPolicy, alias)),
+				Frag: mustFrag(policy.TableSQL(norm(fw.Expr), app.PolicyTable(ref), policy.TargetPolicy, alias)),
 			})
 		}
 	}
@@ -92,7 +102,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 			}
 			t.Checks = append(t.Checks, Check{
 				Name: inv.Name,
-				Frag: mustFrag(policy.TableSQL(inv.Expr, app.PolicyTable(ref), policy.TargetPolicy, alias)),
+				Frag: mustFrag(policy.TableSQL(norm(inv.Expr), app.PolicyTable(ref), policy.TargetPolicy, alias)),
 			})
 		}
 	}
@@ -102,7 +112,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 	if t.UpdateAfter.SQL != "" {
 		t.Checks = append(t.Checks, Check{
 			Name:      "update_after",
-			Frag:      mustFrag(policy.TableSQL(res.Access.UpdateAfter, app.PolicyTable(ref), policy.TargetPolicy, alias)),
+			Frag:      mustFrag(policy.TableSQL(norm(res.Access.UpdateAfter), app.PolicyTable(ref), policy.TargetPolicy, alias)),
 			Forbidden: true,
 		})
 	}
@@ -118,29 +128,35 @@ func mustFrag(s *policy.SQL, err error) Frag {
 	return fragFromPolicy(s)
 }
 
-// ColumnsOf maps model fields onto the runtime column list, in projection order: the
-// framework columns first, then the declared ones.
+// ColumnsOf maps model fields onto the runtime column list: the framework's built-in
+// columns first, in a fixed order, then every other field, in the model's canonical order.
+// It is a pure function of the model's own field list — a generated scanner indexes by
+// position, so any input-ordering guess here would silently shift a row's columns (§6,
+// §7.1).
 func ColumnsOf(res *model.Resource) []Column {
-	framework := map[string]bool{}
 	out := []Column{
 		{Name: "id", GoName: "ID", Column: "id", SQL: "t.id", SQLType: "uuid", Kind: string(model.KindID)},
-		{Name: "tenant", GoName: "TenantID", Column: "tenant_id", SQL: "t.tenant_id", SQLType: "uuid", Kind: string(model.KindID)},
-		{Name: "createdAt", GoName: "CreatedAt", Column: "created_at", SQL: "t.created_at", SQLType: "timestamptz", Kind: string(model.KindTimestamp)},
-		{Name: "updatedAt", GoName: "UpdatedAt", Column: "updated_at", SQL: "t.updated_at", SQLType: "timestamptz", Kind: string(model.KindTimestamp)},
+		{Name: "tenant_id", GoName: "TenantID", Column: "tenant_id", SQL: "t.tenant_id", SQLType: "uuid", Kind: string(model.KindID)},
+		{Name: "created_at", GoName: "CreatedAt", Column: "created_at", SQL: "t.created_at", SQLType: "timestamptz", Kind: string(model.KindTimestamp)},
+		{Name: "updated_at", GoName: "UpdatedAt", Column: "updated_at", SQL: "t.updated_at", SQLType: "timestamptz", Kind: string(model.KindTimestamp)},
 		{Name: "version", GoName: "Version", Column: "version", SQL: "t.version", SQLType: "bigint", Kind: string(model.KindInt)},
 	}
+	seeded := map[string]bool{
+		"id": true, "tenant_id": true, "created_at": true, "updated_at": true, "version": true,
+	}
+	// The tenant column belongs to a tenant-scoped resource only.
 	if !res.Tenant {
-		out = append(out[:1], out[2:]...)
+		out = out[:1]
+		delete(seeded, "tenant_id")
 	}
-	for _, c := range out {
-		framework[c.Column] = true
-	}
-	// The model carries the framework columns alongside the declared ones; the
-	// projection takes the declared list, so the built-in names are skipped here rather
-	// than appearing twice with different positions.
-	for i := 0; i < len(res.Fields); i++ {
+	// The projection walks the model's own field list. A framework field appearing in
+	// that list is the *same* column as the seeded one, so it is skipped rather than
+	// appended; the framework columns keep their positions, and the compiled rule — which
+	// resolves a field by its model column name — agrees with the projection by
+	// construction (§6, §7.1).
+	for i := range res.Fields {
 		f := &res.Fields[i]
-		if framework[f.Column] {
+		if seeded[f.Column] {
 			continue
 		}
 		out = append(out, splitField(f)...)
@@ -156,8 +172,14 @@ func splitField(f *model.Field) []Column {
 		SQLType: sqlTypeOf(f.Type), Kind: string(f.Type.Kind), Sensitive: f.Sensitive,
 	}
 	if f.Type.Kind == model.KindMoney {
-		minor := Column{Name: f.Name, GoName: f.GoName, Column: f.Column + "_minor", SQL: "t." + f.Column + "_minor", SQLType: "bigint", Kind: string(model.KindMoney)}
-		cur := Column{Name: f.Name, GoName: f.GoName, Column: f.Column + "_currency", SQL: "t." + f.Column + "_currency", SQLType: "text", Kind: string(model.KindMoney)}
+		minorName, currencyName := f.Column, f.Column+"_currency"
+		if len(f.Columns) == 2 {
+			minorName, currencyName = f.Columns[0], f.Columns[1]
+		} else if strings.HasSuffix(f.Column, "_minor") {
+			currencyName = strings.TrimSuffix(f.Column, "_minor") + "_currency"
+		}
+		minor := Column{Name: f.Name, GoName: f.GoName, Column: minorName, SQL: "t." + minorName, SQLType: "bigint", Kind: string(model.KindMoney)}
+		cur := Column{Name: f.Name, GoName: f.GoName, Column: currencyName, SQL: "t." + currencyName, SQLType: "text", Kind: string(model.KindMoney)}
 		return []Column{minor, cur}
 	}
 	return []Column{base}

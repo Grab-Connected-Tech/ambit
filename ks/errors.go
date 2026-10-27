@@ -98,6 +98,16 @@ func Invariant(name string) *Error {
 }
 
 // RateLimited reports an exceeded request limit.
+// Declared is an error the action's spec named (§7.4). A declared code is a 422 with the
+// code on the wire, which is how an agent learns which failures an action can return
+// without reading its body.
+func Declared(code, message string) *Error {
+	if message == "" {
+		message = code
+	}
+	return &Error{Code: code, Message: message, Status: http.StatusUnprocessableEntity}
+}
+
 func RateLimited(retryAfter int) *Error {
 	return &Error{Code: CodeRateLimited, Status: http.StatusTooManyRequests, Message: "Too many requests."}
 }

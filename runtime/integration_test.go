@@ -1466,9 +1466,9 @@ func TestJobsRunAsSystemAndRespectConcurrency(t *testing.T) {
 	var mu sync.Mutex
 	h.app.Handlers["billing.SendReminders"] = &runtime.Handler{
 		Ref: "billing.SendReminders", Module: "billing", Name: "SendReminders", Kind: model.KindJob,
-		Handle: func(ctx context.Context, a *runtime.App, in runtime.HandlerInput) (runtime.HandlerOutput, error) {
+		Handle: func(c *runtime.Call) (any, error) {
 			mu.Lock()
-			ran = append(ran, in.Actor)
+			ran = append(ran, c.Actor)
 			mu.Unlock()
 			return runtime.HandlerOutput{Body: []byte("{}")}, nil
 		},
@@ -1553,13 +1553,13 @@ func TestIdempotencyReplaysAndRefusesMismatch(t *testing.T) {
 			Requires:   policy.Or(policy.Role("admin"), policy.Role("accountant")),
 			Idempotent: true,
 			Limits:     model.ActionLimits{RateLimit: []model.RateLimit{{Scope: "actor", Limit: 100, Per: "1m0s"}}}},
-		Handle: func(ctx context.Context, a *runtime.App, in runtime.HandlerInput) (runtime.HandlerOutput, error) {
+		Handle: func(c *runtime.Call) (any, error) {
 			return runtime.HandlerOutput{Body: []byte(`{"ok":true}`)}, nil
 		},
 	}
 	call := func(body string, key string) (string, error) {
 		out, err := h.app.Run(context.Background(), h.app.Handlers["billing.SendInvoice"], h.admin,
-			runtime.HandlerInput{Actor: h.admin, Body: []byte(body), Key: key}, h.app.Log)
+			&runtime.Call{Actor: h.admin, Body: []byte(body), Key: key}, h.app.Log)
 		return string(out.Body), err
 	}
 	first, err := call(`{"invoice_id":"1"}`, "k1")
@@ -1643,7 +1643,7 @@ func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 		Path: "/api/billing/Limited",
 		Spec: model.Action{Name: "Limited", Kind: model.KindMutation, Requires: policy.Role("member"),
 			Limits: model.ActionLimits{RateLimit: []model.RateLimit{{Scope: "actor", Limit: 4, Per: "1m0s"}}}},
-		Handle: func(ctx context.Context, a *runtime.App, in runtime.HandlerInput) (runtime.HandlerOutput, error) {
+		Handle: func(c *runtime.Call) (any, error) {
 			n++
 			return runtime.HandlerOutput{Body: []byte("{}")}, nil
 		},
@@ -1651,7 +1651,7 @@ func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 	lim := h.actor(h.tenants["Acme"], "member")
 	var limited error
 	for i := 0; i < 8; i++ {
-		_, err := h.app.Run(context.Background(), h.app.Handlers["billing.Limited"], lim, runtime.HandlerInput{Actor: lim}, h.app.Log)
+		_, err := h.app.Run(context.Background(), h.app.Handlers["billing.Limited"], lim, &runtime.Call{Actor: lim}, h.app.Log)
 		limited = err
 	}
 	if limitErrors != 0 {

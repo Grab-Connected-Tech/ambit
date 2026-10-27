@@ -179,12 +179,7 @@ func (s *Server) router(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "ready")
 		return
 	}
-	ref, ok := s.A.Routes[r.URL.Path]
-	if !ok {
-		writeError(w, r, ks.NotFound(), traceID)
-		return
-	}
-	h, ok := s.A.Handlers[ref]
+	h, ok := s.A.ByPath[r.URL.Path]
 	if !ok {
 		writeError(w, r, ks.NotFound(), traceID)
 		return
@@ -208,7 +203,7 @@ func (s *Server) router(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err, traceID)
 		return
 	}
-	in := HandlerInput{
+	in := &Call{
 		Actor:   actor,
 		Body:    body,
 		Query:   r.URL.Query(),
@@ -432,20 +427,22 @@ type runOptions struct {
 
 // Run is the pipeline for one action invocation: authorize, rate limit, transaction,
 // decode, execute, commit, encode (§3.3).
-func (a *App) Run(ctx context.Context, h *Handler, actor ks.Actor, in HandlerInput, log *slog.Logger) (HandlerOutput, error) {
+func (a *App) Run(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger) (HandlerOutput, error) {
 	return a.runWith(ctx, h, actor, in, log, runOptions{})
 }
 
-func (a *App) run(ctx context.Context, h *Handler, actor ks.Actor, in HandlerInput, log *slog.Logger) error {
+func (a *App) run(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger) error {
 	_, err := a.runWith(ctx, h, actor, in, log, runOptions{})
 	return err
 }
 
-func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in HandlerInput, log *slog.Logger, opts runOptions) (HandlerOutput, error) {
+func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger, opts runOptions) (HandlerOutput, error) {
 	var out HandlerOutput
 	if log == nil {
 		log = a.Log
 	}
+	// A handler needs one of the two adapter shapes; the pipeline itself is unchanged by
+	// which one an app was generated against (§7.2).
 	if h == nil || h.Handle == nil {
 		return out, ks.NotFound()
 	}
@@ -506,7 +503,7 @@ func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in Handle
 	}
 }
 
-func traceIDFrom(in HandlerInput) string { return in.Trace }
+func traceIDFrom(in *Call) string { return in.Trace }
 
 func isSerialization(err error) bool {
 	var e *ks.Error
@@ -516,7 +513,7 @@ func isSerialization(err error) bool {
 	return false
 }
 
-func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in HandlerInput, log *slog.Logger, invocation ks.ID, stmtTimeout time.Duration, opts runOptions) (HandlerOutput, error) {
+func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger, invocation ks.ID, stmtTimeout time.Duration, opts runOptions) (HandlerOutput, error) {
 	var out HandlerOutput
 	scope := Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == ks.ActorSystem, CrossTenant: h.Spec.CrossTenant}
 	tx, err := a.BeginTx(ctx, scope, stmtTimeout, h.Spec.Serializable)
@@ -534,7 +531,18 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in Handle
 	if a.Clock == nil {
 		d.clock = SystemClock{}
 	}
-	out, callErr := h.Handle(ctx, a, HandlerInput{Actor: actor, Body: in.Body, Query: in.Query, Headers: in.Headers, IP: in.IP, Key: in.Key, DB: d, Invocation: invocation, Trace: logTrace(log)})
+	call := &Call{Context: ctx, Actor: actor, DB: d, Log: log, Clock: a.Clock, Body: in.Body, Query: in.Query,
+		Headers: in.Headers, IP: in.IP, Key: in.Key, Invocation: invocation, Trace: logTrace(log), App: a}
+	result, callErr := h.Handle(call)
+	result, callErr = h.Handle(call)
+	out = HandlerOutput{}
+	if callErr == nil {
+		encoded, encErr := Encode(result)
+		if encErr != nil {
+			return out, encErr
+		}
+		out.Body = encoded
+	}
 	if callErr != nil {
 		a.Rollback(ctx, tx)
 		return out, callErr
@@ -697,7 +705,7 @@ func bucketKey(scope string, actor ks.Actor, ip, action string) string {
 
 // idempotentResponse returns a stored result when the same key and body were seen
 // before, and refuses a different body under the same key (§5.7).
-func (a *App) idempotentResponse(ctx context.Context, h *Handler, actor ks.Actor, in HandlerInput) ([]byte, bool, error) {
+func (a *App) idempotentResponse(ctx context.Context, h *Handler, actor ks.Actor, in *Call) ([]byte, bool, error) {
 	if in.Key == "" {
 		return nil, false, ks.Invalid("Idempotency-Key", "the action requires an idempotency key header")
 	}
@@ -719,7 +727,7 @@ func (a *App) idempotentResponse(ctx context.Context, h *Handler, actor ks.Actor
 	return stored, true, nil
 }
 
-func (a *App) storeIdempotent(ctx context.Context, h *Handler, actor ks.Actor, in HandlerInput, out HandlerOutput) error {
+func (a *App) storeIdempotent(ctx context.Context, h *Handler, actor ks.Actor, in *Call, out HandlerOutput) error {
 	err := a.inSystemScope(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO ks_idempotency (id, action, tenant_id, key, request_hash, response, created_at, expires_at)
@@ -815,4 +823,48 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// Call is one run of one action: the transaction, the actor and the request's own data.
+// The generated adapter takes nothing else, which is what keeps an action's signature free
+// of framework types (§7.2).
+// HandlerInput is what the pipeline hands a generated adapter: identity, the request's
+// data, and the transaction the action runs inside.
+type HandlerInput struct {
+	Actor      ks.Actor
+	Body       []byte
+	Query      map[string][]string
+	Headers    map[string]string
+	IP         string
+	Key        string
+	DB         *DB
+	Job        *JobCall
+	Invocation ks.ID
+	Trace      string
+}
+
+type Call struct {
+	Context    context.Context
+	Actor      ks.Actor
+	DB         *DB
+	Log        *slog.Logger
+	Clock      ks.Clock
+	Body       []byte
+	Query      map[string][]string
+	Headers    map[string]string
+	IP         string
+	Key        string // Idempotency-Key
+	Job        *JobCall
+	Invocation ks.ID
+	Trace      string
+	App        *App
+}
+
+// Encode turns what an action returned into the response body. A nil result is a 204 with
+// no body, which is what a delete should look like.
+func Encode(v any) ([]byte, error) {
+	if v == nil {
+		return nil, nil
+	}
+	return json.Marshal(v)
 }

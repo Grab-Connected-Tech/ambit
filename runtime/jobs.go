@@ -175,7 +175,7 @@ func (w *Worker) Run(ctx context.Context, call JobCall) error {
 		return w.finish(ctx, call, fmt.Errorf("no handler for %s", call.Action), true)
 	}
 	actor := w.actorFor(ctx, call, h)
-	err := w.A.run(ctx, h, actor, HandlerInput{
+	err := w.A.run(ctx, h, actor, &Call{
 		Body: call.Args,
 		Key:  string(call.ID),
 		Job:  &call,

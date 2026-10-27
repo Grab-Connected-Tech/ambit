@@ -1,6 +1,10 @@
 package model
 
-import "keystone.dev/keystone/policy"
+import (
+	"strings"
+
+	"keystone.dev/keystone/policy"
+)
 
 // PolicyTable projects a resource into the small schema the SQL compiler needs.
 // It is the only bridge between the model and policy, which keeps policy free of
@@ -23,7 +27,7 @@ func (a *App) PolicyTable(ref string) *policy.Table {
 	}
 	for _, f := range res.Fields {
 		pf := policy.Field{
-			Name: f.Name, Column: f.Column, Columns: f.Columns, Kind: string(f.Type.Kind),
+			Name: f.Name, Column: f.Column, Columns: declaredColumns(&f), Kind: string(f.Type.Kind),
 		}
 		if f.Ref != nil && f.Type.Kind != KindID {
 			pf.Kind = string(KindRef)
@@ -145,4 +149,20 @@ func itoa(n int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// declaredColumns names the physical columns a model field occupies. A money field is
+// stored as a minor-units column and a currency column; the spec may spell the field's
+// column either way, and both the projection and the compiled rules must derive the same
+// pair from it (§5.2).
+func declaredColumns(f *Field) []string {
+	switch {
+	case len(f.Columns) > 0:
+		return f.Columns
+	case f.Type.Kind == KindMoney:
+		base := strings.TrimSuffix(f.Column, "_minor")
+		return []string{base + "_minor", base + "_currency"}
+	default:
+		return nil
+	}
 }

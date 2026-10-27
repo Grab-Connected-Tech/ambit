@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,11 +24,15 @@ import (
 // effect providers. A Keystone app is a single binary, so this is the whole world
 // (§2.10).
 type App struct {
-	Model     *model.App
-	Cfg       *Config
-	Pool      *pgxpool.Pool
-	Log       *slog.Logger
-	Handlers  map[string]*Handler
+	Model    *model.App
+	Cfg      *Config
+	Pool     *pgxpool.Pool
+	Log      *slog.Logger
+	Handlers map[string]*Handler
+	// ByPath is the route table's other half: a handler registered under a Ref that
+	// differs from the spec's — a test standing in for a real action, typically — is still
+	// reachable at the path its spec declares.
+	ByPath    map[string]*Handler
 	Routes    map[string]string // path -> "module.Action"
 	Providers *Providers
 	Registry  *Metrics
@@ -66,25 +71,56 @@ type Handler struct {
 	Kind    model.ActionKind
 	Path    string
 	Methods []string
-	// Handle runs the action's generated adapter.
-	Handle func(ctx context.Context, a *App, in HandlerInput) (HandlerOutput, error)
+	// Handle runs the action's generated adapter. Call carries everything the adapter
+	// needs, so an action's Go signature mentions no framework types other than its own
+	// generated context (§7.2).
+	Handle func(*Call) (any, error)
 	// Schema is the input JSON schema, used by the introspection API and OpenAPI.
 	Schema map[string]any
 	Spec   model.Action
 }
 
-// HandlerInput is what the pipeline hands a generated adapter.
-type HandlerInput struct {
-	Actor      ks.Actor
-	Body       []byte
-	Query      map[string][]string
-	Headers    map[string]string
-	IP         string
-	Key        string // Idempotency-Key
-	DB         *DB
-	Job        *JobCall
-	Invocation ks.ID
-	Trace      string
+// DecodeInput fills the action's generated input struct from the request: JSON for a
+// mutation, and the scalar query parameters for a list, because a GET should be
+// constructible from a URL alone (§3.3).
+func DecodeInput(c *Call, dst any) error {
+	if len(c.Body) > 0 {
+		if err := json.Unmarshal(c.Body, dst); err != nil {
+			return ks.Invalid("body", "the request body is not valid JSON: "+err.Error())
+		}
+		return nil
+	}
+	if len(c.Query) == 0 {
+		return nil
+	}
+	return decodeQuery(dst, c.Query)
+}
+
+func decodeQuery(dst any, q map[string][]string) error {
+	raw, err := json.Marshal(flatQuery(q))
+	if err != nil {
+		return ks.Invalid("query", err.Error())
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		return ks.Invalid("query", "a query parameter does not fit: "+err.Error())
+	}
+	return nil
+}
+
+func flatQuery(q map[string][]string) map[string]any {
+	out := map[string]any{}
+	for k, v := range q {
+		if len(v) == 1 {
+			out[k] = v[0]
+			continue
+		}
+		parts := make([]any, len(v))
+		for i, s := range v {
+			parts[i] = s
+		}
+		out[k] = parts
+	}
+	return out
 }
 
 // HandlerOutput is what an adapter returns before encoding.
@@ -124,6 +160,7 @@ func New(ctx context.Context, o Options) (*App, error) {
 	a := &App{
 		Model: o.Model, Cfg: o.Cfg, Log: log,
 		Handlers:  map[string]*Handler{},
+		ByPath:    map[string]*Handler{},
 		Routes:    map[string]string{},
 		Providers: NewProviders(),
 		Registry:  NewMetrics(),
@@ -132,8 +169,10 @@ func New(ctx context.Context, o Options) (*App, error) {
 	}
 	for _, h := range o.Handlers {
 		a.Handlers[h.Ref] = h
+		a.ByPath[h.Name] = h
 		for _, p := range h.PathList() {
-			a.Routes[p] = h.Ref
+			a.Routes[p] = h.Name
+			a.ByPath[p] = h
 		}
 	}
 	for kind, p := range o.Providers {

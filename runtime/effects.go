@@ -112,6 +112,31 @@ func (d *DB) RecordEffect(ctx context.Context, call EffectCall) error {
 	return nil
 }
 
+// EffectHandle is the capability an action holds for one declared effect. It is a method
+// value bound to the action's transaction, so an action can run only the effects its spec
+// declared, and never a provider the app did not configure (§7.1, §7.4).
+type EffectHandle struct {
+	Type   model.EffectKind
+	Mode   string // deferred | immediate
+	Hosts  []string
+	DB     *DB
+	caller func(context.Context, EffectCall) (EffectResult, error)
+}
+
+// Send runs the effect. A deferred effect is recorded in the outbox and happens only if
+// this transaction commits (§10.1); an immediate effect runs now and its result comes
+// back.
+func (h EffectHandle) Send(ctx context.Context, payload []byte, host ...string) (EffectResult, error) {
+	call := EffectCall{Type: h.Type, Mode: h.Mode, Payload: payload, Hosts: host}
+	if h.Mode == "" {
+		call.Mode = "deferred"
+	}
+	if call.Mode == "immediate" {
+		return h.DB.CallEffect(ctx, call)
+	}
+	return EffectResult{}, h.DB.RecordEffect(ctx, call)
+}
+
 func (d *DB) callProvider(ctx context.Context, call EffectCall) (EffectResult, error) {
 	if d.app == nil {
 		return EffectResult{}, ks.InternalError(errors.New("runtime: no app model for effect dispatch"))
