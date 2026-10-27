@@ -326,6 +326,9 @@ func (c *Config) applyEnv() error {
 	if v := os.Getenv("KS_DATABASE_REPLICA_URL"); v != "" {
 		c.ReplicaURL = v
 	}
+	if v := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); v != "" {
+		c.OTLPEndpoint = v
+	}
 	if v := os.Getenv("KS_ROLE"); v != "" {
 		c.Role = v
 	}

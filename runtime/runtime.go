@@ -263,7 +263,8 @@ type DB struct {
 // Stmt is one executed statement, kept for traces and for ks perf capture.
 type Stmt struct {
 	SQL    string
-	Args   []any
+	At     time.Time
+	Args   []any `json:"-"` // may hold Sensitive() values; never leaves the process
 	Rows   int64
 	Millis float64
 	Table  string
@@ -358,8 +359,9 @@ func (d *DB) Stmts() []Stmt { return d.stmts }
 
 // exec runs one statement under the budget.
 func (d *DB) exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	start := time.Now()
 	tag, err := d.conn.Exec(ctx, sql, args...)
-	d.record(sql, args, tag.RowsAffected())
+	d.record(sql, args, tag.RowsAffected(), start)
 	if err != nil {
 		return tag, err
 	}
@@ -367,8 +369,9 @@ func (d *DB) exec(ctx context.Context, sql string, args ...any) (pgconn.CommandT
 }
 
 func (d *DB) query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	start := time.Now()
 	rows, err := d.conn.Query(ctx, sql, args...)
-	d.record(sql, args, 0)
+	d.record(sql, args, 0, start)
 	if err != nil {
 		return rows, err
 	}
@@ -384,13 +387,14 @@ func (d *DB) budgetErr() error {
 	return d.budget.err
 }
 
-func (d *DB) record(sql string, args []any, rows int64) {
+func (d *DB) record(sql string, args []any, rows int64, start time.Time) {
 	table := ""
 	if i := strings.Index(sql, " FROM "); i > 0 {
 		rest := sql[i+6:]
 		table = strings.Fields(rest)[0]
 	}
-	d.stmts = append(d.stmts, Stmt{SQL: sql, Args: args, Rows: rows, Table: table})
+	d.stmts = append(d.stmts, Stmt{SQL: sql, Args: args, Rows: rows, Table: table, At: start,
+		Millis: float64(time.Since(start).Microseconds()) / 1000})
 	if os.Getenv("KS_DEBUG_SQL") != "" && !strings.HasPrefix(sql, "SELECT set_config") {
 		fmt.Fprintf(os.Stderr, "\n# %s   --args %v\n", sql, args)
 	}

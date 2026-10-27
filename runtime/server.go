@@ -146,6 +146,7 @@ func (s *Server) adminHandler() http.Handler {
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		w.Write(s.A.Registry.Bytes())
+		w.Write(s.A.gauges(r.Context()))
 	})
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -305,6 +306,12 @@ func clientIP(r *http.Request) string {
 }
 
 func traceFromRequest(r *http.Request) string {
+	// W3C trace context first, so a caller's trace continues through this app (§18.1).
+	if p := strings.Split(r.Header.Get("traceparent"), "-"); len(p) == 4 && len(p[1]) == 32 && p[1] != strings.Repeat("0", 32) {
+		if _, err := hex.DecodeString(p[1]); err == nil {
+			return strings.ToLower(p[1])
+		}
+	}
 	if v := r.Header.Get("X-Trace-Id"); len(v) == 32 {
 		return v
 	}
@@ -568,6 +575,9 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 		Headers: in.Headers, IP: in.IP, Key: in.Key, Invocation: invocation, Trace: in.Trace, App: a}
 	start := time.Now()
 	result, callErr := h.Handle(call)
+	if a.Registry != nil {
+		a.Registry.metric("ks_queries", float64(len(d.Stmts())), map[string]string{"action": h.Ref})
+	}
 	if a.OnCall != nil {
 		a.OnCall(Trace{ID: in.Trace, Invocation: invocation, Action: h.Ref, Actor: actor, Start: start,
 			Millis: float64(time.Since(start).Microseconds()) / 1000, Err: callErr,

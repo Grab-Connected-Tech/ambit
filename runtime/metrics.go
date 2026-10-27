@@ -251,3 +251,38 @@ func jsonDecoder(r io.Reader) *json.Decoder { return json.NewDecoder(r) }
 func jsonUnmarshal(b []byte, out any) error { return json.Unmarshal(b, out) }
 
 var _ = sort.Strings
+
+// gauges are the point-in-time values of §18.1, read when /metrics is scraped: pool
+// usage, outbox depth, lag and dead letters, and job queue depth and age.
+func (a *App) gauges(ctx context.Context) []byte {
+	var b strings.Builder
+	gauge := func(name string, v float64) {
+		fmt.Fprintf(&b, "# TYPE %s gauge\n%s %s\n", name, name, strconv.FormatFloat(v, 'f', -1, 64))
+	}
+	if a.Pool != nil {
+		st := a.Pool.Stat()
+		gauge("ks_db_pool_acquired", float64(st.AcquiredConns()))
+		gauge("ks_db_pool_idle", float64(st.IdleConns()))
+		gauge("ks_db_pool_max", float64(st.MaxConns()))
+		gauge("ks_db_pool_wait_total", float64(st.EmptyAcquireCount()))
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		var pending, dead, queued float64
+		var lag, age float64
+		err := a.framework(ctx, func(tx pgx.Tx) error {
+			if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE state = 'pending'), count(*) FILTER (WHERE state = 'dead_letter'),
+				coalesce(extract(epoch FROM now() - min(created_at) FILTER (WHERE state = 'pending')), 0) FROM ks_outbox`).Scan(&pending, &dead, &lag); err != nil {
+				return err
+			}
+			return tx.QueryRow(ctx, `SELECT count(*), coalesce(extract(epoch FROM now() - min(run_after)), 0) FROM ks_jobs WHERE state = 'queued' AND run_after <= now()`).Scan(&queued, &age)
+		})
+		if err == nil {
+			gauge("ks_outbox_pending", pending)
+			gauge("ks_outbox_dead_letter_rows", dead)
+			gauge("ks_outbox_lag_seconds", lag)
+			gauge("ks_jobs_queued", queued)
+			gauge("ks_jobs_oldest_seconds", age)
+		}
+	}
+	return []byte(b.String())
+}

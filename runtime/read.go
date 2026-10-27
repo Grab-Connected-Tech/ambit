@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -222,10 +223,11 @@ func (b *Query[T]) Count(ctx context.Context) (int64, error) {
 	}
 	sql := fmt.Sprintf("SELECT count(*) FROM %s t WHERE %s", v.t.Table, where)
 	var n int64
+	start := time.Now()
 	if err := v.db.conn.QueryRow(ctx, sql, sb.params...).Scan(&n); err != nil {
 		return 0, translate(err)
 	}
-	v.db.record(sql, sb.params, 1)
+	v.db.record(sql, sb.params, 1, start)
 	return n, nil
 }
 

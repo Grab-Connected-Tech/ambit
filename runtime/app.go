@@ -48,6 +48,7 @@ type App struct {
 	Buckets    *Buckets
 	Caches     *Cache
 	Clock      ks.Clock
+	stopOTLP func()
 	// Replica serves ReplicaOK() queries when database.replicaUrl is set.
 	Replica *pgxpool.Pool
 	// Keys seals and opens Encrypted() fields; nil when the app declares none (§9.4).
@@ -227,6 +228,7 @@ func New(ctx context.Context, o Options) (*App, error) {
 		return nil, errors.New("runtime: the app declares Encrypted() fields but no key is configured; set KS_ENCRYPTION_KEY (ks keys new prints one)")
 	}
 	a.Keys = keys
+	a.startOTLP()
 	for _, h := range o.Handlers {
 		a.Handlers[h.Ref] = h
 		a.ByPath[h.Name] = h
@@ -308,6 +310,9 @@ func (a *App) Close() {
 	}
 	if a.Replica != nil {
 		a.Replica.Close()
+	}
+	if a.stopOTLP != nil {
+		a.stopOTLP()
 	}
 }
 
