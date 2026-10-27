@@ -230,6 +230,14 @@ func New(ctx context.Context, o Options) (*App, error) {
 			a.ByPath[p] = h
 		}
 	}
+	// Configured providers first; ones passed in code (tests, community providers) win.
+	configured, err := providersFromConfig(o.Cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	for kind, p := range configured {
+		a.Providers.Register(kind, p)
+	}
 	for kind, p := range o.Providers {
 		a.Providers.Register(kind, p)
 	}
