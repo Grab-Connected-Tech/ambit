@@ -35,6 +35,7 @@ const usage = `usage: ks <command> [flags]
   migrate plan|verify|apply|status  plan and apply migrations
   client ts --out <dir>             write the TypeScript client elsewhere
   build [--out bin/app]             produce the production binary
+  keys new|rotate                   manage the keys of Encrypted() fields
 
 Every command accepts --json.
 `
@@ -53,7 +54,7 @@ func main() {
 	cmds := map[string]func([]string) error{
 		"init": cmdInit, "gen": cmdGen, "check": cmdCheck, "test": cmdTest, "diff": cmdDiff,
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
-		"client": cmdClient, "build": cmdBuild,
+		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {

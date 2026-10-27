@@ -1,6 +1,8 @@
 package billing
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -8,6 +10,7 @@ import (
 	"keystone.dev/keystone/example/myapp/gen"
 	"keystone.dev/keystone/ks"
 	"keystone.dev/keystone/kstest"
+	"keystone.dev/keystone/runtime"
 )
 
 // world is one tenant with an accountant, a plain member and a draft invoice.
@@ -156,4 +159,61 @@ func TestFuzzBillingActions(t *testing.T) {
 	kstest.Fuzz(env, gen.SendInvoiceHandler, Actions.SendInvoice, 40)
 	kstest.Fuzz(env, gen.MarkPaidHandler, Actions.MarkPaid, 40)
 	kstest.Fuzz(env, gen.ListInvoicesHandler, Actions.ListInvoices, 40)
+}
+
+func TestTaxIDIsEncryptedAtRest(t *testing.T) {
+	w := setup(t)
+	admin := w.env.Actor(w.org, app.Admin, app.Member)
+	inv := kstest.Create(w.env, gen.InvoiceTable, gen.Invoice{
+		TenantID: w.org, CustomerID: w.invoice.CustomerID, Amount: ks.MoneyOf(100, "USD"),
+		Status: gen.InvoiceStatusDraft, TaxId: ks.Set("DE123456789"),
+	})
+	var raw []byte
+	w.env.QueryRow(`SELECT tax_id FROM invoice WHERE id = $1`, []any{inv.ID}, &raw)
+	if len(raw) == 0 || strings.Contains(string(raw), "DE123456789") {
+		t.Fatalf("tax_id is stored in the clear: %q", raw)
+	}
+	page, err := kstest.Call(w.env, admin, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range page.Rows {
+		if r.ID == inv.ID {
+			if v, _ := r.TaxId.Get(); v != "DE123456789" {
+				t.Fatalf("an admin reads the plaintext: got %q", v)
+			}
+			return
+		}
+	}
+	t.Fatal("the invoice is not listed")
+}
+
+func TestEncryptedFieldsRoundTripThroughTheRuntime(t *testing.T) {
+	w := setup(t)
+	admin := w.env.Actor(w.org, app.Admin, app.Member)
+	err := w.env.As(admin, func(ctx context.Context, d *runtime.DB) error {
+		v := runtime.Scoped(d, gen.InvoiceTable)
+		inv, err := v.Insert(ctx, []runtime.Assignment{
+			runtime.SetColumn("customer_id", w.invoice.CustomerID.Bytes()),
+			runtime.SetColumn("amount_minor", int64(100)), runtime.SetColumn("amount_currency", "USD"),
+			runtime.SetColumn("tax_id", "FR999"),
+		})
+		if err != nil {
+			return err
+		}
+		if got, _ := inv.TaxId.Get(); got != "FR999" {
+			t.Fatalf("insert returns the plaintext, got %q", got)
+		}
+		again, err := v.Get(ctx, inv.ID)
+		if err != nil {
+			return err
+		}
+		if got, _ := again.TaxId.Get(); got != "FR999" {
+			t.Fatalf("a read opens what an insert sealed, got %q", got)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

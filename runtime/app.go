@@ -48,6 +48,8 @@ type App struct {
 	Buckets    *Buckets
 	Caches     *Cache
 	Clock      ks.Clock
+	// Keys seals and opens Encrypted() fields; nil when the app declares none (§9.4).
+	Keys *Keyring
 	// OnCall, when set, receives a Trace after every handler execution. Set it before
 	// serving; it is read without a lock.
 	OnCall func(Trace)
@@ -212,6 +214,14 @@ func New(ctx context.Context, o Options) (*App, error) {
 		wake:      make(chan struct{}, 1),
 		roles:     map[string]bool{},
 	}
+	keys, err := KeyringFromConfig(o.Cfg)
+	if err != nil {
+		return nil, err
+	}
+	if keys == nil && hasEncrypted(o.Model) {
+		return nil, errors.New("runtime: the app declares Encrypted() fields but no key is configured; set KS_ENCRYPTION_KEY (ks keys new prints one)")
+	}
+	a.Keys = keys
 	for _, h := range o.Handlers {
 		a.Handlers[h.Ref] = h
 		a.ByPath[h.Name] = h
@@ -468,6 +478,7 @@ func WithApp(a *App) DBOption {
 	return func(d *DB) {
 		d.app = a.Model
 		d.providers = a.Providers
+		d.keys = a.Keys
 	}
 }
 

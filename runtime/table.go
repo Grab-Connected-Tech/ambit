@@ -170,6 +170,10 @@ func splitField(f *model.Field) []Column {
 	base := Column{
 		Name: f.Name, GoName: f.GoName, Column: f.Column, SQL: "t." + f.Column,
 		SQLType: sqlTypeOf(f.Type), Kind: string(f.Type.Kind), Sensitive: f.Sensitive,
+		Encrypted: f.Type.Encrypted,
+	}
+	if f.Type.Encrypted {
+		base.SQLType = "bytea"
 	}
 	if f.Type.Kind == model.KindMoney {
 		minorName, currencyName := f.Column, f.Column+"_currency"

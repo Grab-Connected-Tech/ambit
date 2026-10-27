@@ -94,6 +94,14 @@ func New(t testing.TB, app *model.App) *Env {
 	cfg.App = app.Name()
 	cfg.DatabaseURL = withUser(ownerURL, appRole, appPassword)
 	cfg.MaxConns = 8
+	// Encrypted() fields need a key; tests get one per process.
+	if cfg.Secrets == nil {
+		cfg.Secrets = map[string]string{}
+	}
+	if cfg.DeclaredKeys == nil {
+		cfg.DeclaredKeys = map[string]bool{}
+	}
+	cfg.Secrets["encryptionKey"], cfg.DeclaredKeys["secrets.encryptionKey"] = testKey, true
 	if app.Defaults.QueryBudget > 0 {
 		cfg.QueryBudget = app.Defaults.QueryBudget
 	}
@@ -116,6 +124,8 @@ func New(t testing.TB, app *model.App) *Env {
 	}
 	return env
 }
+
+var testKey = runtime.NewKey()
 
 var templates sync.Map // schema hash -> template name, per process
 
@@ -279,11 +289,11 @@ func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
 // field without a default.
 func (e *Env) insertIn(table string, fields []model.Field, id ks.ID, set map[string]any, tenant ks.ID) {
 	e.T.Helper()
-	cols, args := e.rowValues(fields, id, set, tenant)
+	cols, args := e.rowValues(table, fields, id, set, tenant)
 	e.exec(table, cols, args)
 }
 
-func (e *Env) rowValues(fields []model.Field, id ks.ID, set map[string]any, tenant ks.ID) ([]string, []any) {
+func (e *Env) rowValues(table string, fields []model.Field, id ks.ID, set map[string]any, tenant ks.ID) ([]string, []any) {
 	e.T.Helper()
 	cols := []string{"id"}
 	args := []any{id}
@@ -307,7 +317,7 @@ func (e *Env) rowValues(fields []model.Field, id ks.ID, set map[string]any, tena
 			continue
 		}
 		if v, ok := set[f.Column]; ok {
-			cols, args = append(cols, f.Column), append(args, v)
+			cols, args = append(cols, f.Column), append(args, e.sealFixture(f.Type.Encrypted, table, f.Column, id, v))
 			continue
 		}
 		if f.Optional || f.Default != nil {
@@ -321,9 +331,26 @@ func (e *Env) rowValues(fields []model.Field, id ks.ID, set map[string]any, tena
 		if !ok {
 			e.T.Fatalf("kstest: %s is required and has no placeholder; pass it explicitly", f.Column)
 		}
-		cols, args = append(cols, f.Column), append(args, v)
+		cols, args = append(cols, f.Column), append(args, e.sealFixture(f.Type.Encrypted, table, f.Column, id, v))
 	}
 	return cols, args
+}
+
+// sealFixture encrypts a fixture value for an Encrypted() column exactly as the runtime
+// would, so actions read it back.
+func (e *Env) sealFixture(encrypted bool, table, column string, id ks.ID, v any) any {
+	if !encrypted || v == nil {
+		return v
+	}
+	s := fmt.Sprint(v)
+	if t, ok := v.(time.Time); ok {
+		s = t.UTC().Format(time.RFC3339Nano)
+	}
+	sealed, err := e.App.Keys.Seal([]byte(s), table, column, string(id))
+	if err != nil {
+		e.T.Fatalf("kstest: seal %s.%s: %v", table, column, err)
+	}
+	return sealed
 }
 
 func columnSet(set map[string]any, col string) bool {
@@ -440,7 +467,7 @@ func Create[T any](e *Env, table *runtime.Table[T], row T) *T {
 		if !set {
 			continue // absent: the column's default applies
 		}
-		cols, args = append(cols, c.Column), append(args, val)
+		cols, args = append(cols, c.Column), append(args, e.sealFixture(c.Encrypted, table.Table, c.Column, ks.ID(v.FieldByName("ID").String()), val))
 	}
 	e.exec(table.Table, cols, args)
 	return &row
@@ -486,6 +513,13 @@ func Call[C, In, Out any](e *Env, actor ks.Actor, wrap func(func(*C, In) (Out, e
 		}
 	}
 	return out, nil
+}
+
+// QueryRow reads the database directly as the schema owner, across tenants: for
+// asserting what is stored, below the access rules.
+func (e *Env) QueryRow(sql string, args []any, dest ...any) {
+	e.T.Helper()
+	e.system(func(tx pgx.Tx) error { return tx.QueryRow(context.Background(), sql, args...).Scan(dest...) })
 }
 
 // LastTrace is what the most recent action execution did.

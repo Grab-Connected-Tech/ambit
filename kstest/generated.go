@@ -427,7 +427,7 @@ func violation(e *Env, res *model.Resource, n *policy.Node) (map[string]any, boo
 
 // tryInsert is insertIn that returns the database error instead of failing the test.
 func (e *Env) tryInsert(res *model.Resource, tenant ks.ID, set map[string]any) error {
-	cols, args := e.rowValues(res.Fields, ks.NewID(), merge([]map[string]any{{"tenant_id": tenant}, set}), tenant)
+	cols, args := e.rowValues(res.Table, res.Fields, ks.NewID(), merge([]map[string]any{{"tenant_id": tenant}, set}), tenant)
 	sql, _ := insertSQL(res.Table, cols)
 	return pgx.BeginFunc(context.Background(), e.owner, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(context.Background(), "SELECT set_config('ks.cross_tenant','on',true)"); err != nil {

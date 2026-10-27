@@ -98,8 +98,14 @@ func (r *row) Int(i int) int64 {
 }
 func (r *row) Bool(i int) bool { b, _ := r.at(i).(bool); return b }
 func (r *row) Time(i int) time.Time {
-	t, _ := r.at(i).(time.Time)
-	return t.UTC()
+	switch t := r.at(i).(type) {
+	case time.Time:
+		return t.UTC()
+	case string: // an Encrypted() timestamp, opened to its text form
+		p, _ := time.Parse(time.RFC3339Nano, t)
+		return p.UTC()
+	}
+	return time.Time{}
 }
 func (r *row) Decimal(i int) ks.Decimal {
 	switch t := r.at(i).(type) {
@@ -138,6 +144,7 @@ type Column struct {
 	SQLType   string // postgres type, for casts
 	Kind      string // model.TypeKind
 	Sensitive bool
+	Encrypted bool // sealed with the app's keyring at rest (§9.4)
 }
 
 // Frag is a compiled policy fragment: SQL with ? placeholders for actor values only.
@@ -243,6 +250,7 @@ type DB struct {
 	invocation    ks.ID
 	start         time.Time
 	providers     *Providers
+	keys          *Keyring
 }
 
 // Stmt is one executed statement, kept for traces and for ks perf capture.

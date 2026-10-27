@@ -462,7 +462,7 @@ func (v *visitor) checkImports() {
 		}
 		if v.kind == fileTest {
 			switch {
-			case p == "testing", strings.HasSuffix(p, "/kstest"), strings.HasSuffix(p, "/go/assert"),
+			case p == "testing", p == "context", strings.HasSuffix(p, "/kstest"), strings.HasSuffix(p, "/go/assert"),
 				strings.HasSuffix(p, "/stretchr/testify"):
 				continue
 			case p == v.cfg.ModulePath+"/app/"+v.module+"/actions":

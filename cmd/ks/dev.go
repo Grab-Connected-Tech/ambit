@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"keystone.dev/keystone/runtime"
 )
 
 // cmdDev runs the app with KS_DEV=1 (which turns on /_ks introspection), reseeds it, and
@@ -83,6 +85,14 @@ func devStart(ctx context.Context, bin, addr string) *exec.Cmd {
 	}
 	proc := exec.Command(bin)
 	proc.Env = append(os.Environ(), "KS_DEV=1", "KS_ADDR="+addr)
+	if os.Getenv("KS_ENCRYPTION_KEY") == "" {
+		key, err := devKey()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ks dev:", err)
+			return nil
+		}
+		proc.Env = append(proc.Env, "KS_ENCRYPTION_KEY="+key)
+	}
 	proc.Stdout, proc.Stderr = os.Stdout, os.Stderr
 	if err := proc.Start(); err != nil {
 		fmt.Fprintln(os.Stderr, "ks dev:", err)
@@ -147,4 +157,21 @@ func sourceStamp() string {
 		return nil
 	})
 	return fmt.Sprintf("%d/%d", n, latest.UnixNano())
+}
+
+// devKey is the development encryption key, kept in .ks/dev.key so data written in one
+// session still opens in the next. It is never used outside ks dev.
+func devKey() (string, error) {
+	path := filepath.Join(".ks", "dev.key")
+	if raw, err := os.ReadFile(path); err == nil {
+		return strings.TrimSpace(string(raw)), nil
+	}
+	key := runtime.NewKey()
+	if err := os.MkdirAll(".ks", 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(".ks", ".gitignore"), []byte("*\n"), 0o600); err != nil {
+		return "", err
+	}
+	return key, os.WriteFile(path, []byte(key+"\n"), 0o600)
 }

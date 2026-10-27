@@ -44,7 +44,7 @@ func (v *View[T]) Get(ctx context.Context, id ks.ID, withs ...With[T]) (*T, erro
 		return nil, translate(err)
 	}
 	defer rows.Close()
-	out, err := scanAll(rows, v.t.Scan, nil)
+	out, err := scanAll(rows, v.scanner(), nil)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -94,7 +94,7 @@ func (v *View[T]) ByIDs(ctx context.Context, ids []ks.ID, withs ...With[T]) ([]*
 		return nil, translate(err)
 	}
 	defer rows.Close()
-	out, err := scanAll(rows, v.t.Scan, nil)
+	out, err := scanAll(rows, v.scanner(), nil)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -171,7 +171,7 @@ func (b *Query[T]) Page(ctx context.Context, cursor string, size int) (*PageOf[T
 		return nil, translate(err)
 	}
 	defer rows.Close()
-	out, err := scanAll(rows, v.t.Scan, nil)
+	out, err := scanAll(rows, v.scanner(), nil)
 	if err != nil {
 		return nil, translate(err)
 	}

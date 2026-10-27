@@ -47,7 +47,7 @@ func (v *View[T]) Insert(ctx context.Context, sets []Assignment, withs ...With[T
 		return nil, translate(err)
 	}
 	defer rows.Close()
-	out, err := scanAll(rows, v.t.Scan, nil)
+	out, err := scanAll(rows, v.scanner(), nil)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -83,7 +83,7 @@ func (v *View[T]) Update(ctx context.Context, id ks.ID, version ks.Version, sets
 		if s.Column == "version" || s.Column == "id" || s.Column == "tenant_id" {
 			continue
 		}
-		p, err := sb.text("?", s.arg())
+		p, err := sb.text("?", v.seal(s.Column, id, s.arg()))
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +128,7 @@ func (v *View[T]) Update(ctx context.Context, id ks.ID, version ks.Version, sets
 		return nil, translate(err)
 	}
 	defer rows.Close()
-	out, err := scanAll(rows, v.t.Scan, nil)
+	out, err := scanAll(rows, v.scanner(), nil)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -321,14 +321,14 @@ func (v *View[T]) insertValues(sets []Assignment) ([]string, []string, []any) {
 		cols = append(cols, quote(col))
 		exprs = append(exprs, expr)
 	}
-	add("id", "::uuid", ks.NewID().Bytes())
+	id := ks.NewID()
+	add("id", "::uuid", id.Bytes())
 	for _, s := range sets {
 		switch s.Column {
 		case "id", "version", "created_at", "updated_at", "tenant_id":
 			continue
 		}
-		val := s.arg()
-		add(s.Column, v.columnCast(s.Column), val)
+		add(s.Column, v.columnCast(s.Column), v.seal(s.Column, id, s.arg()))
 	}
 	if v.t.Tenant {
 		add("tenant_id", "::uuid", v.db.actor.Tenant.Bytes())
