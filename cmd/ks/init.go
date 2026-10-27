@@ -51,7 +51,7 @@ func cmdInit(args []string) error {
 		"ks.yaml":                  "# Keystone configuration (§18.2). Secrets come from the environment.\nlimits:\n  queryBudget: 50\n",
 		".github/workflows/ks.yml": initCI,
 		"seed/001_example.sql":     "-- Seed rows for ks dev, loaded on start and on POST /_ks/reset.\n",
-		".gitignore":               "bin/\n",
+		".gitignore":               "bin/\n.ks/\n",
 	}
 	for path, body := range files {
 		full := filepath.Join(name, path)

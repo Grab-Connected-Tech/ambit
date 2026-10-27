@@ -305,36 +305,36 @@ func defaultSQL(f model.Field) string {
 
 // indexDDL emits declared, ref and unique indexes. Every ref gets one (§5.3).
 func indexDDL(a *model.App, ref string, r model.Resource) []string {
-	var out []string
-	seen := map[string]bool{}
-	add := func(name, cols string, unique bool, where string) {
-		if seen[name] {
+	type index struct {
+		name   string
+		cols   []string
+		unique bool
+		where  string
+	}
+	var all []index
+	add := func(name string, cols []string, unique bool, where string) {
+		if len(cols) == 0 {
 			return
 		}
-		seen[name] = true
-		kw := "INDEX"
-		if unique {
-			kw = "UNIQUE INDEX"
+		// Every scoped query filters on the tenant first, and uniqueness holds within a
+		// tenant: a global unique index would let one tenant learn, from a conflict,
+		// that another tenant holds a value (§1.1, §8.1).
+		if r.Tenant && cols[0] != quoteIdent("tenant_id") {
+			cols = append([]string{quoteIdent("tenant_id")}, cols...)
 		}
-		sql := fmt.Sprintf("CREATE %s %s ON %s (%s)", kw, quoteIdent(name), quoteIdent(r.Table), cols)
-		if where != "" {
-			sql += " WHERE " + where
+		// Index names share one namespace per schema, so they carry the table.
+		if !strings.HasPrefix(name, r.Table+"_") {
+			name = r.Table + "_" + name
 		}
-		out = append(out, sql+";")
+		all = append(all, index{name, cols, unique, where})
 	}
 	for _, ix := range r.Indexes {
-		cols := make([]string, 0, len(ix.Fields))
+		var cols []string
 		for _, fname := range ix.Fields {
-			f := r.FindField(fname)
-			if f == nil {
-				continue
-			}
-			for _, c := range f.StorageColumns() {
-				if ix.Unique && c == f.Column && f.Type.Kind == model.KindMoney {
+			if f := r.FindField(fname); f != nil {
+				for _, c := range f.StorageColumns() {
 					cols = append(cols, quoteIdent(c))
-					continue
 				}
-				cols = append(cols, quoteIdent(c))
 			}
 		}
 		where := ""
@@ -343,15 +343,58 @@ func indexDDL(a *model.App, ref string, r model.Resource) []string {
 				where = sql.Text
 			}
 		}
-		add(ix.Name, strings.Join(cols, ", "), ix.Unique, where)
+		add(ix.Name, cols, ix.Unique, where)
 	}
 	for _, f := range r.Fields {
 		if f.Type.Kind == model.KindRef && f.Ref != nil {
-			add(f.Column+"_idx", quoteIdent(f.Column), false, "")
+			add(f.Column+"_idx", []string{quoteIdent(f.Column)}, false, "")
 		}
-		if f.Unique && f.Name != "id" && len(f.Columns) == 1 {
-			add(r.Table+"_"+f.Column+"_uniq", quoteIdent(f.Column), true, "")
+		if f.Unique && f.Name != "id" && len(f.Columns) <= 1 { // a plain field has no Columns list
+			add(f.Column+"_uniq", []string{quoteIdent(f.Column)}, true, "")
 		}
+	}
+	// The tenant table's tenant_id is its own primary key, which is already indexed.
+	if r.Tenant && (a.Tenant == nil || a.Tenant.Table != r.Table) {
+		add("tenant", []string{quoteIdent("tenant_id")}, false, "")
+	}
+	// An index is redundant when another one has the same definition, or (if it is not
+	// unique) when its columns lead another index with the same predicate: Postgres uses
+	// the longer one for both, and every extra index costs every write.
+	covered := func(x index) bool {
+		for _, y := range all {
+			if y.name == x.name || y.where != x.where || len(y.cols) < len(x.cols) {
+				continue
+			}
+			same := strings.Join(y.cols[:len(x.cols)], ",") == strings.Join(x.cols, ",")
+			if !same {
+				continue
+			}
+			if len(y.cols) > len(x.cols) && !x.unique {
+				return true
+			}
+			if len(y.cols) == len(x.cols) && y.unique == x.unique && y.name < x.name {
+				return true // keep one of two identical indexes
+			}
+			if len(y.cols) == len(x.cols) && y.unique && !x.unique {
+				return true // a unique index already serves lookups
+			}
+		}
+		return false
+	}
+	var out []string
+	for _, x := range all {
+		if covered(x) {
+			continue
+		}
+		kw := "INDEX"
+		if x.unique {
+			kw = "UNIQUE INDEX"
+		}
+		sql := fmt.Sprintf("CREATE %s %s ON %s (%s)", kw, quoteIdent(x.name), quoteIdent(r.Table), strings.Join(x.cols, ", "))
+		if x.where != "" {
+			sql += " WHERE " + x.where
+		}
+		out = append(out, sql+";")
 	}
 	sort.Strings(out)
 	return out
@@ -415,17 +458,48 @@ func hasColumn(fields []model.Field, col string) bool {
 	return false
 }
 
-// PolicyDDL is every table's row-level security setup, idempotently: what a framework
-// upgrade re-applies when the policies it generates changed but the model did not.
-func PolicyDDL(a *model.App) []string {
-	var out []string
+// UpgradeDDL is what a framework upgrade re-applies when the DDL it generates changed
+// but the model did not. In the transaction: every table's row-level security, and the
+// removal of indexes on app tables that the framework no longer generates (indexes
+// behind constraints are kept). Outside it: every generated index rebuilt concurrently,
+// so a changed definition under an unchanged name takes effect.
+//
+// ponytail: a rebuilt index is missing between its drop and its concurrent create, which
+// slows queries that need it during the release; a framework upgrade is rare enough.
+// Building under a temporary name and renaming would close that gap.
+func UpgradeDDL(a *model.App) (inTx, outside []string) {
+	var keep, tables []string
 	for _, stmt := range DDL(a) {
 		s := strings.TrimSpace(stmt)
-		if strings.Contains(s, "ROW LEVEL SECURITY") || strings.HasPrefix(s, "DROP POLICY") || strings.HasPrefix(s, "CREATE POLICY") {
-			out = append(out, stmt)
+		switch {
+		case strings.Contains(s, "ROW LEVEL SECURITY") || strings.HasPrefix(s, "DROP POLICY") || strings.HasPrefix(s, "CREATE POLICY"):
+			inTx = append(inTx, stmt)
+		case strings.HasPrefix(s, "CREATE INDEX \"") || strings.HasPrefix(s, "CREATE UNIQUE INDEX \""):
+			name := strings.SplitN(strings.SplitN(s, "\"", 3)[1], "\"", 2)[0]
+			keep = append(keep, quoteSQL(name))
+			outside = append(outside, "DROP INDEX CONCURRENTLY IF EXISTS "+quoteIdent(name)+";",
+				strings.Replace(s, "INDEX ", "INDEX CONCURRENTLY ", 1))
 		}
 	}
-	return out
+	for _, r := range a.AllResources() {
+		tables = append(tables, quoteSQL(r.Resource.Table))
+	}
+	if a.Tenant != nil {
+		tables = append(tables, quoteSQL(a.Tenant.Table))
+	}
+	if a.Account != nil {
+		tables = append(tables, quoteSQL(a.Account.Table))
+	}
+	if len(keep) == 0 {
+		keep = append(keep, "''")
+	}
+	inTx = append(inTx, fmt.Sprintf(`DO $$ DECLARE r record; BEGIN
+  FOR r IN SELECT i.indexname FROM pg_indexes i
+    WHERE i.schemaname = 'public' AND i.tablename IN (%s) AND i.indexname NOT IN (%s)
+      AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = format('%%I', i.indexname)::regclass)
+  LOOP EXECUTE format('DROP INDEX %%I', r.indexname); END LOOP;
+END $$;`, strings.Join(tables, ", "), strings.Join(keep, ", ")))
+	return inTx, outside
 }
 
 // DDLHash identifies the schema the framework generates for a model.

@@ -109,8 +109,9 @@ func migratePlan(name string, asJSON bool) error {
 		// The same model can generate different DDL after a framework upgrade; policies
 		// are re-applied then, since they are idempotent and carry the security fixes.
 		if last.Plan.DDLHash != "" && last.Plan.DDLHash != migrate.DDLHash(head) && migrate.DDLHash(base) != last.Plan.DDLHash {
+			inTx, outside := migrate.UpgradeDDL(head)
 			plan.Steps = append(plan.Steps, migrate.Step{Class: migrate.Safe, Subject: "framework",
-				Detail: "re-apply row-level security after a framework upgrade", InTx: migrate.PolicyDDL(head)})
+				Detail: "re-apply row-level security and indexes after a framework upgrade", InTx: inTx, OutsideTx: outside})
 		}
 	}
 	plan.DDLHash = migrate.DDLHash(head)

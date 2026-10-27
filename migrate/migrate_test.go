@@ -127,8 +127,8 @@ func TestFreshDDL(t *testing.T) {
 		"CHECK (length(\"notes\") <= 2000)",
 		"CONSTRAINT \"invoice_amount_positive\" CHECK (invoice.amount_minor > 0)",
 		"CONSTRAINT \"invoice_pk\" PRIMARY KEY (id)",
-		"CREATE INDEX \"invoice_customer_status\" ON \"invoice\" (\"customer_id\", \"status\");",
-		"CREATE INDEX \"customer_id_idx\" ON \"invoice\" (\"customer_id\");",
+		// Tenant-led, and the (customer_id) index the reference implies is covered by it.
+		"CREATE INDEX \"invoice_customer_status\" ON \"invoice\" (\"tenant_id\", \"customer_id\", \"status\");",
 		"ALTER TABLE \"invoice\" FORCE ROW LEVEL SECURITY;",
 		"CREATE POLICY ks_tenant_isolation ON \"invoice\"",
 		"USING ((\"invoice\".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR",
@@ -143,6 +143,9 @@ func TestFreshDDL(t *testing.T) {
 		if !strings.Contains(sql, w) {
 			t.Errorf("DDL missing:\n  %s", w)
 		}
+	}
+	if strings.Contains(sql, "invoice_customer_id_idx") {
+		t.Error("an index whose columns lead another index is redundant")
 	}
 	if strings.Contains(sql, "CREATE TABLE \"ks_membership\" (\n  id") && !strings.Contains(sql, "ks_membership_unique") {
 		t.Error("membership must be unique per actor, tenant and role")

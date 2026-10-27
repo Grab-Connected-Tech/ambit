@@ -167,11 +167,17 @@ func devKey() (string, error) {
 		return strings.TrimSpace(string(raw)), nil
 	}
 	key := runtime.NewKey()
-	if err := os.MkdirAll(".ks", 0o700); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(filepath.Join(".ks", ".gitignore"), []byte("*\n"), 0o600); err != nil {
+	if err := ksDir(); err != nil {
 		return "", err
 	}
 	return key, os.WriteFile(path, []byte(key+"\n"), 0o600)
+}
+
+// ksDir makes .ks/, the local state ks keeps (a dev key, captured queries), and keeps it
+// out of version control: both can hold secrets or data.
+func ksDir() error {
+	if err := os.MkdirAll(".ks", 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(".ks", ".gitignore"), []byte("*\n"), 0o600)
 }

@@ -39,6 +39,7 @@ const usage = `usage: ks <command> [flags]
   build [--out bin/app]             produce the production binary
   keys new|rotate                   manage the keys of Encrypted() fields
   docs --llm [--out file]           write the single-file framework reference for models
+  perf [--min-rows n]               explain captured queries; flag scans that need an index
   outbox list|inspect|replay        operate on pending and dead-lettered effects
   jobs list|inspect|replay          operate on jobs
 
@@ -60,7 +61,7 @@ func main() {
 		"init": cmdInit, "gen": cmdGen, "check": cmdCheck, "test": cmdTest, "diff": cmdDiff,
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
 		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
-		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs,
+		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs, "perf": cmdPerf,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {
@@ -448,6 +449,11 @@ func cmdTest(args []string) error {
 	// Tests need a Postgres to clone per-test databases from (§16.1): the configured one,
 	// or a disposable one started for this run.
 	cmd.Env = os.Environ()
+	// Query shapes are captured for ks perf (§11.4).
+	if capture, err := filepath.Abs(filepath.Join(".ks", "queries.jsonl")); err == nil && ksDir() == nil {
+		_ = os.Remove(capture)
+		cmd.Env = append(cmd.Env, "KS_CAPTURE_QUERIES="+capture)
+	}
 	if os.Getenv("KS_TEST_DB_URL") == "" {
 		url, stop, err := disposablePostgres()
 		if err != nil {

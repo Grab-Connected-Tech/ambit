@@ -48,7 +48,7 @@ type App struct {
 	Buckets    *Buckets
 	Caches     *Cache
 	Clock      ks.Clock
-	stopOTLP func()
+	stopOTLP   func()
 	// Replica serves ReplicaOK() queries when database.replicaUrl is set.
 	Replica *pgxpool.Pool
 	// Keys seals and opens Encrypted() fields; nil when the app declares none (§9.4).

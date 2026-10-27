@@ -40,6 +40,8 @@ CREATE TABLE "user_account" (
 
 COMMENT ON TABLE "user_account" IS 'resource User; managed by ks, do not edit';
 
+CREATE UNIQUE INDEX "user_account_email_uniq" ON "user_account" ("tenant_id", "email");
+
 ALTER TABLE "user_account" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "user_account" FORCE ROW LEVEL SECURITY;
@@ -442,13 +444,9 @@ CREATE TABLE "customer" (
 
 COMMENT ON TABLE "customer" IS 'resource Customer; managed by ks, do not edit';
 
-CREATE INDEX "customer_owner" ON "customer" ("owner_id");
+CREATE INDEX "customer_owner" ON "customer" ("tenant_id", "owner_id");
 
-CREATE INDEX "owner_id_idx" ON "customer" ("owner_id");
-
-CREATE INDEX "owner_id_index" ON "customer" ("owner_id");
-
-CREATE UNIQUE INDEX "customer_email_unique" ON "customer" ("email");
+CREATE UNIQUE INDEX "customer_email_uniq" ON "customer" ("tenant_id", "email");
 
 ALTER TABLE "customer" ENABLE ROW LEVEL SECURITY;
 
@@ -481,11 +479,7 @@ CREATE TABLE "invoice" (
 
 COMMENT ON TABLE "invoice" IS 'resource Invoice; managed by ks, do not edit';
 
-CREATE INDEX "customer_id_idx" ON "invoice" ("customer_id");
-
-CREATE INDEX "customer_id_index" ON "invoice" ("customer_id");
-
-CREATE INDEX "invoice_customer_status" ON "invoice" ("customer_id", "status");
+CREATE INDEX "invoice_customer_status" ON "invoice" ("tenant_id", "customer_id", "status");
 
 ALTER TABLE "invoice" ENABLE ROW LEVEL SECURITY;
 

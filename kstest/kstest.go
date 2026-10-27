@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -121,6 +122,9 @@ func New(t testing.TB, app *model.App) *Env {
 		env.mu.Lock()
 		env.traces = append(env.traces, tr)
 		env.mu.Unlock()
+	}
+	if path := os.Getenv("KS_CAPTURE_QUERIES"); path != "" {
+		t.Cleanup(func() { env.capture(path) })
 	}
 	return env
 }
@@ -544,6 +548,59 @@ func (e *Env) Traces() []runtime.Trace {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return append([]runtime.Trace(nil), e.traces...)
+}
+
+// Shape is one captured statement, which ks perf explains against a seeded database
+// (§11.4). Arguments are rendered as text so they replay as parameters.
+type Shape struct {
+	Action string   `json:"action"`
+	SQL    string   `json:"sql"`
+	Args   []string `json:"args"`
+}
+
+// capture appends this test's statement shapes, one JSON line per statement, so test
+// binaries running at once can share the file.
+func (e *Env) capture(path string) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	for _, tr := range e.Traces() {
+		for _, st := range tr.Stmts {
+			if strings.HasPrefix(st.SQL, "SELECT set_config") {
+				continue
+			}
+			sh := Shape{Action: tr.Action, SQL: st.SQL}
+			for _, a := range st.Args {
+				sh.Args = append(sh.Args, argText(a))
+			}
+			line, _ := json.Marshal(sh)
+			_, _ = f.Write(append(line, '\n'))
+		}
+	}
+}
+
+func argText(a any) string {
+	switch v := a.(type) {
+	case []byte:
+		if len(v) == 16 {
+			return fmt.Sprintf("%x-%x-%x-%x-%x", v[0:4], v[4:6], v[6:8], v[8:10], v[10:16])
+		}
+		return string(v)
+	case time.Time:
+		return v.UTC().Format(time.RFC3339Nano)
+	case *string:
+		if v != nil {
+			return *v
+		}
+	case nil:
+		return ""
+	}
+	return fmt.Sprint(a)
 }
 
 // LastTrace is what the most recent action execution did.
