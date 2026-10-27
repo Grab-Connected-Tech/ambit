@@ -159,6 +159,19 @@ func (x *otlpExporter) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			// Drain what is already buffered: a select may see Done before the spans
+			// recorded just ahead of it, and those are the last of the process.
+			for {
+				select {
+				case s := <-x.spans:
+					if batch = append(batch, s); len(batch) >= otlpBatch {
+						send()
+					}
+					continue
+				default:
+				}
+				break
+			}
 			send()
 			return
 		case s := <-x.spans:
