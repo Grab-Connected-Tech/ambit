@@ -23,15 +23,19 @@ import (
 // effect providers. A Keystone app is a single binary, so this is the whole world
 // (§2.10).
 type App struct {
-	Model      *model.App
-	Cfg        *Config
-	Pool       *pgxpool.Pool
-	Log        *slog.Logger
-	Handlers   map[string]*Handler
-	Routes     map[string]string // path -> "module.Action"
-	Providers  *Providers
-	Registry   *Metrics
+	Model     *model.App
+	Cfg       *Config
+	Pool      *pgxpool.Pool
+	Log       *slog.Logger
+	Handlers  map[string]*Handler
+	Routes    map[string]string // path -> "module.Action"
+	Providers *Providers
+	Registry  *Metrics
+	// MetricSink receives every counter the framework increments. Set it with
+	// SetMetricSink after construction; a plain field write races with the dispatchers
+	// already running.
 	MetricSink func(name string, delta float64)
+	sink       atomic.Pointer[func(name string, delta float64)]
 	Auth       *Auth
 	Buckets    *Buckets
 	Caches     *Cache
@@ -421,7 +425,19 @@ func (a *App) Rollback(ctx context.Context, tx pgx.Tx) {
 var _ = policy.Always
 
 // metric records a counter, or forwards to an installed sink.
+// SetMetricSink installs a metrics sink while the app is running.
+func (a *App) SetMetricSink(fn func(name string, delta float64)) {
+	if fn == nil {
+		return
+	}
+	a.sink.Store(&fn)
+}
+
 func (a *App) metric(name string, delta float64) {
+	if p := a.sink.Load(); p != nil {
+		(*p)(name, delta)
+		return
+	}
 	if a.MetricSink != nil {
 		a.MetricSink(name, delta)
 		return

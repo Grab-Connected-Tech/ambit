@@ -1633,11 +1633,11 @@ func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 	// A mutation handler with a per-actor limit sheds after the declared count (§3.3).
 	n := 0
 	var limitErrors int
-	h.app.MetricSink = func(name string, delta float64) {
+	h.app.SetMetricSink(func(name string, delta float64) {
 		if name == "ks_rate_limit_error" {
 			limitErrors++
 		}
-	}
+	})
 	h.app.Handlers["billing.Limited"] = &runtime.Handler{
 		Ref: "billing.Limited", Module: "billing", Name: "Limited", Kind: model.KindMutation,
 		Path: "/api/billing/Limited",
