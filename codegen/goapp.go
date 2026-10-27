@@ -114,7 +114,11 @@ func oneOf(v string, options []string) bool {
 func Config() runtime.Config {
 	c := *runtime.Defaults()
 	c.App = AppName
-	if path := os.Getenv("KS_CONFIG"); path != "" {
+	path := os.Getenv("KS_CONFIG")
+	if _, err := os.Stat("ks.yaml"); path == "" && err == nil {
+		path = "ks.yaml"
+	}
+	if path != "" {
 		loaded, err := runtime.LoadConfig(path)
 		if err != nil {
 			panic("gen: " + path + ": " + err.Error())
