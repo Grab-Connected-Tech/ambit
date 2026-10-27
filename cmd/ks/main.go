@@ -32,7 +32,7 @@ const usage = `usage: ks <command> [flags]
   check [--strict]                  compile, vet and analyze
   test                              run generated and written tests
   diff --base <rev> [--format f]    risk-ranked behavior diff (text|markdown|json)
-  dev [--addr :8080]                run with reload and introspection
+  dev [--addr :8080] [--mcp]        run with reload and introspection; --mcp for agent tools
   context <module> [--action m.A]   print a compact context bundle
   explain [<rule>]                  explain a checker rule
   migrate plan|verify|apply|status  plan and apply migrations

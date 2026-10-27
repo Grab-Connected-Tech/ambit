@@ -21,14 +21,26 @@ import (
 // regenerates, rebuilds and restarts whenever a source file changes (§17.4).
 func cmdDev(args []string) error {
 	var addr *string
+	var mcp *bool
 	_, _, err := flags("dev", args, func(fs *flag.FlagSet) {
 		addr = fs.String("addr", ":8080", "listen address")
+		mcp = fs.Bool("mcp", false, "serve the introspection API as MCP tools on stdio")
 	})
 	if err != nil {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if *mcp {
+		// stdout carries the protocol; everything the loop prints goes to stderr.
+		proto := os.Stdout
+		os.Stdout = os.Stderr
+		base := "http://localhost" + (*addr)[strings.LastIndex(*addr, ":"):]
+		go func() {
+			_ = mcpServe(os.Stdin, proto, base)
+			stop() // the client hung up
+		}()
+	}
 	bin := filepath.Join(os.TempDir(), fmt.Sprintf("ks-dev-%d", os.Getpid()))
 	defer os.Remove(bin)
 	for {
