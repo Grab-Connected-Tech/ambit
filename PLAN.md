@@ -91,6 +91,14 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
   `go build ./example/...`, `ks gen` byte-stable, `ks check --strict` clean, `ks test`
   green, `ks diff` non-empty vs. base. Run the suite with
   `KS_TEST_DB_URL=postgres://$USER@localhost:5432/postgres?sslmode=disable go test ./...`.
+- **Spec audit done** (everything §1–§19 asks of the framework, checked section by section):
+  one wire format + §12.3 client, strict input decoding, envelope encryption + `ks keys`,
+  tenant-table RLS, per-tenant uniqueness and tenant-led indexes, compensating effects,
+  SMTP/webhook/S3 providers from `ks.yaml`, query cache with transactional invalidation,
+  replica routing, GOMEMLIMIT, authenticated pprof, OTLP traces + §18.1 metrics, embedded
+  migrations + `myapp migrate`, Dockerfile, deprecate-first API rule (KS-API-001), generated
+  encoders, and the rest of §19: `new`, `docs --llm`, `perf`, `bench`, `upgrade`,
+  `outbox|jobs`, `dev --mcp`, `ks test` on a disposable Postgres.
 
 ## Deviations from the spec text (all deliberate, all recorded)
 1. Checker analyzers use stdlib `go/ast` + `go/parser`, not `x/tools/go/analysis` (§2.10).
@@ -104,6 +112,19 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
 6. Role checks compile to an EXISTS over `ks_membership` (immediate revocation) rather
    than a role array on the session; `RunAs(System)` uses the `app.actor_system` GUC.
 7. Diff category for schema rows is `migration` (matches the §15.3 sample output).
+8. Passwords hash with PBKDF2-HMAC-SHA256 (stdlib), not Argon2id, which needs x/crypto;
+   the breached-password check is a local denylist, not a network call (§9.2).
+9. Compression is gzip only; the standard library has no zstd (§11.2).
+10. OTLP export is a standard-library OTLP/HTTP JSON exporter, not the OpenTelemetry SDK
+    (§18.1); best effort, a full buffer drops spans (`ks_otlp_dropped`).
+11. Generated code encodes rows without reflection (§11.1); decoding uses encoding/json with
+    unknown fields refused. Measured: encoding is a negligible share of a call.
+12. Action code may live in `app/<module>/actions.go` (an `Actions` struct) rather than an
+    `actions/` folder, because `var X = s.Mutation(...)` would collide with `func X`.
+13. Unique fields are unique per tenant on tenant resources: global uniqueness would let
+    one tenant learn from a conflict that another holds a value (§1.1).
+14. A compensation names a job (`Compensate("module.Job")`), which receives the effect call
+    and its result (§10.2 leaves the shape open).
 
 ## Decisions to keep
 - `policy` SQL text uses the `__KS_ROOT__.` marker + `?` binds; `Place` renumbers to `$n`.
@@ -146,11 +167,12 @@ migrations/TS client/openapi/AGENTS.md), pipeline, scoped queries + RLS, invaria
 deferred), optimistic concurrency, audit, outbox, jobs, schedules w/ advisory-lock leader,
 sessions/API tokens/OIDC-shape, rate limits, budgets, checker (KS-* catalog), diff, migrate
 plan/verify/apply/status, kstest harness, CLI.
-Thin: OIDC = code+PKCE flow against any discovery doc, no vendor presets. `ks dev` = run+watch
-+introspection endpoints, no MCP. Telemetry = slog JSON + Prometheus-text metrics + trace IDs
-(no OTLP exporter). Property tests = one seeded fuzz (tenant isolation + no 500s). Backfills =
-plan + resumable batch job. Generated access tests cover role-only rules and two invariant
-shapes; other rules are skipped with the rule printed. `ks test` uses `KS_TEST_DB_URL` rather
-than starting its own Postgres. Not built: `ks new`, `perf`, `bench`, `outbox|jobs` ops, `keys
-rotate`, `docs --llm`, `upgrade` (§19 rows outside the v0.1 list above).
+Thin: OIDC = code+PKCE flow against any discovery doc, no vendor presets. Property tests = one
+seeded fuzz (tenant isolation + no 500s). Generated access tests cover role-only rules and two
+invariant shapes (field vs integer, "a = v implies b set"); other rules are skipped with the
+rule printed. SMS has no built-in provider (§10.3 calls them community providers). Email
+templates are read from `templates/` beside the binary (the Dockerfile copies them), not
+embedded. Framework upgrades rebuild generated indexes with a short window where one is
+missing (ponytail in `migrate.UpgradeDDL`). Not verified here: replica routing (needs a second
+server) and the Docker image build (no daemon on this machine).
 Out (v1 per spec): cross-row aggregate invariants, GraphQL, multi-DB, real-time, multi-region.
