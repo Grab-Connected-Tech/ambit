@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // DDL renders the full schema for an app: framework tables first, then every
@@ -31,7 +31,7 @@ func DDL(a *model.App) []string {
 	for _, ref := range orderedResources(a) {
 		res := a.FindResource(ref)
 		if res == nil || frameworkOwned(a, res) {
-			continue // the tenant, account and ks_* tables are written above
+			continue // the tenant, account and am_* tables are written above
 		}
 		out = append(out, resourceDDL(a, ref, *res)...)
 	}
@@ -40,7 +40,7 @@ func DDL(a *model.App) []string {
 
 // frameworkOwned reports a table the framework writes itself.
 func frameworkOwned(a *model.App, r *model.Resource) bool {
-	if strings.HasPrefix(r.Table, "ks_") {
+	if strings.HasPrefix(r.Table, "am_") {
 		return true
 	}
 	if a.Tenant != nil && (r.Name == a.Tenant.Name || r.Table == a.Tenant.Table) {
@@ -107,7 +107,7 @@ func orderedResources(a *model.App) []string {
 // helpersDDL writes the SQL functions the framework's own statements and triggers use.
 func helpersDDL() []string {
 	return []string{
-		`CREATE OR REPLACE FUNCTION ks_new_id() RETURNS uuid AS $$
+		`CREATE OR REPLACE FUNCTION am_new_id() RETURNS uuid AS $$
   SELECT gen_random_uuid()
 $$ LANGUAGE sql VOLATILE;`,
 	}
@@ -144,7 +144,7 @@ func resourceDDL(a *model.App, ref string, r model.Resource) []string {
 }
 
 func commentDDL(r model.Resource) []string {
-	return []string{fmt.Sprintf("COMMENT ON TABLE %s IS 'resource %s; managed by ks, do not edit'", quoteIdent(r.Table), r.Name)}
+	return []string{fmt.Sprintf("COMMENT ON TABLE %s IS 'resource %s; managed by am, do not edit'", quoteIdent(r.Table), r.Name)}
 }
 
 func columnDDL(a *model.App, r model.Resource, f model.Field) string {
@@ -409,16 +409,16 @@ func rlsof(r model.Resource) []string {
 		return []string{
 			fmt.Sprintf("ALTER TABLE %s ENABLE ROW LEVEL SECURITY;", quoteIdent(r.Table)),
 			fmt.Sprintf("ALTER TABLE %s FORCE ROW LEVEL SECURITY;", quoteIdent(r.Table)),
-			fmt.Sprintf("DROP POLICY IF EXISTS ks_public ON %s;", quoteIdent(r.Table)),
-			fmt.Sprintf("CREATE POLICY ks_public ON %s AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);", quoteIdent(r.Table)),
+			fmt.Sprintf("DROP POLICY IF EXISTS am_public ON %s;", quoteIdent(r.Table)),
+			fmt.Sprintf("CREATE POLICY am_public ON %s AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);", quoteIdent(r.Table)),
 		}
 	}
 	pred := strings.ReplaceAll(policy.RLSPredicate(), "__KS_ROOT__.", quoteIdent(r.Table)+".")
 	return []string{
 		fmt.Sprintf("ALTER TABLE %s ENABLE ROW LEVEL SECURITY;", quoteIdent(r.Table)),
 		fmt.Sprintf("ALTER TABLE %s FORCE ROW LEVEL SECURITY;", quoteIdent(r.Table)),
-		fmt.Sprintf("DROP POLICY IF EXISTS ks_tenant_isolation ON %s;", quoteIdent(r.Table)),
-		fmt.Sprintf("CREATE POLICY ks_tenant_isolation ON %s AS PERMISSIVE FOR ALL USING (%s) WITH CHECK (%s);",
+		fmt.Sprintf("DROP POLICY IF EXISTS am_tenant_isolation ON %s;", quoteIdent(r.Table)),
+		fmt.Sprintf("CREATE POLICY am_tenant_isolation ON %s AS PERMISSIVE FOR ALL USING (%s) WITH CHECK (%s);",
 			quoteIdent(r.Table), pred, pred),
 	}
 }
@@ -436,7 +436,7 @@ func immutableTrigger(a *model.App, ref string, r model.Resource) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"CREATE TRIGGER %s BEFORE UPDATE ON %s FOR EACH ROW EXECUTE FUNCTION ks_guard_immutable(%s);",
+		"CREATE TRIGGER %s BEFORE UPDATE ON %s FOR EACH ROW EXECUTE FUNCTION am_guard_immutable(%s);",
 		quoteIdent(r.Table+"_immutable"), quoteIdent(r.Table), strings.Join(cols, ", "))}
 }
 

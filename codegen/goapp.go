@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // writeGoApp emits gen/app.gen.go: the model itself, the small helpers generated code
@@ -24,10 +24,10 @@ func writeGoApp(b *strings.Builder, app *model.App, o Options) error {
 	b.WriteString("package gen\n\n")
 	b.WriteString("import (\n" +
 		"\t\"context\"\n\t\"encoding/json\"\n\t\"fmt\"\n\t\"os\"\n\t\"regexp\"\n\t\"strconv\"\n\t\"sync\"\n\t\"time\"\n\n" +
-		"\t\"keystone.dev/keystone/ks\"\n\t\"keystone.dev/keystone/model\"\n\t\"keystone.dev/keystone/runtime\"\n)\n\n")
+		"\t\"github.com/abhilashiig/ambit/am\"\n\t\"github.com/abhilashiig/ambit/model\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
 	fmt.Fprintf(b, "// AppName is the value declared in the app spec.\nconst AppName = %q\n\n", app.App.Name)
-	fmt.Fprintf(b, "// ModelHash is the canonical identity of this app's model; ks check recomputes it (§6.1).\nconst ModelHash = %q\n\n", app.Hash())
-	b.WriteString("// modelJSON is the app model, compiled from the spec when ks gen ran. Everything here\n")
+	fmt.Fprintf(b, "// ModelHash is the canonical identity of this app's model; am check recomputes it (§6.1).\nconst ModelHash = %q\n\n", app.Hash())
+	b.WriteString("// modelJSON is the app model, compiled from the spec when am gen ran. Everything here\n")
 	b.WriteString("// is derived from it, which is why regenerating a file twice produces the same bytes (§6).\n")
 	b.WriteString("const modelJSON = `" + string(raw) + "`\n\n")
 	b.WriteString("// Model is the parsed app model.\nvar Model = mustModel(modelJSON)\n\n")
@@ -55,7 +55,7 @@ var emailPattern = regexp.MustCompile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 func validEmail(s string) bool { return emailPattern.MatchString(s) }
 
 // malformedID reports an id that is present but not a UUID; absent is a separate rule.
-func malformedID(id ks.ID) bool { return !id.IsNil() && !id.IsValid() }
+func malformedID(id am.ID) bool { return !id.IsNil() && !id.IsValid() }
 
 var patterns patternCache
 
@@ -77,8 +77,8 @@ func matchPattern(s, expr string) bool {
 	return re.MatchString(s)
 }
 
-func dedupe(ids []ks.ID) []ks.ID {
-	seen := make(map[ks.ID]bool, len(ids))
+func dedupe(ids []am.ID) []am.ID {
+	seen := make(map[am.ID]bool, len(ids))
 	out := ids[:0]
 	for _, id := range ids {
 		if seen[id] {
@@ -108,15 +108,15 @@ func oneOf(v string, options []string) bool {
 	return false
 }
 
-// Config is the environment the app runs in: ks.yaml where it exists, the documented
-// KS_* variables over it, and the framework's own numbers under both, so a laptop can run
+// Config is the environment the app runs in: am.yaml where it exists, the documented
+// AM_* variables over it, and the framework's own numbers under both, so a laptop can run
 // the binary with only a database URL (§16.1).
 func Config() runtime.Config {
 	c := *runtime.Defaults()
 	c.App = AppName
-	path := os.Getenv("KS_CONFIG")
-	if _, err := os.Stat("ks.yaml"); path == "" && err == nil {
-		path = "ks.yaml"
+	path := os.Getenv("AM_CONFIG")
+	if _, err := os.Stat("am.yaml"); path == "" && err == nil {
+		path = "am.yaml"
 	}
 	if path != "" {
 		loaded, err := runtime.LoadConfig(path)
@@ -126,14 +126,14 @@ func Config() runtime.Config {
 		c = *loaded
 		c.App = AppName
 	}
-	envStr(&c.DatabaseURL, "KS_DATABASE_URL")
-	envStr(&c.ReplicaURL, "KS_REPLICA_URL")
-	envStr(&c.Role, "KS_ROLE")
-	envDur(&c.ActionTimeout, "KS_ACTION_TIMEOUT")
-	envDur(&c.StmtTimeout, "KS_STATEMENT_TIMEOUT")
-	envInt(&c.QueryBudget, "KS_QUERY_BUDGET")
-	envInt(&c.MaxConns, "KS_MAX_CONNS")
-	envInt(&c.AdminPort, "KS_ADMIN_PORT")
+	envStr(&c.DatabaseURL, "AM_DATABASE_URL")
+	envStr(&c.ReplicaURL, "AM_REPLICA_URL")
+	envStr(&c.Role, "AM_ROLE")
+	envDur(&c.ActionTimeout, "AM_ACTION_TIMEOUT")
+	envDur(&c.StmtTimeout, "AM_STATEMENT_TIMEOUT")
+	envInt(&c.QueryBudget, "AM_QUERY_BUDGET")
+	envInt(&c.MaxConns, "AM_MAX_CONNS")
+	envInt(&c.AdminPort, "AM_ADMIN_PORT")
 	return c
 }
 
@@ -188,7 +188,7 @@ func Serve(ctx context.Context, handlers []*runtime.Handler) error {
 		return err
 	}
 	defer app.Close()
-	addr := os.Getenv("KS_ADDR")
+	addr := os.Getenv("AM_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
@@ -222,7 +222,7 @@ func writeGoMain(b *strings.Builder, app *model.App, o Options) error {
 		imp := o.moduleImport(m.Name)
 		b.WriteString("\t" + pkgName(imp) + " \"" + imp + "\"\n")
 	}
-	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"" + o.migrationsImport() + "\"\n\t\"keystone.dev/keystone/migrate/run\"\n\t\"keystone.dev/keystone/runtime\"\n)\n\n")
+	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"" + o.migrationsImport() + "\"\n\t\"github.com/abhilashiig/ambit/migrate/run\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
 	b.WriteString("func main() {\n\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n\tdefer stop()\n\n")
 	// The binary carries its migrations: "myapp migrate apply" is the release step (§18.3).
 	b.WriteString("\tif len(os.Args) > 1 && os.Args[1] == \"migrate\" {\n\t\tos.Exit(run.Main(ctx, migrations.FS, gen.Config().DatabaseURL, os.Args[2:]))\n\t}\n\n")
@@ -247,16 +247,16 @@ func writeGoMain(b *strings.Builder, app *model.App, o Options) error {
 }
 
 // rulesTest emits gen/rules_test.go: the generated tests of §16.2. They name each module
-// resource's table and wrap each action's adapter around a stub, and kstest derives the
+// resource's table and wrap each action's adapter around a stub, and amtest derives the
 // cases from the model, so the tests regenerate with the spec and cannot drift from it.
 func rulesTest(app *model.App) []byte {
 	var b strings.Builder
-	b.WriteString(header + "\npackage gen\n\nimport (\n\t\"testing\"\n\n\t\"keystone.dev/keystone/kstest\"\n\t\"keystone.dev/keystone/runtime\"\n)\n\n")
+	b.WriteString(header + "\npackage gen\n\nimport (\n\t\"testing\"\n\n\t\"github.com/abhilashiig/ambit/amtest\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
 	b.WriteString("// TestGeneratedRules proves tenant isolation, the access matrix, field rules,\n// invariants, authorization and input validation for every declaration (§16.2).\n")
 	b.WriteString("func TestGeneratedRules(t *testing.T) {\n")
 	// The tenant and the account are resources too, with rules of their own.
 	for _, r := range appLevelResources(app) {
-		fmt.Fprintf(&b, "\tt.Run(%q, func(t *testing.T) { kstest.TableRules(t, Model, %sTable) })\n", r.Name, r.Name)
+		fmt.Fprintf(&b, "\tt.Run(%q, func(t *testing.T) { amtest.TableRules(t, Model, %sTable) })\n", r.Name, r.Name)
 	}
 	mods := append([]model.Module(nil), app.Modules...)
 	sort.Slice(mods, func(i, j int) bool { return mods[i].Name < mods[j].Name })
@@ -265,7 +265,7 @@ func rulesTest(app *model.App) []byte {
 		res := append([]model.Resource(nil), m.Resources...)
 		sort.Slice(res, func(i, j int) bool { return res[i].Name < res[j].Name })
 		for _, r := range res {
-			fmt.Fprintf(&b, "\tt.Run(%q, func(t *testing.T) { kstest.TableRules(t, Model, %sTable) })\n", model.Qual(m.Name, r.Name), r.Name)
+			fmt.Fprintf(&b, "\tt.Run(%q, func(t *testing.T) { amtest.TableRules(t, Model, %sTable) })\n", model.Qual(m.Name, r.Name), r.Name)
 		}
 		acts := append([]model.Action(nil), m.Actions...)
 		sort.Slice(acts, func(i, j int) bool { return acts[i].Name < acts[j].Name })
@@ -278,12 +278,12 @@ func rulesTest(app *model.App) []byte {
 			handlers = append(handlers, fmt.Sprintf("\t\t%sHandler(func(*%sCtx, %sInput) (%s, error) { var zero %s; return zero, nil }),\n", a.Name, a.Name, a.Name, out, out))
 		}
 	}
-	b.WriteString("\tkstest.ActionRules(t, Model, []*runtime.Handler{\n" + strings.Join(handlers, "") + "\t})\n}\n")
+	b.WriteString("\tamtest.ActionRules(t, Model, []*runtime.Handler{\n" + strings.Join(handlers, "") + "\t})\n}\n")
 	return []byte(b.String())
 }
 
 // writeActionStubs gives a module with actions but no actions.go a starting one: the
-// Actions table the entrypoint names, each action returning ks.NotImplemented() (§17.1
+// Actions table the entrypoint names, each action returning am.NotImplemented() (§17.1
 // step 3). An existing file is never touched; it belongs to whoever writes the actions.
 func writeActionStubs(app *model.App, o Options) ([]string, error) {
 	var written []string
@@ -308,9 +308,9 @@ func writeActionStubs(app *model.App, o Options) ([]string, error) {
 		}
 		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
 		var b strings.Builder
-		b.WriteString("// This file holds the " + m.Name + " module's action implementations. ks gen wrote it\n")
+		b.WriteString("// This file holds the " + m.Name + " module's action implementations. am gen wrote it\n")
 		b.WriteString("// once as a starting point; it is yours now and regeneration leaves it alone (§17.1).\n")
-		b.WriteString("package " + pkgName(imp) + "\n\nimport (\n\t\"" + o.genImport() + "\"\n\t\"keystone.dev/keystone/ks\"\n")
+		b.WriteString("package " + pkgName(imp) + "\n\nimport (\n\t\"" + o.genImport() + "\"\n\t\"github.com/abhilashiig/ambit/am\"\n")
 		usesRuntime := false
 		for _, a := range list {
 			if out, _ := outputType(app, &a); strings.Contains(out, "runtime.") {
@@ -318,7 +318,7 @@ func writeActionStubs(app *model.App, o Options) ([]string, error) {
 			}
 		}
 		if usesRuntime {
-			b.WriteString("\t\"keystone.dev/keystone/runtime\"\n")
+			b.WriteString("\t\"github.com/abhilashiig/ambit/runtime\"\n")
 		}
 		b.WriteString(")\n\nvar Actions = struct {\n")
 		sig := func(a model.Action) string {
@@ -338,7 +338,7 @@ func writeActionStubs(app *model.App, o Options) ([]string, error) {
 			out, ptr := outputType(app, &a)
 			out = pointer(qualifyGen(out), ptr)
 			b.WriteString("\nfunc " + lowerFirst(a.Name) + "(c *gen." + a.Name + "Ctx, in gen." + a.Name + "Input) (" + out + ", error) {\n")
-			b.WriteString("\tvar zero " + out + "\n\treturn zero, ks.NotImplemented()\n}\n")
+			b.WriteString("\tvar zero " + out + "\n\treturn zero, am.NotImplemented()\n}\n")
 		}
 		src, err := format.Source([]byte(b.String()))
 		if err != nil {
@@ -417,7 +417,7 @@ func dockerfile(o Options) []byte {
 	if st, err := os.Stat(filepath.Join(o.Dir, "templates")); err == nil && st.IsDir() {
 		templates = "COPY " + rel + "/templates /templates\n" // email templates (§10.3)
 	}
-	return []byte(`# Generated by ks gen. Build from the Go module root:
+	return []byte(`# Generated by am gen. Build from the Go module root:
 #   docker build -f ` + strings.TrimPrefix(rel+"/Dockerfile", "./") + ` .
 # Release step: run "migrate apply" with this image before starting new instances.
 FROM golang:` + goVersion + ` AS build
@@ -429,7 +429,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/server ` + rel + `
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/server /server
-` + templates + `ENV KS_ADDR=:8080
+` + templates + `ENV AM_ADDR=:8080
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/server"]
@@ -437,7 +437,7 @@ ENTRYPOINT ["/server"]
 }
 
 // benchTest emits gen/bench_test.go: one benchmark per action, through the real
-// implementation the entrypoint names, for ks bench (§11.4). It is an external test
+// implementation the entrypoint names, for am bench (§11.4). It is an external test
 // package, so it may import the modules, which import gen.
 func benchTest(app *model.App, o Options) []byte {
 	var b strings.Builder
@@ -453,15 +453,15 @@ func benchTest(app *model.App, o Options) []byte {
 			if a.Kind == model.KindSchedule {
 				continue
 			}
-			runs = append(runs, fmt.Sprintf("\tb.Run(%q, func(b *testing.B) { kstest.Bench(b, gen.Model, gen.%sHandler, %s.Actions.%s) })\n",
+			runs = append(runs, fmt.Sprintf("\tb.Run(%q, func(b *testing.B) { amtest.Bench(b, gen.Model, gen.%sHandler, %s.Actions.%s) })\n",
 				model.Qual(m.Name, a.Name), a.Name, alias, a.Name))
 		}
 		if len(acts) > 0 {
 			b.WriteString("\t" + alias + " \"" + o.moduleImport(m.Name) + "\"\n")
 		}
 	}
-	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"keystone.dev/keystone/kstest\"\n)\n\n")
-	b.WriteString("// BenchmarkActions measures every action through the full pipeline; ks bench runs one.\n")
+	b.WriteString("\n\t\"" + o.genImport() + "\"\n\t\"github.com/abhilashiig/ambit/amtest\"\n)\n\n")
+	b.WriteString("// BenchmarkActions measures every action through the full pipeline; am bench runs one.\n")
 	b.WriteString("func BenchmarkActions(b *testing.B) {\n" + strings.Join(runs, "") + "}\n")
 	return []byte(b.String())
 }

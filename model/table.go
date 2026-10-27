@@ -3,7 +3,7 @@ package model
 import (
 	"strings"
 
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // PolicyTable projects a resource into the small schema the SQL compiler needs.

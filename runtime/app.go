@@ -18,13 +18,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // App is one process: the model it was generated from, its pool, its routes and its
-// effect providers. A Keystone app is a single binary, so this is the whole world
+// effect providers. A Ambit app is a single binary, so this is the whole world
 // (§2.10).
 type App struct {
 	Model    *model.App
@@ -47,7 +47,7 @@ type App struct {
 	Auth       *Auth
 	Buckets    *Buckets
 	Caches     *Cache
-	Clock      ks.Clock
+	Clock      am.Clock
 	stopOTLP   func()
 	// Replica serves ReplicaOK() queries when database.replicaUrl is set.
 	Replica *pgxpool.Pool
@@ -56,7 +56,7 @@ type App struct {
 	// OnCall, when set, receives a Trace after every handler execution. Set it before
 	// serving; it is read without a lock.
 	OnCall func(Trace)
-	// FailOnBudget makes a budget overrun an error, which is how ks test enforces it.
+	// FailOnBudget makes a budget overrun an error, which is how am test enforces it.
 	FailOnBudget bool
 	// StartWorkers and StartWebOnly select the process role (§10.6).
 	StartWorkers bool
@@ -66,7 +66,7 @@ type App struct {
 	inFlight atomic.Int64
 	closed   atomic.Bool
 
-	// SkipSchemaCheck lets ks migrate and ks test open a pool before a schema exists.
+	// SkipSchemaCheck lets am migrate and am test open a pool before a schema exists.
 	SkipSchemaCheck bool
 
 	mu     sync.Mutex
@@ -97,10 +97,10 @@ type Handler struct {
 func DecodeInput(c *Call, dst any) error {
 	if len(c.Body) > 0 {
 		if !utf8.Valid(c.Body) {
-			return ks.Invalid("body", "the request body is not valid UTF-8")
+			return am.Invalid("body", "the request body is not valid UTF-8")
 		}
 		if err := strictJSON(c.Body, dst); err != nil {
-			return ks.Invalid("body", "the request body does not fit the input: "+err.Error())
+			return am.Invalid("body", "the request body does not fit the input: "+err.Error())
 		}
 		return nil
 	}
@@ -129,7 +129,7 @@ func strictJSON(raw []byte, dst any) error {
 func decodeQuery(dst any, q map[string][]string) error {
 	raw, err := json.Marshal(flatQuery(q))
 	if err != nil {
-		return ks.Invalid("query", err.Error())
+		return am.Invalid("query", err.Error())
 	}
 	if err := strictJSON(raw, dst); err == nil {
 		return nil
@@ -152,7 +152,7 @@ func decodeQuery(dst any, q map[string][]string) error {
 		err = strictJSON(raw, dst)
 	}
 	if err != nil {
-		return ks.Invalid("query", "a query parameter does not fit: "+err.Error())
+		return am.Invalid("query", "a query parameter does not fit: "+err.Error())
 	}
 	return nil
 }
@@ -189,7 +189,7 @@ type Options struct {
 	Log       *slog.Logger
 	Handlers  []*Handler
 	Providers map[model.EffectKind]Provider
-	// SkipSchemaCheck starts the app against an empty database, for ks migrate and the
+	// SkipSchemaCheck starts the app against an empty database, for am migrate and the
 	// test harness (§16.1).
 	SkipSchemaCheck bool
 }
@@ -225,7 +225,7 @@ func New(ctx context.Context, o Options) (*App, error) {
 		return nil, err
 	}
 	if keys == nil && hasEncrypted(o.Model) {
-		return nil, errors.New("runtime: the app declares Encrypted() fields but no key is configured; set KS_ENCRYPTION_KEY (ks keys new prints one)")
+		return nil, errors.New("runtime: the app declares Encrypted() fields but no key is configured; set AM_ENCRYPTION_KEY (am keys new prints one)")
 	}
 	a.Keys = keys
 	a.startOTLP()
@@ -319,16 +319,16 @@ func (a *App) Close() {
 // checkSchema compares the newest applied migration with the model's expectation.
 func (a *App) checkSchema(ctx context.Context) error {
 	var got string
-	err := a.Pool.QueryRow(ctx, `SELECT coalesce(max(version),'') FROM ks_migrations`).Scan(&got)
+	err := a.Pool.QueryRow(ctx, `SELECT coalesce(max(version),'') FROM am_migrations`).Scan(&got)
 	if err != nil {
 		// An empty database is a legitimate first boot; a missing table is not.
 		if strings.Contains(err.Error(), "does not exist") {
-			return errors.New("runtime: schema is not managed by ks; run ks migrate apply")
+			return errors.New("runtime: schema is not managed by am; run am migrate apply")
 		}
 		return nil
 	}
 	if got == "" && !a.SkipSchemaCheck {
-		return errors.New("runtime: no migrations applied; run ks migrate apply")
+		return errors.New("runtime: no migrations applied; run am migrate apply")
 	}
 	return nil
 }
@@ -350,8 +350,8 @@ func (h *Handler) PathList() []string {
 // Scope is the per-transaction identity the database sees (§8.5). Role rules live in
 // the query layer; the tenant boundary is also a policy, so it needs GUCs.
 type Scope struct {
-	Tenant      ks.ID
-	Actor       ks.ID
+	Tenant      am.ID
+	Actor       am.ID
 	IsSystem    bool
 	CrossTenant bool
 	// Replica runs the transaction read-only on the replica, when one is configured.
@@ -371,10 +371,10 @@ func beginScope(ctx context.Context, tx pgx.Tx, s Scope) error {
 		key string
 		val string
 	}{
-		{"ks.tenant_id", uuidText(s.Tenant)},
-		{"ks.actor_id", uuidText(s.Actor)},
-		{"ks.actor_system", onoff(s.IsSystem)},
-		{"ks.cross_tenant", onoff(s.CrossTenant)},
+		{"am.tenant_id", uuidText(s.Tenant)},
+		{"am.actor_id", uuidText(s.Actor)},
+		{"am.actor_system", onoff(s.IsSystem)},
+		{"am.cross_tenant", onoff(s.CrossTenant)},
 	}
 	for _, v := range values {
 		if _, err := tx.Exec(ctx, "SELECT set_config($1, $2, true)", v.key, v.val); err != nil {
@@ -384,7 +384,7 @@ func beginScope(ctx context.Context, tx pgx.Tx, s Scope) error {
 	return nil
 }
 
-func uuidText(id ks.ID) string {
+func uuidText(id am.ID) string {
 	if id.IsNil() {
 		return ""
 	}
@@ -400,7 +400,7 @@ func onoff(b bool) string {
 
 // BeginTx opens the action's transaction with its identity and timeouts (§8.3).
 func (a *App) BeginTx(ctx context.Context, s Scope, stmtTimeout time.Duration, serializable bool) (pgx.Tx, error) {
-	if os.Getenv("KS_DEBUG_SQL") != "" {
+	if os.Getenv("AM_DEBUG_SQL") != "" {
 		fmt.Fprintf(os.Stderr, "\n# BEGIN acquired=%d\n", a.Pool.Stat().AcquiredConns())
 	}
 	pool, mode := a.Pool, pgx.ReadWrite
@@ -462,7 +462,7 @@ func (a *App) framework(ctx context.Context, fn func(tx pgx.Tx) error) error {
 }
 
 // NewDB builds the scoped database handle for one action run (§3.3 step 7).
-func (a *App) NewDB(tx pgx.Tx, actor ks.Actor, opts ...DBOption) *DB {
+func (a *App) NewDB(tx pgx.Tx, actor am.Actor, opts ...DBOption) *DB {
 	d := &DB{
 		conn:   tx,
 		tx:     tx,
@@ -484,7 +484,7 @@ func (a *App) NewDB(tx pgx.Tx, actor ks.Actor, opts ...DBOption) *DB {
 type DBOption func(*DB)
 
 // WithClock installs the action's clock.
-func WithClock(c ks.Clock) DBOption { return func(d *DB) { d.clock = c } }
+func WithClock(c am.Clock) DBOption { return func(d *DB) { d.clock = c } }
 
 // WithLogger scopes the logger to the action.
 func WithLogger(l *slog.Logger) DBOption { return func(d *DB) { d.log = l } }
@@ -554,7 +554,7 @@ func (a *App) Commit(ctx context.Context, d *DB, tx pgx.Tx) error {
 func (a *App) Rollback(ctx context.Context, tx pgx.Tx) {
 	if tx != nil {
 		err := tx.Rollback(ctx)
-		if os.Getenv("KS_DEBUG_SQL") != "" {
+		if os.Getenv("AM_DEBUG_SQL") != "" {
 			fmt.Fprintf(os.Stderr, "\n# ROLLBACK err=%v acquired=%d\n", err, a.Pool.Stat().AcquiredConns())
 		}
 	}

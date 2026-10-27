@@ -26,9 +26,9 @@ import (
 	"sync"
 	"time"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // Server is the HTTP surface: one static route table, one pipeline, no reflection on
@@ -41,7 +41,7 @@ type Server struct {
 	sem      chan struct{}
 	log      *slog.Logger
 	inflight atomicCount
-	dev      http.Handler // /_ks/* introspection, in development only
+	dev      http.Handler // /_am/* introspection, in development only
 }
 
 type atomicCount struct {
@@ -178,38 +178,38 @@ func (s *Server) adminHandler() http.Handler {
 func (s *Server) router(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	traceID := traceFromRequest(r)
-	if r.URL.Path == "/_ks/health/live" || r.URL.Path == "/healthz" {
+	if r.URL.Path == "/_am/health/live" || r.URL.Path == "/healthz" {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
 		return
 	}
-	if r.URL.Path == "/_ks/health/ready" {
+	if r.URL.Path == "/_am/health/ready" {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := s.A.Pool.Ping(ctx); err != nil {
-			writeError(w, r, ks.Unavailable("database unreachable"), traceID)
+			writeError(w, r, am.Unavailable("database unreachable"), traceID)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ready")
 		return
 	}
-	if s.dev != nil && strings.HasPrefix(r.URL.Path, "/_ks/") {
+	if s.dev != nil && strings.HasPrefix(r.URL.Path, "/_am/") {
 		s.dev.ServeHTTP(w, r)
 		return
 	}
 	h, ok := s.A.ByPath[r.URL.Path]
 	if !ok {
-		writeError(w, r, ks.NotFound(), traceID)
+		writeError(w, r, am.NotFound(), traceID)
 		return
 	}
 	if !methodAllowed(h, r.Method) {
 		w.Header().Set("Allow", strings.Join(allowedMethods(h), ", "))
-		writeError(w, r, ks.NewError("invalid_request", http.StatusMethodNotAllowed, "method not allowed"), traceID)
+		writeError(w, r, am.NewError("invalid_request", http.StatusMethodNotAllowed, "method not allowed"), traceID)
 		return
 	}
 	if h.Kind == model.KindJob || h.Kind == model.KindSchedule {
-		writeError(w, r, ks.Forbidden("jobs are not reachable over HTTP"), traceID)
+		writeError(w, r, am.Forbidden("jobs are not reachable over HTTP"), traceID)
 		return
 	}
 	body, err := readBody(r, s.A.Cfg.BodyLimitBytes)
@@ -237,7 +237,7 @@ func (s *Server) router(w http.ResponseWriter, r *http.Request) {
 		meta = out.Meta
 	}
 	if err == nil && meta.Replayed {
-		s.A.metric("ks_replayed_requests", 1)
+		s.A.metric("am_replayed_requests", 1)
 	}
 	if err != nil {
 		s.A.observe(h.Ref, start, err)
@@ -275,10 +275,10 @@ func readBody(r *http.Request, limit int64) ([]byte, error) {
 	lr := io.LimitReader(r.Body, limit+1)
 	body, err := io.ReadAll(lr)
 	if err != nil {
-		return nil, ks.NewError("invalid_request", http.StatusBadRequest, "the request body could not be read")
+		return nil, am.NewError("invalid_request", http.StatusBadRequest, "the request body could not be read")
 	}
 	if int64(len(body)) > limit {
-		return nil, ks.NewError("payload_too_large", http.StatusRequestEntityTooLarge,
+		return nil, am.NewError("payload_too_large", http.StatusRequestEntityTooLarge,
 			fmt.Sprintf("the body exceeds the %d byte limit", limit))
 	}
 	return body, nil
@@ -383,7 +383,7 @@ func (s *Server) limit(next http.Handler) http.Handler {
 			defer func() { <-s.sem }()
 		default:
 			w.Header().Set("Retry-After", "1")
-			writeError(w, r, ks.Unavailable("the server is at its concurrency limit"), "")
+			writeError(w, r, am.Unavailable("the server is at its concurrency limit"), "")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -395,7 +395,7 @@ func (s *Server) recover(next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				s.log.Error("panic", "value", rec, "stack", string(debug.Stack()))
-				writeError(w, r, ks.InternalError(fmt.Errorf("panic: %v", rec)), "")
+				writeError(w, r, am.InternalError(fmt.Errorf("panic: %v", rec)), "")
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -405,7 +405,7 @@ func (s *Server) recover(next http.Handler) http.Handler {
 // writeError renders the shared error shape (§12.2). A caller-supplied message is
 // never echoed for internal errors.
 func writeError(w http.ResponseWriter, r *http.Request, err error, traceID string) {
-	e := ks.AsError(err)
+	e := am.AsError(err)
 	status := e.Status
 	if status == 0 {
 		status = http.StatusInternalServerError
@@ -456,16 +456,16 @@ type runOptions struct {
 
 // Run is the pipeline for one action invocation: authorize, rate limit, transaction,
 // decode, execute, commit, encode (§3.3).
-func (a *App) Run(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger) (HandlerOutput, error) {
+func (a *App) Run(ctx context.Context, h *Handler, actor am.Actor, in *Call, log *slog.Logger) (HandlerOutput, error) {
 	return a.runWith(ctx, h, actor, in, log, runOptions{})
 }
 
-func (a *App) run(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger) error {
+func (a *App) run(ctx context.Context, h *Handler, actor am.Actor, in *Call, log *slog.Logger) error {
 	_, err := a.runWith(ctx, h, actor, in, log, runOptions{})
 	return err
 }
 
-func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger, opts runOptions) (HandlerOutput, error) {
+func (a *App) runWith(ctx context.Context, h *Handler, actor am.Actor, in *Call, log *slog.Logger, opts runOptions) (HandlerOutput, error) {
 	var out HandlerOutput
 	if log == nil {
 		log = a.Log
@@ -473,7 +473,7 @@ func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	// A handler needs one of the two adapter shapes; the pipeline itself is unchanged by
 	// which one an app was generated against (§7.2).
 	if h == nil || h.Handle == nil {
-		return out, ks.NotFound()
+		return out, am.NotFound()
 	}
 	// Step 4: authorize the call. Requires is evaluated in Go against the actor the
 	// session resolved, so this costs no query (§3.3 step 4).
@@ -491,7 +491,7 @@ func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	invocation := ks.NewID()
+	invocation := am.NewID()
 	if in.Job != nil && !in.Job.Invocation.IsNil() {
 		invocation = in.Job.Invocation
 	}
@@ -538,7 +538,7 @@ func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 		}
 		select {
 		case <-callCtx.Done():
-			return out, ks.Timeout("action")
+			return out, am.Timeout("action")
 		case <-time.After(time.Duration(attempt*attempt) * 20 * time.Millisecond):
 		}
 	}
@@ -547,16 +547,16 @@ func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 func traceIDFrom(in *Call) string { return in.Trace }
 
 func isSerialization(err error) bool {
-	var e *ks.Error
+	var e *am.Error
 	if errors.As(err, &e) {
 		return e.Code == "serialization_failure"
 	}
 	return false
 }
 
-func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger, invocation ks.ID, stmtTimeout time.Duration, opts runOptions) (HandlerOutput, error) {
+func (a *App) attempt(ctx context.Context, h *Handler, actor am.Actor, in *Call, log *slog.Logger, invocation am.ID, stmtTimeout time.Duration, opts runOptions) (HandlerOutput, error) {
 	var out HandlerOutput
-	scope := Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == ks.ActorSystem, CrossTenant: h.Spec.CrossTenant,
+	scope := Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == am.ActorSystem, CrossTenant: h.Spec.CrossTenant,
 		Replica: h.Spec.ReplicaOK && h.Kind == model.KindQuery}
 	tx, err := a.BeginTx(ctx, scope, stmtTimeout, h.Spec.Serializable)
 	if err != nil {
@@ -576,7 +576,7 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	start := time.Now()
 	result, callErr := h.Handle(call)
 	if a.Registry != nil {
-		a.Registry.metric("ks_queries", float64(len(d.Stmts())), map[string]string{"action": h.Ref})
+		a.Registry.metric("am_queries", float64(len(d.Stmts())), map[string]string{"action": h.Ref})
 	}
 	if a.OnCall != nil {
 		a.OnCall(Trace{ID: in.Trace, Invocation: invocation, Action: h.Ref, Actor: actor, Start: start,
@@ -619,7 +619,7 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 }
 
 // authorize evaluates the action's Requires against the actor, in Go (§3.3 step 4).
-func authorize(h *Handler, actor ks.Actor) error {
+func authorize(h *Handler, actor am.Actor) error {
 	if h.Spec.Public {
 		return nil
 	}
@@ -629,26 +629,26 @@ func authorize(h *Handler, actor ks.Actor) error {
 		return nil
 	}
 	if h.Spec.Requires == nil {
-		return ks.Unauthenticated()
+		return am.Unauthenticated()
 	}
 	env := &policy.Env{A: policy.ActorInfo{
 		ID:       string(actor.ID),
 		Tenant:   string(actor.Tenant),
 		Roles:    actor.Roles,
-		IsSystem: actor.Kind == ks.ActorSystem,
+		IsSystem: actor.Kind == am.ActorSystem,
 		Now:      time.Now().UTC(),
 	}}
 	ok, err := policy.Eval(h.Spec.Requires, env)
 	if err != nil {
-		return ks.InternalError(err)
+		return am.InternalError(err)
 	}
 	if ok {
 		return nil
 	}
 	if actor.IsAnonymous() {
-		return ks.Unauthenticated()
+		return am.Unauthenticated()
 	}
-	return ks.Forbidden("the action's Requires rule refused this caller")
+	return am.Forbidden("the action's Requires rule refused this caller")
 }
 
 // Coalesce keeps an empty role list as an empty array, not NULL, because the column
@@ -669,13 +669,13 @@ func orInt(v, def int) int {
 
 // recordInvocation stores who ran what, so a RunAs(Enqueuer) job can rebuild the
 // actor and so a trace id can be replayed later (§9.5, §10.4).
-func (a *App) recordInvocation(ctx context.Context, id ks.ID, h *Handler, actor ks.Actor) error {
+func (a *App) recordInvocation(ctx context.Context, id am.ID, h *Handler, actor am.Actor) error {
 	if id.IsNil() {
 		return nil
 	}
 	err := a.inSystemScope(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO ks_invocations (id, tenant_id, actor_id, actor_kind, actor_roles, action, created_at)
+			`INSERT INTO am_invocations (id, tenant_id, actor_id, actor_kind, actor_roles, action, created_at)
 	         VALUES ($1,$2,$3,$4,$5,$6,now()) ON CONFLICT (id) DO NOTHING`,
 			id, actor.Tenant.OrNil(), actor.ID.OrNil(), string(actor.Kind),
 			Coalesce(actor.SortedRoles()), h.Ref)
@@ -686,29 +686,29 @@ func (a *App) recordInvocation(ctx context.Context, id ks.ID, h *Handler, actor 
 
 // checkRateLimit enforces declared token buckets with a Postgres store and an
 // in-process cache, so a burst costs one statement (§3.3 step 5).
-func (a *App) checkRateLimit(ctx context.Context, h *Handler, actor ks.Actor, ip string) error {
+func (a *App) checkRateLimit(ctx context.Context, h *Handler, actor am.Actor, ip string) error {
 	for _, l := range h.Spec.Limits.RateLimit {
 		key := bucketKey(l.Scope, actor, ip, h.Ref)
 		if _, answered := a.Buckets.allow(key, l.Limit, l.Per); answered {
 			// A refusal the cache still stands behind; no statement is spent on it.
-			return ks.RateLimited(int(a.Buckets.until(key).Seconds()) + 1)
+			return am.RateLimited(int(a.Buckets.until(key).Seconds()) + 1)
 		}
 		rows, err := a.Pool.Query(ctx,
 			`WITH upsert AS (
-			   INSERT INTO ks_rate_bucket (id, action, scope, bucket_key, tokens, max_tokens, refill_seconds, updated_at)
+			   INSERT INTO am_rate_bucket (id, action, scope, bucket_key, tokens, max_tokens, refill_seconds, updated_at)
 			     VALUES ($6, $1, $2, $3, $4 - 1, $4, $5, now())
 			     ON CONFLICT (action, scope, bucket_key)
-			     DO UPDATE SET tokens = LEAST($4, LEAST($4, ks_rate_bucket.tokens + (EXTRACT(EPOCH FROM (now() - ks_rate_bucket.updated_at)) / $5))) - 1,
+			     DO UPDATE SET tokens = LEAST($4, LEAST($4, am_rate_bucket.tokens + (EXTRACT(EPOCH FROM (now() - am_rate_bucket.updated_at)) / $5))) - 1,
 			                   updated_at = now()
 			     RETURNING tokens)
 			 SELECT tokens FROM upsert`,
-			h.Ref, l.Scope, key, float64(l.Limit), periodSeconds(l.Per), ks.NewID())
+			h.Ref, l.Scope, key, float64(l.Limit), periodSeconds(l.Per), am.NewID())
 		if err != nil {
 			// A broken limit fails open rather than refusing all traffic over an
 			// unrelated outage, but it must not be silent: the code that should shed
 			// is not consulted, so the only defence left is the query budget.
 			a.Log.Warn("rate limit unavailable, allowing", "err", err, "cause", errors.Unwrap(err), "action", h.Ref)
-			a.metric("ks_rate_limit_error", 1)
+			a.metric("am_rate_limit_error", 1)
 			continue
 		}
 		var remaining float64 = -1
@@ -718,7 +718,7 @@ func (a *App) checkRateLimit(ctx context.Context, h *Handler, actor ks.Actor, ip
 		rows.Close()
 		if remaining < 0 {
 			wait := a.Buckets.denied(key, l.Limit, l.Per)
-			return ks.RateLimited(int(wait.Seconds()) + 1)
+			return am.RateLimited(int(wait.Seconds()) + 1)
 		}
 		a.Buckets.allowed(key)
 	}
@@ -733,7 +733,7 @@ func periodSeconds(per string) float64 {
 	return d.Seconds()
 }
 
-func bucketKey(scope string, actor ks.Actor, ip, action string) string {
+func bucketKey(scope string, actor am.Actor, ip, action string) string {
 	switch scope {
 	case "actor":
 		if actor.ID.IsNil() {
@@ -749,15 +749,15 @@ func bucketKey(scope string, actor ks.Actor, ip, action string) string {
 
 // idempotentResponse returns a stored result when the same key and body were seen
 // before, and refuses a different body under the same key (§5.7).
-func (a *App) idempotentResponse(ctx context.Context, h *Handler, actor ks.Actor, in *Call) ([]byte, bool, error) {
+func (a *App) idempotentResponse(ctx context.Context, h *Handler, actor am.Actor, in *Call) ([]byte, bool, error) {
 	if in.Key == "" {
-		return nil, false, ks.Invalid("Idempotency-Key", "the action requires an idempotency key header")
+		return nil, false, am.Invalid("Idempotency-Key", "the action requires an idempotency key header")
 	}
 	hash := hashBytes(append([]byte(in.Key), in.Body...))
 	var stored []byte
 	var seenHash []byte
 	err := a.Pool.QueryRow(ctx,
-		`SELECT response, request_hash FROM ks_idempotency WHERE action=$1 AND tenant_id=$2 AND key=$3`,
+		`SELECT response, request_hash FROM am_idempotency WHERE action=$1 AND tenant_id=$2 AND key=$3`,
 		h.Ref, actor.Tenant.OrNil(), in.Key).Scan(&stored, &seenHash)
 	switch {
 	case errors.Is(err, pgNoRows()):
@@ -766,16 +766,16 @@ func (a *App) idempotentResponse(ctx context.Context, h *Handler, actor ks.Actor
 		return nil, false, translate(err)
 	}
 	if !bytes.Equal(seenHash, hash) {
-		return nil, false, ks.Conflict()
+		return nil, false, am.Conflict()
 	}
 	return stored, true, nil
 }
 
-func (a *App) storeIdempotent(ctx context.Context, h *Handler, actor ks.Actor, in *Call, out HandlerOutput) error {
+func (a *App) storeIdempotent(ctx context.Context, h *Handler, actor am.Actor, in *Call, out HandlerOutput) error {
 	err := a.inSystemScope(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO ks_idempotency (id, action, tenant_id, key, request_hash, response, created_at, expires_at)
-	         VALUES (ks_new_id(),$1,$2,$3,$4,$5,now(),now() + interval '1 day') ON CONFLICT (action, tenant_id, key) DO NOTHING`,
+			`INSERT INTO am_idempotency (id, action, tenant_id, key, request_hash, response, created_at, expires_at)
+	         VALUES (am_new_id(),$1,$2,$3,$4,$5,now(),now() + interval '1 day') ON CONFLICT (action, tenant_id, key) DO NOTHING`,
 			h.Ref, actor.Tenant.OrNil(), in.Key, hashBytes(append([]byte(in.Key), in.Body...)), out.Body)
 		return err
 	})
@@ -806,7 +806,7 @@ func newCache() *Cache {
 
 // cacheKey includes the tenant and the actor's role set, so an entry can never cross
 // an access boundary (§11.3).
-func cacheKey(h *Handler, actor ks.Actor, body []byte) string {
+func cacheKey(h *Handler, actor am.Actor, body []byte) string {
 	roles := strings.Join(actor.SortedRoles(), ",")
 	sum := sha256.Sum256(append([]byte(h.Ref+"|"+string(actor.Tenant)+"|"+roles+"|"), body...))
 	return h.Ref + "|" + string(actor.Tenant) + "|" + base64.RawURLEncoding.EncodeToString(sum[:8])
@@ -845,23 +845,23 @@ func (a *App) observe(ref string, start time.Time, err error) {
 	d := time.Since(start)
 	a.Registry.observe(ref, float64(d.Microseconds())/1000.0)
 	if err != nil {
-		a.Registry.inc("ks_requests_error", map[string]string{"action": ref, "code": ks.AsError(err).Code})
+		a.Registry.inc("am_requests_error", map[string]string{"action": ref, "code": am.AsError(err).Code})
 	}
-	a.Registry.inc("ks_requests", map[string]string{"action": ref})
+	a.Registry.inc("am_requests", map[string]string{"action": ref})
 }
 
 // Clock is the app-wide clock; tests replace it (§7.4).
-type Clock = ks.Clock
+type Clock = am.Clock
 
 // SystemClock reads the wall clock.
-type SystemClock = ks.SystemClock
+type SystemClock = am.SystemClock
 
 // adminAuth admits a request carrying the admin token as a bearer credential.
 func (s *Server) adminAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := s.A.Cfg.Secret("adminToken")
 		if token == "" {
-			token = os.Getenv("KS_ADMIN_TOKEN")
+			token = os.Getenv("AM_ADMIN_TOKEN")
 		}
 		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token == "" || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
@@ -885,7 +885,7 @@ func envOr(key, def string) string {
 // HandlerInput is what the pipeline hands a generated adapter: identity, the request's
 // data, and the transaction the action runs inside.
 type HandlerInput struct {
-	Actor      ks.Actor
+	Actor      am.Actor
 	Body       []byte
 	Query      map[string][]string
 	Headers    map[string]string
@@ -893,35 +893,35 @@ type HandlerInput struct {
 	Key        string
 	DB         *DB
 	Job        *JobCall
-	Invocation ks.ID
+	Invocation am.ID
 	Trace      string
 }
 
 type Call struct {
 	Context    context.Context
-	Actor      ks.Actor
+	Actor      am.Actor
 	DB         *DB
 	Log        *slog.Logger
-	Clock      ks.Clock
+	Clock      am.Clock
 	Body       []byte
 	Query      map[string][]string
 	Headers    map[string]string
 	IP         string
 	Key        string // Idempotency-Key
 	Job        *JobCall
-	Invocation ks.ID
+	Invocation am.ID
 	Trace      string
 	App        *App
 }
 
 // Trace is what one handler execution did: the statements it ran and the effects it
-// queued. App.OnCall receives one per attempt, which is how ks test counts queries and
-// captures effects, and how ks dev serves /_ks/traces (§16.1, §17.4).
+// queued. App.OnCall receives one per attempt, which is how am test counts queries and
+// captures effects, and how am dev serves /_am/traces (§16.1, §17.4).
 type Trace struct {
 	ID         string       `json:"traceId"`
-	Invocation ks.ID        `json:"invocationId"`
+	Invocation am.ID        `json:"invocationId"`
 	Action     string       `json:"action"`
-	Actor      ks.Actor     `json:"actor"`
+	Actor      am.Actor     `json:"actor"`
 	Start      time.Time    `json:"start"`
 	Millis     float64      `json:"millis"`
 	Err        error        `json:"-"`

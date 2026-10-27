@@ -1,6 +1,6 @@
 // Package spec contains the declarative builders used in spec files (§5). It is
 // pure declaration: importing it runs no server, opens no connection and reads no
-// configuration. ks gen executes these declarations once at build time and writes
+// configuration. am gen executes these declarations once at build time and writes
 // the app model they describe.
 //
 // The two option interfaces are the point: a resource option cannot appear in an
@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // Durations are named so specs read as text: s.TTL(30 * s.Day).
@@ -84,7 +84,7 @@ func callerModule() string {
 			continue
 		}
 		pkg := name[:dot]
-		if pkg == "keystone.dev/keystone/spec" {
+		if pkg == "github.com/abhilashiig/ambit/spec" {
 			continue
 		}
 		if i := strings.LastIndex(pkg, "/"); i >= 0 {
@@ -95,13 +95,17 @@ func callerModule() string {
 	return "app"
 }
 
+// specDir is this package's own directory, so callerLine can skip builder frames
+// wherever the framework is checked out or cached.
+var specDir = func() string { _, f, _, _ := runtime.Caller(0); return f[:strings.LastIndex(f, "/")+1] }()
+
 func callerLine() int {
 	for depth := 2; depth < 10; depth++ {
 		_, file, line, ok := runtime.Caller(depth)
 		if !ok {
 			break
 		}
-		if strings.Contains(file, "/keystone/spec/") {
+		if strings.HasPrefix(file, specDir) {
 			continue
 		}
 		return line
@@ -140,7 +144,7 @@ func specErr(format string, args ...any) {
 
 // ---- building the model ----
 
-// App assembles the declared model. ks gen runs this inside a throwaway program.
+// App assembles the declared model. am gen runs this inside a throwaway program.
 func App() (*model.App, error) {
 	a := &model.App{
 		SchemaVersion: model.SchemaVersion,
@@ -172,7 +176,7 @@ func App() (*model.App, error) {
 		a.App.Tenant = registry.tenant.name
 		a.Tenant = appResource(registry.tenant, snake(registry.tenant.name))
 	}
-	a.Membership = &model.Tenant{Name: "Membership", Table: "ks_membership", Fields: membershipFields()}
+	a.Membership = &model.Tenant{Name: "Membership", Table: "am_membership", Fields: membershipFields()}
 
 	names := make([]string, 0, len(registry.modules))
 	for n := range registry.modules {
@@ -225,7 +229,7 @@ func appName() string {
 	if registry.appName != "" {
 		return registry.appName
 	}
-	if n := os.Getenv("KS_APP_NAME"); n != "" {
+	if n := os.Getenv("AM_APP_NAME"); n != "" {
 		return n
 	}
 	return "app"

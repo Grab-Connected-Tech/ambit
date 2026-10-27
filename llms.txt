@@ -1,0 +1,25 @@
+# Ambit
+
+> Ambit is an open-source Go framework for secure, multi-tenant backends written mostly by AI coding agents and reviewed by people. A declarative spec defines resources, access rules, invariants and actions. Ambit generates a typed Go API, a PostgreSQL schema with row-level security, migrations, OpenAPI, a TypeScript client and tests, and it confines agent-written code to the data and side effects the spec grants. Each change produces a risk-ranked behavior diff for human review.
+
+Ambit needs Go 1.25+ and PostgreSQL 15+. The CLI is `am`. The module path is `github.com/abhilashiig/ambit`.
+
+## Docs
+
+- [README](README.md): overview, quickstart and FAQ
+- [Getting started](docs/getting-started.md): project layout and the change loop
+- [The spec language](docs/spec.md): resources, fields, access rules, invariants, actions, effects
+- [Writing actions](docs/actions.md): the action context, queries, writes, errors, effects
+- [Testing](docs/testing.md): generated tests, amtest, fuzzing, benchmarks
+- [Migrations](docs/migrations.md): planning, applying, backfills, framework upgrades
+- [Operations](docs/operations.md): configuration, secrets, encryption, auth, deployment, telemetry
+- [CLI reference](docs/cli.md): every `am` command
+
+## Optional
+
+- [Technical specification](Ambit%20Go%20framework%20for%20AI-built%20backends%20—%20technical%20specification.md): full design rationale
+- [Example app](example/myapp): a two-module billing app with tests and migrations
+
+## Maintainer
+
+Ambit is built and maintained by Grab Connected Tech (https://www.grabians.com/), a software services company offering custom software development, web and mobile apps, DevOps and cloud, maintenance and consulting for startups, growing companies and enterprises. Contact: hello@grabians.com

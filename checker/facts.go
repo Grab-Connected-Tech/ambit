@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"keystone.dev/keystone/compile"
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/compile"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // exprText renders an expression back to Go source, for the substring tests that
@@ -29,15 +29,15 @@ func exprText(fset *token.FileSet, f *ast.File, n ast.Node) string {
 }
 
 var (
-	hashRe    = regexp.MustCompile(`(?m)^// ks:hash ([0-9a-f]{16})`)
-	markerRe  = regexp.MustCompile(`(?m)^// ks:([A-Za-z]+) `)
+	hashRe    = regexp.MustCompile(`(?m)^// am:hash ([0-9a-f]{16})`)
+	markerRe  = regexp.MustCompile(`(?m)^// am:([A-Za-z]+) `)
 	gomodRe   = regexp.MustCompile(`^\s*([^\s]+)\s+(v[0-9][^\s/]*)`)
 	declRe    = regexp.MustCompile(`^\s*(\w+)\s*=\s*s\.(Query|Mutation|Job|Schedule)\("(\w+)"`)
 	implRe    = regexp.MustCompile(`^func\s+([A-Z]\w*)\s*\(`)
 	requireRe = regexp.MustCompile(`env\.Call\([^,]+,\s*(actions\.)?([A-Z]\w*)`)
-	// A test that wraps an action in its generated adapter (kstest.Call(env, actor,
+	// A test that wraps an action in its generated adapter (amtest.Call(env, actor,
 	// gen.SendInvoiceHandler, ...), or a job handed to a worker) runs it.
-	kstestCallRe = regexp.MustCompile(`gen\.([A-Z]\w*)Handler\b`)
+	amtestCallRe = regexp.MustCompile(`gen\.([A-Z]\w*)Handler\b`)
 )
 
 // hashMarker returns the content hash recorded in a generated file.
@@ -79,7 +79,7 @@ func normalizeForHash(s string) string {
 }
 
 // checkGeneratedHashes compares every generated file against what the model would
-// produce now, which is how an edit to gen/ is caught (KS-CODE-001).
+// produce now, which is how an edit to gen/ is caught (AM-CODE-001).
 func checkGeneratedHashes(cfg Config, res *Result) {
 	err := filepath.Walk(cfg.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".gen.go") {
@@ -92,9 +92,9 @@ func checkGeneratedHashes(cfg Config, res *Result) {
 		text := string(src)
 		if !strings.Contains(text, generatedMark) {
 			res.Diags = append(res.Diags, compile.Diag{
-				Rule: "KS-CODE-001", Severity: compile.SevError, File: rel(cfg.Root, path), Line: 1,
+				Rule: "AM-CODE-001", Severity: compile.SevError, File: rel(cfg.Root, path), Line: 1,
 				Message: "a generated file is missing the generated marker",
-				Fix:     "run ks gen", Docs: "ks explain KS-CODE-001",
+				Fix:     "run am gen", Docs: "am explain AM-CODE-001",
 			})
 			return nil
 		}
@@ -104,10 +104,10 @@ func checkGeneratedHashes(cfg Config, res *Result) {
 		}
 		if !hashMatches(text, want) {
 			res.Diags = append(res.Diags, compile.Diag{
-				Rule: "KS-CODE-001", Severity: compile.SevError, File: rel(cfg.Root, path), Line: 1,
-				Message: "generated file was edited after ks gen",
-				Fix:     "put the change in the spec and run ks gen, or move the work into actions/",
-				Docs:    "ks explain KS-CODE-001",
+				Rule: "AM-CODE-001", Severity: compile.SevError, File: rel(cfg.Root, path), Line: 1,
+				Message: "generated file was edited after am gen",
+				Fix:     "put the change in the spec and run am gen, or move the work into actions/",
+				Docs:    "am explain AM-CODE-001",
 			})
 		}
 		return nil
@@ -152,18 +152,18 @@ func checkImplementations(cfg Config, res *Result) {
 			}
 			if _, ok := impl[act.Name]; !ok {
 				res.Diags = append(res.Diags, compile.Diag{
-					Rule: "KS-CODE-005", Severity: compile.SevError, Decl: model.Qual(m.Name, act.Name),
+					Rule: "AM-CODE-005", Severity: compile.SevError, Decl: model.Qual(m.Name, act.Name),
 					File: filepath.Join("app", m.Name, "actions"), Line: 1,
 					Message: fmt.Sprintf("the spec declares %s but no action file implements it", act.Name),
-					Fix:     "run ks gen to write the stub, then fill it in",
-					Docs:    "ks explain KS-CODE-005",
+					Fix:     "run am gen to write the stub, then fill it in",
+					Docs:    "am explain AM-CODE-005",
 				})
 			}
 		}
 	}
 }
 
-// checkTests reports actions with no test that calls them (KS-TEST-001).
+// checkTests reports actions with no test that calls them (AM-TEST-001).
 func checkTests(cfg Config, res *Result) {
 	if cfg.App == nil {
 		return
@@ -187,7 +187,7 @@ func checkTests(cfg Config, res *Result) {
 				for _, mm := range requireRe.FindAllStringSubmatch(string(src), -1) {
 					called[mm[2]] = true
 				}
-				for _, mm := range kstestCallRe.FindAllStringSubmatch(string(src), -1) {
+				for _, mm := range amtestCallRe.FindAllStringSubmatch(string(src), -1) {
 					called[mm[1]] = true
 				}
 			}
@@ -200,27 +200,27 @@ func checkTests(cfg Config, res *Result) {
 			}
 			if !called[act.Name] {
 				res.Diags = append(res.Diags, compile.Diag{
-					Rule: "KS-TEST-001", Severity: compile.SevWarning, Decl: model.Qual(m.Name, act.Name),
+					Rule: "AM-TEST-001", Severity: compile.SevWarning, Decl: model.Qual(m.Name, act.Name),
 					Message: fmt.Sprintf("%s has no test that calls it", model.Qual(m.Name, act.Name)),
 					Fix:     "add env.Call(actor, actions." + act.Name + ", ...) in " + m.Name + "/actions",
-					Docs:    "ks explain KS-TEST-001",
+					Docs:    "am explain AM-TEST-001",
 				})
 			}
 		}
 	}
 }
 
-// checkSuppressions turns //ks:allow comments into suppression, and refuses the ones
+// checkSuppressions turns //am:allow comments into suppression, and refuses the ones
 // with no reason (§14.1).
 func checkSuppressions(res *Result) {
 	kept := res.Diags[:0]
 	for _, a := range res.Facts.Allows {
 		if strings.TrimSpace(a.Reason) == "" {
 			res.Diags = append(res.Diags, compile.Diag{
-				Rule: "KS-SEC-003", Severity: compile.SevError, File: a.File, Line: a.Line,
-				Message: "//ks:allow " + a.Rule + " has no reason",
+				Rule: "AM-SEC-003", Severity: compile.SevError, File: a.File, Line: a.Line,
+				Message: "//am:allow " + a.Rule + " has no reason",
 				Fix:     "write why the rule does not apply here; the reason appears in the behavior diff",
-				Docs:    "ks explain KS-SEC-003",
+				Docs:    "am explain AM-SEC-003",
 			})
 			continue
 		}
@@ -269,8 +269,8 @@ func parseDeps(goMod string) []model.Dep {
 	return out
 }
 
-// DeclaredActions scans spec files for action declarations, which lets ks new and
-// ks context work without running the spec program.
+// DeclaredActions scans spec files for action declarations, which lets am new and
+// am context work without running the spec program.
 func DeclaredActions(root string) []string {
 	var out []string
 	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {

@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // buildResource turns one declaration into model form, reporting every reference
@@ -172,7 +172,7 @@ func mergeRule(dst **policy.Node, add *policy.Node) {
 	*dst = policy.Normalize(policy.Or(*dst, add))
 }
 
-// accountTable keeps user tables out of the reserved ks_ prefix.
+// accountTable keeps user tables out of the reserved am_ prefix.
 func accountTable(d *ResourceDecl) string {
 	if d.account && snake(d.name) == "user" {
 		return "user_account"
@@ -192,7 +192,7 @@ func hasIndex(res *model.Resource, name string) bool {
 func knownField(res *model.Resource, name string) bool { return res.FindField(name) != nil }
 
 // verifyPaths walks a rule and confirms each field reference resolves, so an
-// unresolvable reference fails at ks gen rather than at query time (KS-SPEC-002).
+// unresolvable reference fails at am gen rather than at query time (AM-SPEC-002).
 func verifyPaths(n *policy.Node, res *model.Resource) error {
 	var err error
 	n.Walk(func(x *policy.Node) bool {

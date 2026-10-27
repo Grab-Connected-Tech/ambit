@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 )
 
 // The committed example app is the fixture: generating it again must leave every file
@@ -21,7 +21,7 @@ func TestGenerateExampleIsStableBuildsAndApplies(t *testing.T) {
 		t.Skip("runs the go tool")
 	}
 	dir := filepath.Join("..", "example", "myapp")
-	opts := Options{Dir: dir, AppPackage: "keystone.dev/keystone/example/myapp/app"}
+	opts := Options{Dir: dir, AppPackage: "github.com/abhilashiig/ambit/example/myapp/app"}
 	res, err := Generate(opts)
 	if err != nil {
 		t.Fatal(err)
@@ -49,9 +49,9 @@ func TestGenerateExampleIsStableBuildsAndApplies(t *testing.T) {
 		t.Fatalf("generated app does not build: %v\n%s", err, out)
 	}
 
-	url := os.Getenv("KS_TEST_DB_URL")
+	url := os.Getenv("AM_TEST_DB_URL")
 	if url == "" {
-		t.Log("KS_TEST_DB_URL unset; schema not applied")
+		t.Log("AM_TEST_DB_URL unset; schema not applied")
 		return
 	}
 	ctx := context.Background()
@@ -60,7 +60,7 @@ func TestGenerateExampleIsStableBuildsAndApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer admin.Close(ctx)
-	name := "ks_codegen_" + strings.ReplaceAll(string(ks.NewID()), "-", "")
+	name := "am_codegen_" + strings.ReplaceAll(string(am.NewID()), "-", "")
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatal(err)
 	}

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 func base() *model.App {
@@ -29,7 +29,7 @@ func base() *model.App {
 		App:           model.AppInfo{Name: "myapp", Tenant: "Org"},
 		Roles:         []string{"accountant", "admin", "member"},
 		Tenant:        &model.Tenant{Name: "Org", Table: "org", Fields: model.BuiltInFields(false)},
-		Membership:    &model.Tenant{Name: "Membership", Table: "ks_membership"},
+		Membership:    &model.Tenant{Name: "Membership", Table: "am_membership"},
 		Identity:      model.Identity{Sessions: &model.Sessions{TTL: "720h0m0s", Rotate: true}, APITokens: &model.APITokens{Scoped: true}},
 		Defaults:      model.Defaults{QueryBudget: 20, RowBudget: 10000, ActionTimeout: "10s", Compatibility: ""},
 		Modules: []model.Module{{
@@ -172,7 +172,7 @@ func TestCodeFactsAreHighRisk(t *testing.T) {
 	bf := model.Facts{}
 	hf := model.Facts{
 		Unsafe: []model.UnsafeFact{{File: "app/billing/actions/send_invoice.go", Line: 22, Module: "billing", Action: "SendInvoice", Kind: "raw_sql", Reason: "legacy bulk insert"}},
-		Allows: []model.AllowFact{{Rule: "KS-DATA-002", File: "app/billing/actions/send_reminders.go", Line: 18, Reason: "batch API is faster"}},
+		Allows: []model.AllowFact{{Rule: "AM-DATA-002", File: "app/billing/actions/send_reminders.go", Line: 18, Reason: "batch API is faster"}},
 		Deps:   []model.Dep{{Path: "github.com/stripe/stripe-go/v78", Version: "v78.2.0"}},
 	}
 	r := Between(b, u, bf, hf)
@@ -180,7 +180,7 @@ func TestCodeFactsAreHighRisk(t *testing.T) {
 		t.Fatalf("counts: %+v", r)
 	}
 	find(t, r, Change{Risk: High, Category: CatCode, Subject: "unsafe blocks", Detail: "1 new raw-SQL"})
-	find(t, r, Change{Risk: High, Category: CatCode, Subject: "suppressions", Detail: "1 new //ks:allow"})
+	find(t, r, Change{Risk: High, Category: CatCode, Subject: "suppressions", Detail: "1 new //am:allow"})
 	find(t, r, Change{Risk: High, Category: CatDep, Subject: "github.com/stripe/stripe-go/v78", Detail: "new dependency"})
 	if r.Count(High) < 3 {
 		t.Fatalf("expected at least three high rows, got %d", r.Count(High))
@@ -307,7 +307,7 @@ func TestBreakingChangesNeedADeprecationRelease(t *testing.T) {
 	head := base()
 	removeListInvoices(head)
 	if blocked(base(), head) != 1 {
-		t.Fatal("removing an action that was never deprecated is blocked (KS-API-001)")
+		t.Fatal("removing an action that was never deprecated is blocked (AM-API-001)")
 	}
 	deprecated := base()
 	_, act := deprecated.FindAction("billing.ListInvoices")

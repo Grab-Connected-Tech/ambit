@@ -41,8 +41,8 @@ func render(t *testing.T, n *Node, tbl *Table, target Target, alias string) (str
 
 func TestRoleCompilesToMembershipLookup(t *testing.T) {
 	rule := Or(Role("admin"), Role("accountant"))
-	text, binds := render(t, rule, invoiceTable, TargetQuery, "ks_t")
-	if !strings.Contains(text, "FROM ks_membership m") {
+	text, binds := render(t, rule, invoiceTable, TargetQuery, "am_t")
+	if !strings.Contains(text, "FROM am_membership m") {
 		t.Fatalf("want a membership lookup, got %s", text)
 	}
 	if !strings.Contains(text, "m.role IN (?)") {
@@ -140,7 +140,7 @@ func TestRefPathCompilesToCorrelatedSubquery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(s.Text, "(SELECT ks_sub.plan FROM customer ks_sub WHERE ks_sub.id = t.customer_id)") {
+	if !strings.Contains(s.Text, "(SELECT am_sub.plan FROM customer am_sub WHERE am_sub.id = t.customer_id)") {
 		t.Fatalf("subselect wrong: %s", s.Text)
 	}
 	// .id through a ref uses the foreign key directly, no subquery.
@@ -155,7 +155,7 @@ func TestRefPathCompilesToCorrelatedSubquery(t *testing.T) {
 
 func TestUnknownFieldIsACompileError(t *testing.T) {
 	if _, err := TableSQL(FieldRef("nope"), invoiceTable, TargetQuery, "t"); err == nil {
-		t.Fatal("want an error for an unknown field (KS-SPEC-002)")
+		t.Fatal("want an error for an unknown field (AM-SPEC-002)")
 	}
 	if _, err := TableSQL(Cmp(OpEq, FieldRef("notes", "notes"), Literal(StringLit("a"))), invoiceTable, TargetQuery, "t"); err == nil {
 		t.Fatal("want an error for a non-relation path")

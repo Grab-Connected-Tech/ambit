@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // BuildTable derives the storage description of a resource from the app model: the
@@ -17,7 +17,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 	ref := module + "." + resource
 	res := app.FindResource(ref)
 	if res == nil {
-		panic("keystone: no resource " + module + "." + resource + " in the app model")
+		panic("ambit: no resource " + module + "." + resource + " in the app model")
 	}
 	if t.Ref == "" {
 		t.Ref = ref
@@ -123,7 +123,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 // references something the schema does not have, which is a bug in the app's spec.
 func mustFrag(s *policy.SQL, err error) Frag {
 	if err != nil {
-		panic("keystone: compiling an access rule: " + err.Error())
+		panic("ambit: compiling an access rule: " + err.Error())
 	}
 	return fragFromPolicy(s)
 }
@@ -239,8 +239,8 @@ func SetColumn(column string, val any) Assignment {
 }
 
 // SetOpt adds a column only when the caller actually supplied it. Absent and empty are
-// different things, which is why optional fields are ks.Opt[T] (§5.2).
-func SetOpt[T any](column string, v ks.Opt[T]) []Assignment {
+// different things, which is why optional fields are am.Opt[T] (§5.2).
+func SetOpt[T any](column string, v am.Opt[T]) []Assignment {
 	if !v.Present() {
 		return nil
 	}

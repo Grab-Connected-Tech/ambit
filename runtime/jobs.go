@@ -12,14 +12,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // JobCall is one queued unit of background work (§10.4).
 type JobCall struct {
-	ID          ks.ID         `json:"id"`
-	Tenant      ks.ID         `json:"tenantId"`
+	ID          am.ID         `json:"id"`
+	Tenant      am.ID         `json:"tenantId"`
 	Action      string        `json:"action"`
 	Args        []byte        `json:"args"`
 	Priority    int           `json:"priority"`
@@ -33,7 +33,7 @@ type JobCall struct {
 	Concurrency string        `json:"concurrencyKey,omitempty"`
 	Error       string        `json:"lastError,omitempty"`
 	Trace       string        `json:"traceId,omitempty"`
-	Invocation  ks.ID         `json:"invocationId"`
+	Invocation  am.ID         `json:"invocationId"`
 	PayloadSpec []byte        `json:"policy,omitempty"`
 }
 
@@ -41,10 +41,10 @@ type JobCall struct {
 // "start work only if the change committed" the default rather than a pattern (§10.1).
 func (d *DB) Enqueue(ctx context.Context, call JobCall) error {
 	if call.Action == "" {
-		return ks.InternalError(errors.New("runtime: Enqueue needs a job action"))
+		return am.InternalError(errors.New("runtime: Enqueue needs a job action"))
 	}
 	if call.ID == "" {
-		call.ID = ks.NewID()
+		call.ID = am.NewID()
 	}
 	if call.Tenant == "" {
 		call.Tenant = d.actor.Tenant
@@ -64,7 +64,7 @@ func (d *DB) Enqueue(ctx context.Context, call JobCall) error {
 	if call.Args == nil {
 		call.Args = []byte("{}")
 	}
-	spec := ks.NewW(64 + len(call.Args))
+	spec := am.NewW(64 + len(call.Args))
 	spec.ObjStart()
 	spec.Key("maxAttempts")
 	spec.Num(int64(call.MaxAttempts))
@@ -78,7 +78,7 @@ func (d *DB) Enqueue(ctx context.Context, call JobCall) error {
 	call.PayloadSpec = spec.Bytes()
 
 	_, err := d.exec(ctx,
-		`INSERT INTO ks_jobs (id, tenant_id, action, args, priority, state, run_after, attempts, max_attempts, backoff, base_delay, cap_delay, concurrency_key, invocation_id, policy, created_at)
+		`INSERT INTO am_jobs (id, tenant_id, action, args, priority, state, run_after, attempts, max_attempts, backoff, base_delay, cap_delay, concurrency_key, invocation_id, policy, created_at)
          VALUES ($1,$2,$3,$4,$5,'queued',$6,0,$7,$8,$9::interval,$10::interval,$11,$12,$13,now())`,
 		call.ID.Bytes(), call.Tenant.OrNil(), call.Action, call.Args, call.Priority, call.RunAfter,
 		call.MaxAttempts, call.Backoff, seconds(call.Base), seconds(call.Cap), nullString(call.Concurrency),
@@ -122,12 +122,12 @@ func (w *Worker) Claim(ctx context.Context, batch int) ([]JobCall, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	rows, err := tx.Query(ctx,
-		`UPDATE ks_jobs SET state='running', claimed_by=$1, claimed_at=now(), heartbeat_at=now(), attempts=attempts+1
+		`UPDATE am_jobs SET state='running', claimed_by=$1, claimed_at=now(), heartbeat_at=now(), attempts=attempts+1
 	    WHERE id IN (
-	      SELECT j.id FROM ks_jobs j
+	      SELECT j.id FROM am_jobs j
 	       WHERE j.state='queued' AND j.run_after <= now()
 	         AND (j.concurrency_key IS NULL OR NOT EXISTS (
-	               SELECT 1 FROM ks_jobs r
+	               SELECT 1 FROM am_jobs r
 	                WHERE r.concurrency_key = j.concurrency_key AND r.state='running' AND r.id <> j.id))
 	       ORDER BY j.priority, j.run_after
 	       FOR UPDATE SKIP LOCKED
@@ -143,7 +143,7 @@ func (w *Worker) Claim(ctx context.Context, batch int) ([]JobCall, error) {
 			c                           JobCall
 			base, cap                   time.Duration
 			policyBytes                 []byte
-			tenant, invocation          ks.ID
+			tenant, invocation          am.ID
 			prio, attempts, maxAttempts int
 		)
 		if err := rows.Scan(&c.ID, &tenant, &c.Action, &c.Args, &prio, &c.State, &attempts, &maxAttempts,
@@ -186,10 +186,10 @@ func (w *Worker) Run(ctx context.Context, call JobCall) error {
 	return w.finish(ctx, call, nil, false)
 }
 
-func (w *Worker) actorFor(ctx context.Context, call JobCall, h *Handler) ks.Actor {
+func (w *Worker) actorFor(ctx context.Context, call JobCall, h *Handler) am.Actor {
 	module, name := splitAction(call.Action)
 	_, act := w.A.Model.FindAction(module + "." + name)
-	a := ks.Actor{Kind: ks.ActorSystem, ID: call.Tenant, Tenant: call.Tenant, Authed: true}
+	a := am.Actor{Kind: am.ActorSystem, ID: call.Tenant, Tenant: call.Tenant, Authed: true}
 	if act == nil {
 		return a
 	}
@@ -207,32 +207,32 @@ func (w *Worker) actorFor(ctx context.Context, call JobCall, h *Handler) ks.Acto
 }
 
 // actorSnapshot rebuilds the actor captured when a RunAs(Enqueuer) job was enqueued.
-func (w *Worker) actorSnapshot(ctx context.Context, call JobCall) (ks.Actor, error) {
-	var a ks.Actor
+func (w *Worker) actorSnapshot(ctx context.Context, call JobCall) (am.Actor, error) {
+	var a am.Actor
 	var tenant []byte
 	var roles []string
 	err := w.A.Pool.QueryRow(ctx,
 		`SELECT coalesce(actor_id,'00000000-0000-0000-0000-000000000000'), coalesce(tenant_id,'00000000-0000-0000-0000-000000000000'), coalesce(actor_roles,'{}')
-		   FROM ks_invocations WHERE id=$1`, call.Invocation).
+		   FROM am_invocations WHERE id=$1`, call.Invocation).
 		Scan(&a.ID, &tenant, &roles)
 	if err != nil {
-		return ks.Actor{}, translate(err)
+		return am.Actor{}, translate(err)
 	}
-	a.Tenant = ks.ID(hexUUID(tenant))
+	a.Tenant = am.ID(hexUUID(tenant))
 	a.Roles = roles
-	a.Kind = ks.ActorUser
+	a.Kind = am.ActorUser
 	a.Authed = true
 	a.Snapshot = true
 	return a, nil
 }
 
-func (w *Worker) rolesFor(ctx context.Context, tenant, actor ks.ID) ([]string, error) {
+func (w *Worker) rolesFor(ctx context.Context, tenant, actor am.ID) ([]string, error) {
 	// The system actor holds every role within one tenant (§5.7).
 	if tenant.IsNil() {
 		return w.A.Model.Roles, nil
 	}
 	rows, err := w.A.Pool.Query(ctx,
-		`SELECT role FROM ks_membership WHERE tenant_id=$1 AND actor_id=$2`, tenant, actor)
+		`SELECT role FROM am_membership WHERE tenant_id=$1 AND actor_id=$2`, tenant, actor)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -262,9 +262,9 @@ func (w *Worker) finish(ctx context.Context, call JobCall, err error, mayRetry b
 			state = "queued"
 			delay = backoff(call.Attempts, maxd(call.Base, time.Second), maxd(call.Cap, time.Hour))
 		}
-		w.A.metric("ks_job_"+state, 1)
+		w.A.metric("am_job_"+state, 1)
 	}
-	sql := `UPDATE ks_jobs SET state=$2, last_error=$3, finished_at=CASE WHEN $2 IN ('done','dead_letter') THEN now() END`
+	sql := `UPDATE am_jobs SET state=$2, last_error=$3, finished_at=CASE WHEN $2 IN ('done','dead_letter') THEN now() END`
 	args := []any{call.ID, state, message}
 	if state == "queued" {
 		sql += `, run_after = now() + $4::interval, claimed_by = NULL, claimed_at = NULL`
@@ -369,17 +369,17 @@ func (s *Schedules) Tick(ctx context.Context, now time.Time) (int, error) {
 			s.Slots[key] = true
 			var exists bool
 			err := s.A.Pool.QueryRow(ctx,
-				`SELECT EXISTS (SELECT 1 FROM ks_scheduled_runs WHERE schedule=$1 AND slot=$2 AND tenant_id IS NULL)`,
+				`SELECT EXISTS (SELECT 1 FROM am_scheduled_runs WHERE schedule=$1 AND slot=$2 AND tenant_id IS NULL)`,
 				model.Qual(m.Name, act.Name), slot).Scan(&exists)
 			if err == nil && exists {
 				continue
 			}
 			if _, err := s.A.Pool.Exec(ctx,
-				`INSERT INTO ks_scheduled_runs (id, schedule, slot, created_at) VALUES ($1,$2,$3,now()) ON CONFLICT DO NOTHING`,
-				ks.NewID(), model.Qual(m.Name, act.Name), slot); err != nil {
+				`INSERT INTO am_scheduled_runs (id, schedule, slot, created_at) VALUES ($1,$2,$3,now()) ON CONFLICT DO NOTHING`,
+				am.NewID(), model.Qual(m.Name, act.Name), slot); err != nil {
 				return n, translate(err)
 			}
-			job := JobCall{Action: act.Runs, Tenant: ks.NilID, RunAfter: now, Invocation: ks.NewID(), ID: ks.NewID()}
+			job := JobCall{Action: act.Runs, Tenant: am.NilID, RunAfter: now, Invocation: am.NewID(), ID: am.NewID()}
 			if err := s.enqueueJobNoTx(ctx, job); err != nil {
 				return n, err
 			}
@@ -398,7 +398,7 @@ func (s *Schedules) enqueueJobNoTx(ctx context.Context, call JobCall) error {
 // immediate effect whose action rolled back (§10.2, §10.5).
 func (a *App) enqueueOutside(ctx context.Context, call JobCall) error {
 	if call.ID.IsNil() {
-		call.ID = ks.NewID()
+		call.ID = am.NewID()
 	}
 	if call.Args == nil {
 		call.Args = []byte("{}")
@@ -408,7 +408,7 @@ func (a *App) enqueueOutside(ctx context.Context, call JobCall) error {
 	}
 	err := a.inSystemScope(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO ks_jobs (id, tenant_id, action, args, priority, state, run_after, attempts, max_attempts, backoff, base_delay, cap_delay, invocation_id, policy, created_at)
+			`INSERT INTO am_jobs (id, tenant_id, action, args, priority, state, run_after, attempts, max_attempts, backoff, base_delay, cap_delay, invocation_id, policy, created_at)
 	         VALUES ($1,$2,$3,$4,5,'queued',now(),0,$5,'exponential','1 second','10 minutes',$6,'{}'::jsonb,now())`,
 			call.ID, call.Tenant.OrNil(), call.Action, call.Args, call.MaxAttempts, call.Invocation)
 		return err

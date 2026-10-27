@@ -1,4 +1,4 @@
-module keystone.dev/keystone
+module github.com/abhilashiig/ambit
 
 go 1.25.0
 

@@ -3,8 +3,8 @@
 package customers
 
 import (
-	"keystone.dev/keystone/example/myapp/gen"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/example/myapp/gen"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 var Actions = struct {

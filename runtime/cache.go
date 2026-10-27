@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // The query cache of §11.3. An entry is keyed by the action, the tenant, the actor's
@@ -24,12 +24,12 @@ import (
 type queryCache struct {
 	a      *App
 	key    string
-	tenant ks.ID
+	tenant am.ID
 	ttl    time.Duration
 	gen    int64
 }
 
-func (a *App) cacheFor(ctx context.Context, h *Handler, actor ks.Actor, in *Call) *queryCache {
+func (a *App) cacheFor(ctx context.Context, h *Handler, actor am.Actor, in *Call) *queryCache {
 	if h.Kind != model.KindQuery || h.Spec.Cache == nil || actor.Tenant.IsNil() {
 		return nil
 	}
@@ -47,7 +47,7 @@ func (a *App) cacheFor(ctx context.Context, h *Handler, actor ks.Actor, in *Call
 		refs[i] = canonRef(r)
 	}
 	err = a.framework(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT coalesce(sum(generation), 0) FROM ks_cache_generation WHERE tenant_id = $1 AND resource = ANY($2)`,
+		return tx.QueryRow(ctx, `SELECT coalesce(sum(generation), 0) FROM am_cache_generation WHERE tenant_id = $1 AND resource = ANY($2)`,
 			actor.Tenant.Bytes(), refs).Scan(&c.gen)
 	})
 	if err != nil {
@@ -62,22 +62,22 @@ func (c *queryCache) lookup(ctx context.Context) ([]byte, bool) {
 		return nil, false
 	}
 	if body, ok := c.a.Caches.get(c.key, c.ttl, c.gen); ok {
-		c.a.metric("ks_cache_hit", 1)
+		c.a.metric("am_cache_hit", 1)
 		return body, true
 	}
 	if c.a.Cfg.CacheShared {
 		var body []byte
 		err := c.a.framework(ctx, func(tx pgx.Tx) error {
-			return tx.QueryRow(ctx, `SELECT value::text FROM ks_cache_entry WHERE cache_key = $1 AND generation = $2 AND expires_at > now()`,
+			return tx.QueryRow(ctx, `SELECT value::text FROM am_cache_entry WHERE cache_key = $1 AND generation = $2 AND expires_at > now()`,
 				c.key, c.gen).Scan(&body)
 		})
 		if err == nil {
 			c.a.Caches.put(c.key, body, c.ttl, c.gen)
-			c.a.metric("ks_cache_hit", 1)
+			c.a.metric("am_cache_hit", 1)
 			return body, true
 		}
 	}
-	c.a.metric("ks_cache_miss", 1)
+	c.a.metric("am_cache_miss", 1)
 	return nil, false
 }
 
@@ -90,10 +90,10 @@ func (c *queryCache) store(ctx context.Context, body []byte) {
 		return
 	}
 	err := c.a.framework(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `INSERT INTO ks_cache_entry (id, cache_key, tenant_id, value, expires_at, generation)
+		_, err := tx.Exec(ctx, `INSERT INTO am_cache_entry (id, cache_key, tenant_id, value, expires_at, generation)
 			VALUES ($1, $2, $3, $4::jsonb, now() + $5::interval, $6)
 			ON CONFLICT (cache_key) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at, generation = EXCLUDED.generation`,
-			ks.NewID().Bytes(), c.key, c.tenant.Bytes(), string(body), seconds(c.ttl), c.gen)
+			am.NewID().Bytes(), c.key, c.tenant.Bytes(), string(body), seconds(c.ttl), c.gen)
 		return err
 	})
 	if err != nil {
@@ -111,9 +111,9 @@ func bumpGenerations(ctx context.Context, tx pgx.Tx, d *DB) error {
 			continue
 		}
 		seen[key] = true
-		if _, err := tx.Exec(ctx, `INSERT INTO ks_cache_generation (id, tenant_id, resource, generation) VALUES ($1, $2, $3, 1)
-			ON CONFLICT (tenant_id, resource) DO UPDATE SET generation = ks_cache_generation.generation + 1, updated_at = now()`,
-			ks.NewID().Bytes(), r.Tenant.Bytes(), canonRef(r.Resource)); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO am_cache_generation (id, tenant_id, resource, generation) VALUES ($1, $2, $3, 1)
+			ON CONFLICT (tenant_id, resource) DO UPDATE SET generation = am_cache_generation.generation + 1, updated_at = now()`,
+			am.NewID().Bytes(), r.Tenant.Bytes(), canonRef(r.Resource)); err != nil {
 			return translate(err)
 		}
 	}

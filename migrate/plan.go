@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // Class is how §13.2 names a schema change. It decides what the tool may do
@@ -144,7 +144,7 @@ func Diff(old, updated *model.App) Plan {
 				NeedsFlag: "--allow-destructive",
 				Phases: []string{
 					"phase 1: mark the resource Deprecated() and ship it, so no action reads it",
-					"phase 2: drop the table with ks migrate apply --allow-destructive",
+					"phase 2: drop the table with am migrate apply --allow-destructive",
 				},
 				InTx: []string{fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE;", quoteIdent(o.Table))},
 			})
@@ -183,10 +183,10 @@ func diffResource(o, n model.Resource, ref string, a *model.App) []Step {
 			Class: NeedsBackfill, Subject: ref, Detail: "resource becomes tenant scoped",
 			InTx: []string{
 				fmt.Sprintf("ALTER TABLE %s ADD COLUMN tenant_id uuid;", quoteIdent(n.Table)),
-				fmt.Sprintf("UPDATE %s SET tenant_id = ks_backfill_tenant();", quoteIdent(n.Table)),
+				fmt.Sprintf("UPDATE %s SET tenant_id = am_backfill_tenant();", quoteIdent(n.Table)),
 				fmt.Sprintf("ALTER TABLE %s ALTER COLUMN tenant_id SET NOT NULL;", quoteIdent(n.Table)),
 			},
-			Backfill:  &Backfill{Table: n.Table, Column: "tenant_id", Batch: 1000, Job: "ks_backfill_tenant_id"},
+			Backfill:  &Backfill{Table: n.Table, Column: "tenant_id", Batch: 1000, Job: "am_backfill_tenant_id"},
 			NeedsFlag: "--plan",
 		})
 		steps = append(steps, Step{Class: Safe, Subject: ref, Detail: "enable row-level security",
@@ -201,7 +201,7 @@ func diffResource(o, n model.Resource, ref string, a *model.App) []Step {
 				"2. drop the isolation policy and the column with --allow-destructive",
 			},
 			InTx: []string{
-				fmt.Sprintf("DROP POLICY IF EXISTS ks_tenant_isolation ON %s;", quoteIdent(n.Table)),
+				fmt.Sprintf("DROP POLICY IF EXISTS am_tenant_isolation ON %s;", quoteIdent(n.Table)),
 				fmt.Sprintf("ALTER TABLE %s DROP COLUMN IF EXISTS tenant_id CASCADE;", quoteIdent(n.Table)),
 			},
 		})
@@ -270,7 +270,7 @@ func diffResource(o, n model.Resource, ref string, a *model.App) []Step {
 				NeedsFlag: "--allow-destructive",
 				Phases: []string{
 					"phase 1: mark the field Deprecated() so generated code stops reading it",
-					"phase 2: drop the column with ks migrate apply --allow-destructive",
+					"phase 2: drop the column with am migrate apply --allow-destructive",
 				},
 				InTx: dropColumnSQL(n, ov),
 			})
@@ -332,7 +332,7 @@ func addColumnStep(n model.Resource, f model.Field, ref string, a *model.App) St
 				fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;", quoteIdent(n.Table), quoteIdent(firstColumn(f))),
 				fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s;", quoteIdent(n.Table), quoteIdent(n.Table+"_"+f.Column+"_not_null")),
 			},
-			Backfill: &Backfill{Table: n.Table, Column: firstColumn(f), Batch: 1000, Job: "ks_backfill_column"},
+			Backfill: &Backfill{Table: n.Table, Column: firstColumn(f), Batch: 1000, Job: "am_backfill_column"},
 		}
 	}
 }
@@ -400,7 +400,7 @@ func alterColumnSteps(n model.Resource, old, f model.Field, ref string, a *model
 		steps = append(steps, Step{
 			Class: NeedsBackfill, Subject: subject, Detail: "field becomes required",
 			NeedsFlag: "--plan",
-			Backfill:  &Backfill{Table: n.Table, Column: firstColumn(f), Set: strings.TrimPrefix(defaultSQL(f), " DEFAULT "), Batch: 1000, Job: "ks_backfill_set_default"},
+			Backfill:  &Backfill{Table: n.Table, Column: firstColumn(f), Set: strings.TrimPrefix(defaultSQL(f), " DEFAULT "), Batch: 1000, Job: "am_backfill_set_default"},
 			Phases: []string{
 				"1. backfill nulls to the declared default in batches of 1000",
 				"2. SET NOT NULL with a validated CHECK",
@@ -495,7 +495,7 @@ func refTarget(a *model.App, f model.Field) string {
 	}
 	t := a.TableName(f.Ref.Resource)
 	if t == "" {
-		t = "ks_unknown"
+		t = "am_unknown"
 	}
 	return quoteIdent(t) + "(id) ON DELETE " + strings.ToUpper(onDelete(f))
 }

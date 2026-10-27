@@ -91,10 +91,10 @@ func labelKey(labels []map[string]string) string {
 // observe records one request latency in milliseconds.
 func (m *Metrics) observe(ref string, ms float64) {
 	m.mu.Lock()
-	h := m.histogram["ks_request_duration_ms"]
+	h := m.histogram["am_request_duration_ms"]
 	if h == nil {
 		h = &hist{obs: map[string]*histSeries{}}
-		m.histogram["ks_request_duration_ms"] = h
+		m.histogram["am_request_duration_ms"] = h
 	}
 	m.mu.Unlock()
 	s := h.obs[ref]
@@ -138,7 +138,7 @@ func (m *Metrics) Bytes() []byte {
 		}
 		c.mu.Unlock()
 	}
-	for _, n := range []string{"ks_request_duration_ms"} {
+	for _, n := range []string{"am_request_duration_ms"} {
 		h := m.histogram[n]
 		if h == nil {
 			continue
@@ -261,27 +261,27 @@ func (a *App) gauges(ctx context.Context) []byte {
 	}
 	if a.Pool != nil {
 		st := a.Pool.Stat()
-		gauge("ks_db_pool_acquired", float64(st.AcquiredConns()))
-		gauge("ks_db_pool_idle", float64(st.IdleConns()))
-		gauge("ks_db_pool_max", float64(st.MaxConns()))
-		gauge("ks_db_pool_wait_total", float64(st.EmptyAcquireCount()))
+		gauge("am_db_pool_acquired", float64(st.AcquiredConns()))
+		gauge("am_db_pool_idle", float64(st.IdleConns()))
+		gauge("am_db_pool_max", float64(st.MaxConns()))
+		gauge("am_db_pool_wait_total", float64(st.EmptyAcquireCount()))
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		var pending, dead, queued float64
 		var lag, age float64
 		err := a.framework(ctx, func(tx pgx.Tx) error {
 			if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE state = 'pending'), count(*) FILTER (WHERE state = 'dead_letter'),
-				coalesce(extract(epoch FROM now() - min(created_at) FILTER (WHERE state = 'pending')), 0) FROM ks_outbox`).Scan(&pending, &dead, &lag); err != nil {
+				coalesce(extract(epoch FROM now() - min(created_at) FILTER (WHERE state = 'pending')), 0) FROM am_outbox`).Scan(&pending, &dead, &lag); err != nil {
 				return err
 			}
-			return tx.QueryRow(ctx, `SELECT count(*), coalesce(extract(epoch FROM now() - min(run_after)), 0) FROM ks_jobs WHERE state = 'queued' AND run_after <= now()`).Scan(&queued, &age)
+			return tx.QueryRow(ctx, `SELECT count(*), coalesce(extract(epoch FROM now() - min(run_after)), 0) FROM am_jobs WHERE state = 'queued' AND run_after <= now()`).Scan(&queued, &age)
 		})
 		if err == nil {
-			gauge("ks_outbox_pending", pending)
-			gauge("ks_outbox_dead_letter_rows", dead)
-			gauge("ks_outbox_lag_seconds", lag)
-			gauge("ks_jobs_queued", queued)
-			gauge("ks_jobs_oldest_seconds", age)
+			gauge("am_outbox_pending", pending)
+			gauge("am_outbox_dead_letter_rows", dead)
+			gauge("am_outbox_lag_seconds", lag)
+			gauge("am_jobs_queued", queued)
+			gauge("am_jobs_oldest_seconds", age)
 		}
 	}
 	return []byte(b.String())

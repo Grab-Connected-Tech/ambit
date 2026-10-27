@@ -3,9 +3,9 @@
 package customers
 
 import (
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 
-	"keystone.dev/keystone/example/myapp/app"
+	"github.com/abhilashiig/ambit/example/myapp/app"
 )
 
 // Customer is who an invoice is billed to.

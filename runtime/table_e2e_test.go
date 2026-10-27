@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 // TestGeneratedStyleTableRoundTrip runs the model-driven table through the paths a
@@ -19,9 +19,9 @@ const customerIndex = 7
 func TestGeneratedStyleTableRoundTrip(t *testing.T) {
 	h := setup(t)
 	type row struct {
-		id      ks.ID
+		id      am.ID
 		version int64
-		cust    ks.ID
+		cust    am.ID
 	}
 	// The row type is deliberately tiny; the generated scanner would be built from the
 	// same column list this reads, so positions come from the model rather than from a
@@ -29,18 +29,18 @@ func TestGeneratedStyleTableRoundTrip(t *testing.T) {
 	probe := runtime.BuildTable[map[string]any](h.app.Model, "billing", "Invoice", &runtime.Table[map[string]any]{})
 	invoiceCols := probe.Columns
 	tbl := runtime.BuildTable[row](h.app.Model, "billing", "Invoice", &runtime.Table[row]{
-		IDOf:      func(r *row) ks.ID { return r.id },
+		IDOf:      func(r *row) am.ID { return r.id },
 		VersionOf: func(r *row) int64 { return r.version },
 		Scan: func(rr runtime.Row) (*row, error) {
 			out := &row{}
 			for i, c := range invoiceCols {
 				switch c.Column {
 				case "id":
-					out.id = ksMust(ks.ScanID(rr.Raw(i)))
+					out.id = amMust(am.ScanID(rr.Raw(i)))
 				case "version":
 					out.version = rr.Int(i)
 				case "customer_id":
-					out.cust = ksMust(ks.ScanID(rr.Raw(i)))
+					out.cust = amMust(am.ScanID(rr.Raw(i)))
 				}
 			}
 			return out, rr.Err()
@@ -53,7 +53,7 @@ func TestGeneratedStyleTableRoundTrip(t *testing.T) {
 	if err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
 		v := runtime.Scoped(d, tbl)
 		one, err := v.Q().Where(runtime.NewIDCol("t.customer_id", "customers.Customer").Eq(cust)).First(ctx)
-		if err != nil && code(err) != ks.CodeNotFound {
+		if err != nil && code(err) != am.CodeNotFound {
 			return err
 		}
 		if one != nil {
@@ -105,9 +105,9 @@ func TestGeneratedStyleTableRoundTrip(t *testing.T) {
 
 	// And an update through a patch-shaped assignment list, with concurrency control.
 	if err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
-		_, err := runtime.Scoped(d, tbl).Update(ctx, created.id, ks.Version(created.version),
+		_, err := runtime.Scoped(d, tbl).Update(ctx, created.id, am.Version(created.version),
 			runtime.AssignmentsOf(
-				runtime.SetOpt("status", ks.Set("sent"))...,
+				runtime.SetOpt("status", am.Set("sent"))...,
 			))
 		return err
 	}); err != nil {
@@ -117,19 +117,19 @@ func TestGeneratedStyleTableRoundTrip(t *testing.T) {
 
 // scanID maps a uuid column onto an id, the way the framework does internally. A
 // hand-written row type in a test needs it; generated code uses the runtime accessor.
-func scanID(v any) ks.ID {
+func scanID(v any) am.ID {
 	switch t := v.(type) {
 	case []byte:
-		id, _ := ks.IDFromBytes(t)
+		id, _ := am.IDFromBytes(t)
 		return id
 	case string:
-		return ks.ID(t)
+		return am.ID(t)
 	default:
-		return ks.NilID
+		return am.NilID
 	}
 }
 
-func ksMust(id ks.ID, err error) ks.ID {
+func amMust(id am.ID, err error) am.ID {
 	if err != nil {
 		panic(err)
 	}

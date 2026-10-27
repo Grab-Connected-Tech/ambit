@@ -20,9 +20,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // Conn is satisfied by both a pool and a transaction, so the same scoped code runs
@@ -38,11 +38,11 @@ type Conn interface {
 type Row interface {
 	Null(i int) bool
 	Str(i int) string
-	ID(i int) ks.ID
+	ID(i int) am.ID
 	Int(i int) int64
 	Bool(i int) bool
 	Time(i int) time.Time
-	Decimal(i int) ks.Decimal
+	Decimal(i int) am.Decimal
 	Blob(i int) []byte
 	Raw(i int) any
 	Err() error
@@ -74,8 +74,8 @@ func (r *row) Str(i int) string {
 	}
 	return fmt.Sprint(x)
 }
-func (r *row) ID(i int) ks.ID {
-	id, err := ks.ScanID(r.at(i))
+func (r *row) ID(i int) am.ID {
+	id, err := am.ScanID(r.at(i))
 	if err != nil {
 		r.err = err
 	}
@@ -107,15 +107,15 @@ func (r *row) Time(i int) time.Time {
 	}
 	return time.Time{}
 }
-func (r *row) Decimal(i int) ks.Decimal {
+func (r *row) Decimal(i int) am.Decimal {
 	switch t := r.at(i).(type) {
 	case string:
-		d, _ := ks.ParseDecimal(t)
+		d, _ := am.ParseDecimal(t)
 		return d
 	case int64:
-		return ks.DecimalInt(t)
+		return am.DecimalInt(t)
 	}
-	return ks.DecimalInt(0)
+	return am.DecimalInt(0)
 }
 func (r *row) Blob(i int) []byte {
 	switch t := r.at(i).(type) {
@@ -188,7 +188,7 @@ type Table[T any] struct {
 	// FieldWrite carries per-column write predicates (§5.6).
 	FieldWrite []FieldFrag
 	// IDOf reads a row's primary key without reflection.
-	IDOf func(*T) ks.ID
+	IDOf func(*T) am.ID
 	// VersionOf reads a row's optimistic-concurrency counter.
 	VersionOf func(*T) int64
 	Scan      func(Row) (*T, error)
@@ -237,11 +237,11 @@ func (t *Table[T]) Column(name string) (Column, bool) {
 type DB struct {
 	conn          Conn
 	tx            pgx.Tx
-	actor         ks.Actor
+	actor         am.Actor
 	app           *model.App
 	cfg           *Config
 	log           *slog.Logger
-	clock         ks.Clock
+	clock         am.Clock
 	budget        *Budget
 	cross         bool
 	replica       bool
@@ -254,13 +254,13 @@ type DB struct {
 	Compensations []JobCall
 	traceID       string
 	action        string
-	invocation    ks.ID
+	invocation    am.ID
 	start         time.Time
 	providers     *Providers
 	keys          *Keyring
 }
 
-// Stmt is one executed statement, kept for traces and for ks perf capture.
+// Stmt is one executed statement, kept for traces and for am perf capture.
 type Stmt struct {
 	SQL    string
 	At     time.Time
@@ -272,11 +272,11 @@ type Stmt struct {
 
 // AuditRecord is one row of the audit log (§9.5).
 type AuditRecord struct {
-	Tenant   ks.ID
-	Actor    ks.Actor
+	Tenant   am.ID
+	Actor    am.Actor
 	Action   string
 	Resource string
-	RowID    ks.ID
+	RowID    am.ID
 	Changed  []string
 	Before   json.RawMessage
 	After    json.RawMessage
@@ -293,7 +293,7 @@ type Budget struct {
 	MaxR    int64
 	err     error
 	// FailHard makes an overrun an error, which is how tests enforce budgets (§14.3
-	// KS-PERF-001); production logs a metric instead.
+	// AM-PERF-001); production logs a metric instead.
 	FailHard bool
 }
 
@@ -308,11 +308,11 @@ func (b *Budget) addQuery(rows int64) error {
 	switch {
 	case b.MaxQ > 0 && b.Queries > b.MaxQ:
 		if b.FailHard && b.err == nil {
-			b.err = ks.BudgetExceeded("query", b.MaxQ)
+			b.err = am.BudgetExceeded("query", b.MaxQ)
 		}
 	case b.MaxR > 0 && b.Rows > b.MaxR:
 		if b.FailHard && b.err == nil {
-			b.err = ks.BudgetExceeded("row", int(b.MaxR))
+			b.err = am.BudgetExceeded("row", int(b.MaxR))
 		}
 	}
 	return nil
@@ -343,7 +343,7 @@ func Scoped[T any](d *DB, t *Table[T]) *View[T] {
 }
 
 // Actor returns the identity the scope was built with.
-func (d *DB) Actor() ks.Actor { return d.actor }
+func (d *DB) Actor() am.Actor { return d.actor }
 
 // CrossTenant reports whether the action declared CrossTenant().
 func (d *DB) CrossTenant() bool { return d.cross }
@@ -352,9 +352,9 @@ func (d *DB) CrossTenant() bool { return d.cross }
 func (d *DB) Log() *slog.Logger { return d.log }
 
 // Clock returns the action's clock.
-func (d *DB) Clock() ks.Clock { return d.clock }
+func (d *DB) Clock() am.Clock { return d.clock }
 
-// Stmts returns the statements run so far, for traces and ks perf capture.
+// Stmts returns the statements run so far, for traces and am perf capture.
 func (d *DB) Stmts() []Stmt { return d.stmts }
 
 // exec runs one statement under the budget.
@@ -395,7 +395,7 @@ func (d *DB) record(sql string, args []any, rows int64, start time.Time) {
 	}
 	d.stmts = append(d.stmts, Stmt{SQL: sql, Args: args, Rows: rows, Table: table, At: start,
 		Millis: float64(time.Since(start).Microseconds()) / 1000})
-	if os.Getenv("KS_DEBUG_SQL") != "" && !strings.HasPrefix(sql, "SELECT set_config") {
+	if os.Getenv("AM_DEBUG_SQL") != "" && !strings.HasPrefix(sql, "SELECT set_config") {
 		fmt.Fprintf(os.Stderr, "\n# %s   --args %v\n", sql, args)
 	}
 	_ = d.budget.addQuery(rows)
@@ -498,8 +498,8 @@ func bind(f Frag, params []any, a policy.ActorValues, offset int) (string, []any
 }
 
 // actorValues renders the caller for parameter binding.
-func actorValues(a ks.Actor) policy.ActorValues {
-	return policy.ActorValues{ID: a.ID.Bytes(), Tenant: a.Tenant.Bytes(), IsSystem: a.Kind == ks.ActorSystem}
+func actorValues(a am.Actor) policy.ActorValues {
+	return policy.ActorValues{ID: a.ID.Bytes(), Tenant: a.Tenant.Bytes(), IsSystem: a.Kind == am.ActorSystem}
 }
 
 // Query assembles a scoped SELECT (§8.1): tenant, then the Read rule, then the action's
@@ -675,7 +675,7 @@ func (v *View[T]) where(extra []string, params []any) (string, []any, error) {
 // cursorValue is one ordering key encoded in a page cursor.
 type cursorValue struct {
 	Val string
-	ID  ks.ID
+	ID  am.ID
 }
 
 func encodeCursor(c []cursorValue) string {
@@ -689,19 +689,19 @@ func decodeCursor(s string) ([]cursorValue, error) {
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
-		return nil, ks.Invalid("cursor", "malformed cursor")
+		return nil, am.Invalid("cursor", "malformed cursor")
 	}
 	var out []cursorValue
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, ks.Invalid("cursor", "malformed cursor")
+		return nil, am.Invalid("cursor", "malformed cursor")
 	}
 	return out, nil
 }
 
 var errNoRows = errors.New("runtime: no rows")
 
-// SetBudget overrides the action's budgets, which is how ks test enforces them
-// (KS-PERF-001).
+// SetBudget overrides the action's budgets, which is how am test enforces them
+// (AM-PERF-001).
 func (d *DB) SetBudget(queries int, rows int64, failHard bool) {
 	d.budget = &Budget{MaxQ: queries, MaxR: rows, FailHard: failHard}
 }

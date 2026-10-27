@@ -1,0 +1,357 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/migrate"
+	"github.com/abhilashiig/ambit/migrate/run"
+	"github.com/abhilashiig/ambit/model"
+)
+
+// A migration is three files under migrations/ sharing a numbered prefix (§13.1):
+//
+//	0002_add_due_date.plan.json   the classified steps; what apply executes
+//	0002_add_due_date.sql         the same statements, for review
+//	0002_add_due_date.model.json  the model after this migration; the next plan's base
+//
+// Applied migrations are immutable: am_migrations keeps each plan's checksum, and a plan
+// file that no longer matches it fails status and apply (AM-MIG-002).
+const migrationsDir = "migrations"
+
+func cmdMigrate(args []string) error {
+	var name *string
+	var allowDestructive, allowPlan *bool
+	fs, asJSON, err := flags("migrate", args, func(fs *flag.FlagSet) {
+		name = fs.String("name", "", "plan: the migration's name")
+		allowDestructive = fs.Bool("allow-destructive", false, "apply: allow destructive steps")
+		allowPlan = fs.Bool("plan", false, "apply: allow steps that need a reviewed plan")
+	})
+	if err != nil {
+		return err
+	}
+	allowed := map[string]bool{"--allow-destructive": *allowDestructive, "--plan": *allowPlan}
+	switch fs.Arg(0) {
+	case "plan":
+		return migratePlan(*name, asJSON)
+	case "apply":
+		url, err := databaseURL("AM_DATABASE_URL")
+		if err != nil {
+			return err
+		}
+		return migrateApply(context.Background(), url, allowed, asJSON)
+	case "status":
+		url, err := databaseURL("AM_DATABASE_URL")
+		if err != nil {
+			return err
+		}
+		return migrateStatus(context.Background(), url, asJSON)
+	case "verify":
+		url, err := databaseURL("AM_TEST_DB_URL", "AM_DATABASE_URL")
+		if err != nil {
+			return err
+		}
+		return migrateVerify(context.Background(), url, asJSON)
+	}
+	return fmt.Errorf("usage: am migrate plan|verify|apply|status")
+}
+
+func databaseURL(vars ...string) (string, error) {
+	for _, v := range vars {
+		if u := os.Getenv(v); u != "" {
+			return u, nil
+		}
+	}
+	return "", fmt.Errorf("set %s to the database to migrate", vars[0])
+}
+
+func migratePlan(name string, asJSON bool) error {
+	head, diags, err := loadModel()
+	if err != nil {
+		return err
+	}
+	if hasErrors(diags) {
+		return report(diags, asJSON, false)
+	}
+	all, err := migrations()
+	if err != nil {
+		return err
+	}
+	var plan migrate.Plan
+	if len(all) == 0 {
+		// The first migration is the whole schema.
+		plan = migrate.Plan{ModelHash: head.Hash(), Steps: []migrate.Step{{
+			Class: migrate.Safe, Subject: head.Name(), Detail: "initial schema", InTx: migrate.DDL(head)}}}
+		if name == "" {
+			name = "initial"
+		}
+	} else {
+		last := all[len(all)-1]
+		raw, err := os.ReadFile(filepath.Join(migrationsDir, strings.TrimSuffix(last.Path, ".plan.json")+".model.json"))
+		if err != nil {
+			return fmt.Errorf("the base model of %s is missing: %w", last.Path, err)
+		}
+		base, err := model.Load(raw)
+		if err != nil {
+			return err
+		}
+		plan = migrate.Diff(base, head)
+		// The same model can generate different DDL after a framework upgrade; policies
+		// are re-applied then, since they are idempotent and carry the security fixes.
+		if last.Plan.DDLHash != "" && last.Plan.DDLHash != migrate.DDLHash(head) && migrate.DDLHash(base) != last.Plan.DDLHash {
+			inTx, outside := migrate.UpgradeDDL(head)
+			plan.Steps = append(plan.Steps, migrate.Step{Class: migrate.Safe, Subject: "framework",
+				Detail: "re-apply row-level security and indexes after a framework upgrade", InTx: inTx, OutsideTx: outside})
+		}
+	}
+	plan.DDLHash = migrate.DDLHash(head)
+	if plan.Empty() {
+		if asJSON {
+			printJSON(map[string]any{"planned": false})
+		} else {
+			fmt.Println("no schema change since the last migration")
+		}
+		return nil
+	}
+	if name == "" {
+		name = "change"
+	}
+	name = strings.Trim(regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(strings.ToLower(name), "_"), "_")
+	plan.Name = name
+	prefix := filepath.Join(migrationsDir, fmt.Sprintf("%04d_%s", len(all)+1, name))
+	rawPlan, _ := json.MarshalIndent(plan, "", "  ")
+	if err := os.MkdirAll(migrationsDir, 0o755); err != nil {
+		return err
+	}
+	files := map[string][]byte{
+		prefix + ".plan.json":  append(rawPlan, '\n'),
+		prefix + ".sql":        []byte(renderSQL(plan)),
+		prefix + ".model.json": head.Bytes(),
+	}
+	for path, b := range files {
+		if err := os.WriteFile(path, b, 0o644); err != nil {
+			return err
+		}
+	}
+	if asJSON {
+		printJSON(map[string]any{"planned": true, "plan": prefix + ".plan.json", "maxRisk": plan.MaxRisk(), "steps": plan.Steps})
+		return nil
+	}
+	fmt.Printf("%s.plan.json (max risk %s)\n", prefix, plan.MaxRisk())
+	for _, s := range plan.Steps {
+		fmt.Printf("  %-16s %s: %s\n", s.Class, s.Subject, s.Detail)
+		for _, ph := range s.Phases {
+			fmt.Printf("      %s\n", ph)
+		}
+		if s.NeedsFlag != "" {
+			fmt.Printf("      apply needs %s\n", s.NeedsFlag)
+		}
+	}
+	return nil
+}
+
+func renderSQL(p migrate.Plan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "-- %s: generated by am migrate plan; review the plan file, do not edit\n", p.Name)
+	for _, s := range p.Steps {
+		fmt.Fprintf(&b, "\n-- [%s] %s: %s\n", s.Class, s.Subject, s.Detail)
+		for _, stmt := range s.InTx {
+			b.WriteString(strings.TrimSpace(stmt) + "\n")
+		}
+		if len(s.OutsideTx) > 0 {
+			b.WriteString("-- outside the transaction:\n")
+			for _, stmt := range s.OutsideTx {
+				b.WriteString(strings.TrimSpace(stmt) + "\n")
+			}
+		}
+	}
+	return b.String()
+}
+
+func migrateStatus(ctx context.Context, url string, asJSON bool) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	rows, _, err := run.Status(ctx, conn, os.DirFS(migrationsDir))
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		printJSON(rows)
+	} else {
+		for _, r := range rows {
+			fmt.Printf("%s_%s  %s\n", r.Version, r.Name, r.State)
+		}
+	}
+	for _, r := range rows {
+		if r.State == "modified" {
+			return run.Modified(r)
+		}
+	}
+	return nil
+}
+
+func migrateApply(ctx context.Context, url string, allowed map[string]bool, asJSON bool) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	ran, err := run.Apply(ctx, conn, os.DirFS(migrationsDir), allowed)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		printJSON(map[string]any{"applied": ran})
+	} else if len(ran) == 0 {
+		fmt.Println("up to date")
+	} else {
+		for _, r := range ran {
+			fmt.Println("applied", r)
+		}
+	}
+	return nil
+}
+
+func migrations() ([]run.Migration, error) { return run.List(os.DirFS(migrationsDir)) }
+
+func quoteIdent(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
+
+// migrateVerify applies every migration to a fresh database and checks the result has
+// the schema of the current model: a plan that drifts from the model fails here, not in
+// production (§13.1 step 3).
+func migrateVerify(ctx context.Context, url string, asJSON bool) error {
+	admin, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer admin.Close(ctx)
+	// scratch creates an empty database and connects to it; close drops it again.
+	scratch := func() (*pgx.Conn, func(), error) {
+		name := "am_verify_" + strings.ReplaceAll(string(am.NewID()), "-", "")
+		if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+			return nil, nil, err
+		}
+		drop := func() { admin.Exec(ctx, "DROP DATABASE "+name+" WITH (FORCE)") }
+		cfg, err := pgx.ParseConfig(url)
+		if err != nil {
+			drop()
+			return nil, nil, err
+		}
+		cfg.Database = name
+		c, err := pgx.ConnectConfig(ctx, cfg)
+		if err != nil {
+			drop()
+			return nil, nil, err
+		}
+		return c, func() { c.Close(ctx); drop() }, nil
+	}
+	a, closeA, err := scratch()
+	if err != nil {
+		return err
+	}
+	defer closeA()
+	b, closeB, err := scratch()
+	if err != nil {
+		return err
+	}
+	defer closeB()
+
+	all, err := migrations()
+	if err != nil {
+		return err
+	}
+	if len(all) == 0 {
+		return fmt.Errorf("no migrations; run am migrate plan")
+	}
+	for _, m := range all {
+		if err := run.ApplyOne(ctx, a, m, true); err != nil {
+			return fmt.Errorf("%s_%s does not apply to a fresh database: %w", m.Version, m.Name, err)
+		}
+	}
+	head, diags, err := loadModel()
+	if err != nil {
+		return err
+	}
+	if hasErrors(diags) {
+		return report(diags, asJSON, false)
+	}
+	for _, stmt := range migrate.DDL(head) {
+		if _, err := b.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("the model's schema does not apply: %w", err)
+		}
+	}
+	got, err := schemaShape(ctx, a)
+	if err != nil {
+		return err
+	}
+	want, err := schemaShape(ctx, b)
+	if err != nil {
+		return err
+	}
+	var drift []string
+	for k := range want {
+		if !got[k] {
+			drift = append(drift, "missing after migrations: "+k)
+		}
+	}
+	for k := range got {
+		if !want[k] {
+			drift = append(drift, "not in the model: "+k)
+		}
+	}
+	sort.Strings(drift)
+	if asJSON {
+		printJSON(map[string]any{"verified": len(drift) == 0, "migrations": len(all), "drift": drift})
+	} else if len(drift) == 0 {
+		fmt.Printf("%d migrations apply to a fresh database and match the model\n", len(all))
+	} else {
+		for _, d := range drift {
+			fmt.Println(d)
+		}
+	}
+	if len(drift) > 0 {
+		return exitError{1}
+	}
+	return nil
+}
+
+// schemaShape is a comparable summary of the public schema: columns with type and
+// nullability, constraints and indexes by name.
+func schemaShape(ctx context.Context, conn *pgx.Conn) (map[string]bool, error) {
+	rows, err := conn.Query(ctx, `
+		SELECT 'column ' || table_name || '.' || column_name || ' ' || data_type || CASE WHEN is_nullable = 'NO' THEN ' not null' ELSE '' END
+		  FROM information_schema.columns WHERE table_schema = 'public'
+		UNION ALL
+		SELECT 'constraint ' || conrelid::regclass::text || '.' || conname FROM pg_constraint
+		 WHERE connamespace = 'public'::regnamespace
+		UNION ALL
+		SELECT 'index ' || tablename || '.' || indexname FROM pg_indexes WHERE schemaname = 'public'
+		UNION ALL
+		SELECT 'policy ' || tablename || '.' || policyname FROM pg_policies WHERE schemaname = 'public'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out[s] = true
+	}
+	return out, rows.Err()
+}

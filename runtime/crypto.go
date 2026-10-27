@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // Keyring holds the key-encryption keys for Encrypted() fields (§9.4). Every value is
 // sealed with its own random data key (AES-256-GCM), and that data key is sealed with
 // the primary key-encryption key. Older keys stay in the ring so values written before
-// a rotation still open; ks keys rotate re-seals them under the primary.
+// a rotation still open; am keys rotate re-seals them under the primary.
 //
 // A sealed value is: version 1 | len(kid) | kid | nonce | wrapped data key | nonce |
 // ciphertext. The table, column and row id are authenticated with it, so a ciphertext
@@ -30,12 +30,12 @@ type Keyring struct {
 }
 
 // KeyringFromConfig reads the primary key from the encryptionKey secret, or else
-// KS_ENCRYPTION_KEY, and retired keys from KS_ENCRYPTION_KEYS_OLD. Each key is written
+// AM_ENCRYPTION_KEY, and retired keys from AM_ENCRYPTION_KEYS_OLD. Each key is written
 // "<id>:<base64 of 32 bytes>"; the old list is comma separated. No key gives a nil ring.
 func KeyringFromConfig(c *Config) (*Keyring, error) {
 	primary := c.Secret("encryptionKey")
 	if primary == "" {
-		primary = os.Getenv("KS_ENCRYPTION_KEY")
+		primary = os.Getenv("AM_ENCRYPTION_KEY")
 	}
 	if primary == "" {
 		return nil, nil
@@ -46,7 +46,7 @@ func KeyringFromConfig(c *Config) (*Keyring, error) {
 		return nil, fmt.Errorf("encryption key: %w", err)
 	}
 	k.primary = id
-	for _, old := range strings.Split(os.Getenv("KS_ENCRYPTION_KEYS_OLD"), ",") {
+	for _, old := range strings.Split(os.Getenv("AM_ENCRYPTION_KEYS_OLD"), ",") {
 		if strings.TrimSpace(old) == "" {
 			continue
 		}
@@ -148,7 +148,7 @@ func (k *Keyring) Open(sealed []byte, table, column, rowID string) ([]byte, erro
 	}
 	key, ok := k.keys[kid]
 	if !ok {
-		return nil, fmt.Errorf("runtime: value sealed with unknown key %q; add it to KS_ENCRYPTION_KEYS_OLD", kid)
+		return nil, fmt.Errorf("runtime: value sealed with unknown key %q; add it to AM_ENCRYPTION_KEYS_OLD", kid)
 	}
 	kek, err := gcm(key)
 	if err != nil {
@@ -217,7 +217,7 @@ func (v *View[T]) encrypted(column string) bool {
 
 // seal encrypts a value bound for an Encrypted() column, and passes any other value
 // through. A missing keyring is a startup error, so it cannot be reached here.
-func (v *View[T]) seal(column string, id ks.ID, val any) any {
+func (v *View[T]) seal(column string, id am.ID, val any) any {
 	if !v.encrypted(column) {
 		return val
 	}

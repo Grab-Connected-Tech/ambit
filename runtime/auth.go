@@ -19,8 +19,8 @@ import (
 
 	"crypto/pbkdf2"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // Auth resolves a request into an actor (§3.3 step 3). Unknown or expired credentials
@@ -34,11 +34,11 @@ type Auth struct {
 }
 
 func (a *App) newAuth() *Auth {
-	return &Auth{A: a, CookieName: "ks_session", Domain: "", Secure: true}
+	return &Auth{A: a, CookieName: "am_session", Domain: "", Secure: true}
 }
 
 // Authenticate resolves session cookie, then bearer token, then nothing (§9.2).
-func (a *App) Authenticate(r *http.Request) (ks.Actor, error) {
+func (a *App) Authenticate(r *http.Request) (am.Actor, error) {
 	if a.Auth == nil {
 		a.Auth = a.newAuth()
 	}
@@ -48,39 +48,39 @@ func (a *App) Authenticate(r *http.Request) (ks.Actor, error) {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return a.Auth.resolveToken(r.Context(), strings.TrimPrefix(h, "Bearer "))
 	}
-	return ks.Anonymous(), nil
+	return am.Anonymous(), nil
 }
 
 // Actor is the resolved identity plus the roles the session carried.
-type Actor = ks.Actor
+type Actor = am.Actor
 
 // resolveSession turns a session token into an actor.
-func (au *Auth) resolveSession(ctx context.Context, token string) (ks.Actor, error) {
+func (au *Auth) resolveSession(ctx context.Context, token string) (am.Actor, error) {
 	var (
-		tenant, actor ks.ID
+		tenant, actor am.ID
 		kind          string
 		expires       time.Time
 		idle          *time.Time
 		revoked       *time.Time
-		id            ks.ID
+		id            am.ID
 	)
 	_ = au.A.framework(ctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
 			`SELECT s.id, s.tenant_id, s.actor_id, s.expires_at, s.idle_expires_at, s.revoked_at, s.actor_kind
-			   FROM ks_session s
+			   FROM am_session s
 			  WHERE s.token_hash = $1`, hashToken(token)).
 			Scan(&id, &tenant, &actor, &expires, &idle, &revoked, &kind)
 	})
 	if id.IsNil() {
-		return ks.Anonymous(), nil
+		return am.Anonymous(), nil
 	}
 	now := time.Now().UTC()
 	if revoked != nil || expires.Before(now) || (idle != nil && idle.Before(now)) {
-		return ks.Anonymous(), nil
+		return am.Anonymous(), nil
 	}
 	// last_seen moves without waiting for the write to finish the request.
 	if err := au.A.framework(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE ks_session SET last_seen_at = now(), idle_expires_at = now() + $2::interval WHERE id = $1`,
+		_, err := tx.Exec(ctx, `UPDATE am_session SET last_seen_at = now(), idle_expires_at = now() + $2::interval WHERE id = $1`,
 			id, idleText(au.A))
 		return err
 	}); err != nil {
@@ -88,9 +88,9 @@ func (au *Auth) resolveSession(ctx context.Context, token string) (ks.Actor, err
 	}
 	got, err := au.roles(ctx, tenant, actor)
 	if err != nil {
-		return ks.Anonymous(), nil
+		return am.Anonymous(), nil
 	}
-	a := ks.Actor{Kind: actorKind(kind), ID: actor, Tenant: tenant, Roles: got, Authed: true, SessionID: id}
+	a := am.Actor{Kind: actorKind(kind), ID: actor, Tenant: tenant, Roles: got, Authed: true, SessionID: id}
 	return a, nil
 }
 
@@ -110,48 +110,48 @@ func idleText(a *App) string {
 	return "7 days"
 }
 
-func actorKind(s string) ks.ActorKind {
+func actorKind(s string) am.ActorKind {
 	switch s {
 	case "service":
-		return ks.ActorService
+		return am.ActorService
 	case "system":
-		return ks.ActorSystem
+		return am.ActorSystem
 	default:
-		return ks.ActorUser
+		return am.ActorUser
 	}
 }
 
 // resolveToken accepts an API token, checking its scopes (§9.2).
-func (au *Auth) resolveToken(ctx context.Context, token string) (ks.Actor, error) {
+func (au *Auth) resolveToken(ctx context.Context, token string) (am.Actor, error) {
 	var (
-		tenant, actor, id ks.ID
+		tenant, actor, id am.ID
 		scopes            []string
 		revoked           *time.Time
 	)
 	err := au.A.framework(ctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
-			`SELECT id, tenant_id, actor_id, scopes, revoked_at FROM ks_api_token WHERE token_hash = $1`, hashToken(token)).
+			`SELECT id, tenant_id, actor_id, scopes, revoked_at FROM am_api_token WHERE token_hash = $1`, hashToken(token)).
 			Scan(&id, &tenant, &actor, &scopes, &revoked)
 	})
 	if err != nil || (revoked != nil && !revoked.IsZero()) {
-		return ks.Anonymous(), nil
+		return am.Anonymous(), nil
 	}
 	roles, err := au.roles(ctx, tenant, actor)
 	if err != nil {
-		return ks.Anonymous(), nil
+		return am.Anonymous(), nil
 	}
 	if err := au.A.framework(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE ks_api_token SET last_used_at = now() WHERE id=$1`, id)
+		_, err := tx.Exec(ctx, `UPDATE am_api_token SET last_used_at = now() WHERE id=$1`, id)
 		return err
 	}); err != nil {
 		au.A.Log.Debug("token touch", "err", err)
 	}
-	return ks.Actor{Kind: ks.ActorService, ID: actor, Tenant: tenant, Roles: roles, Authed: true, TokenScopes: scopes}, nil
+	return am.Actor{Kind: am.ActorService, ID: actor, Tenant: tenant, Roles: roles, Authed: true, TokenScopes: scopes}, nil
 }
 
 // roles reads the actor's role set for one tenant from the membership table, which is
 // what makes revocation take effect on the next request rather than the next login.
-func (au *Auth) roles(ctx context.Context, tenant, actor ks.ID) ([]string, error) {
+func (au *Auth) roles(ctx context.Context, tenant, actor am.ID) ([]string, error) {
 	if tenant.IsNil() || actor.IsNil() {
 		return nil, nil
 	}
@@ -160,7 +160,7 @@ func (au *Auth) roles(ctx context.Context, tenant, actor ks.ID) ([]string, error
 	var out []string
 	err := au.A.inSystemScope(ctx, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
-			`SELECT role FROM ks_membership WHERE tenant_id=$1 AND actor_id=$2 ORDER BY role`, tenant, actor)
+			`SELECT role FROM am_membership WHERE tenant_id=$1 AND actor_id=$2 ORDER BY role`, tenant, actor)
 		if err != nil {
 			return err
 		}
@@ -183,9 +183,9 @@ func (au *Auth) roles(ctx context.Context, tenant, actor ks.ID) ([]string, error
 
 // Login creates a session for an actor and returns the cookie value. Sessions rotate on
 // login, so a token captured earlier stops working (§9.2).
-func (a *App) Login(ctx context.Context, actor ks.Actor, rotateFrom ks.ID, ua, ip string) (string, *http.Cookie, error) {
+func (a *App) Login(ctx context.Context, actor am.Actor, rotateFrom am.ID, ua, ip string) (string, *http.Cookie, error) {
 	if actor.Tenant.IsNil() || actor.ID.IsNil() {
-		return "", nil, ks.Forbidden("a session needs an actor and a tenant")
+		return "", nil, am.Forbidden("a session needs an actor and a tenant")
 	}
 	token := randomToken(32)
 	ttl := 14 * 24 * time.Hour
@@ -194,10 +194,10 @@ func (a *App) Login(ctx context.Context, actor ks.Actor, rotateFrom ks.ID, ua, i
 			ttl = d
 		}
 	}
-	id := ks.NewID()
+	id := am.NewID()
 	if err := a.framework(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO ks_session (id, tenant_id, actor_id, actor_kind, token_hash, rotate_from, user_agent, ip, created_at, expires_at, idle_expires_at)
+			`INSERT INTO am_session (id, tenant_id, actor_id, actor_kind, token_hash, rotate_from, user_agent, ip, created_at, expires_at, idle_expires_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::inet,now(),$9,now()+$10::interval)`,
 			id, actor.Tenant, actor.ID, string(actor.Kind), hashToken(token), nullID(rotateFrom), trunc(ua, 250), nullInet(ip),
 			time.Now().Add(ttl), intervalText(idleDuration(a)))
@@ -207,14 +207,14 @@ func (a *App) Login(ctx context.Context, actor ks.Actor, rotateFrom ks.ID, ua, i
 	}
 	if !rotateFrom.IsNil() {
 		if err := a.framework(ctx, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, `UPDATE ks_session SET revoked_at = now() WHERE id=$1`, rotateFrom)
+			_, err := tx.Exec(ctx, `UPDATE am_session SET revoked_at = now() WHERE id=$1`, rotateFrom)
 			return err
 		}); err != nil {
 			return "", nil, translate(err)
 		}
 	}
 	cookie := &http.Cookie{
-		Name:     "ks_session",
+		Name:     "am_session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
@@ -237,7 +237,7 @@ func idleDuration(a *App) time.Duration {
 // Logout revokes the presented session.
 func (a *App) Logout(ctx context.Context, token string) error {
 	err := a.framework(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE ks_session SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL`, hashToken(token))
+		_, err := tx.Exec(ctx, `UPDATE am_session SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL`, hashToken(token))
 		return err
 	})
 	return translate(err)
@@ -245,22 +245,22 @@ func (a *App) Logout(ctx context.Context, token string) error {
 
 // Rotate drops the old session and issues a new token, which is what a privilege change
 // requires (§9.2).
-func (a *App) Rotate(ctx context.Context, current string, actor ks.Actor) (string, *http.Cookie, error) {
-	var id ks.ID
+func (a *App) Rotate(ctx context.Context, current string, actor am.Actor) (string, *http.Cookie, error) {
+	var id am.ID
 	_ = a.framework(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT id FROM ks_session WHERE token_hash=$1 AND revoked_at IS NULL`, hashToken(current)).Scan(&id)
+		return tx.QueryRow(ctx, `SELECT id FROM am_session WHERE token_hash=$1 AND revoked_at IS NULL`, hashToken(current)).Scan(&id)
 	})
 	return a.Login(ctx, actor, id, "", "")
 }
 
 // NewAPIToken creates a service token; only its hash is stored, and the plaintext is
 // shown once (§9.2).
-func (a *App) NewAPIToken(ctx context.Context, tenant, actor ks.ID, name string, scopes []string) (string, error) {
-	token := "ks_" + randomToken(24)
+func (a *App) NewAPIToken(ctx context.Context, tenant, actor am.ID, name string, scopes []string) (string, error) {
+	token := "am_" + randomToken(24)
 	if err := a.framework(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO ks_api_token (id, tenant_id, actor_id, name, token_hash, scopes, created_at) VALUES ($1,$2,$3,$4,$5,$6,now())`,
-			ks.NewID(), tenant, actor, name, hashToken(token), scopes)
+			`INSERT INTO am_api_token (id, tenant_id, actor_id, name, token_hash, scopes, created_at) VALUES ($1,$2,$3,$4,$5,$6,now())`,
+			am.NewID(), tenant, actor, name, hashToken(token), scopes)
 		return err
 	}); err != nil {
 		return "", translate(err)
@@ -270,13 +270,13 @@ func (a *App) NewAPIToken(ctx context.Context, tenant, actor ks.ID, name string,
 
 // GrantRole grants a role to an actor in a tenant. It is a spec-visible write, so the
 // membership table has RLS like everything else (§5.1).
-func (a *App) GrantRole(ctx context.Context, tx Conn, tenant, actor ks.ID, role string) error {
+func (a *App) GrantRole(ctx context.Context, tx Conn, tenant, actor am.ID, role string) error {
 	if !a.roleExists(role) {
-		return ks.Invalid("role", fmt.Sprintf("the app does not declare the role %q", role))
+		return am.Invalid("role", fmt.Sprintf("the app does not declare the role %q", role))
 	}
 	_, err := tx.Exec(ctx,
-		`INSERT INTO ks_membership (id, tenant_id, actor_id, role, created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (tenant_id, actor_id, role) DO NOTHING`,
-		ks.NewID(), tenant, actor, role)
+		`INSERT INTO am_membership (id, tenant_id, actor_id, role, created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (tenant_id, actor_id, role) DO NOTHING`,
+		am.NewID(), tenant, actor, role)
 	return translate(err)
 }
 
@@ -434,20 +434,20 @@ func (o *OIDC) Exchange(ctx context.Context, code, verifier string) (subject, em
 }
 
 // Link resolves a provider subject to an actor, creating the link row on first login.
-func (a *App) Link(ctx context.Context, provider, subject, email string, tenant ks.ID) (ks.Actor, error) {
-	var actor ks.ID
+func (a *App) Link(ctx context.Context, provider, subject, email string, tenant am.ID) (am.Actor, error) {
+	var actor am.ID
 	err := a.framework(ctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
-			`SELECT actor_id FROM ks_identity_link WHERE provider=$1 AND subject=$2`, provider, subject).Scan(&actor)
+			`SELECT actor_id FROM am_identity_link WHERE provider=$1 AND subject=$2`, provider, subject).Scan(&actor)
 	})
 	if err != nil || actor.IsNil() {
-		return ks.Actor{}, ks.Unauthenticated()
+		return am.Actor{}, am.Unauthenticated()
 	}
 	roles, rerr := a.newAuth().roles(ctx, tenant, actor)
 	if rerr != nil {
-		return ks.Actor{}, rerr
+		return am.Actor{}, rerr
 	}
-	return ks.Actor{Kind: ks.ActorUser, ID: actor, Tenant: tenant, Roles: roles, Authed: true}, nil
+	return am.Actor{Kind: am.ActorUser, ID: actor, Tenant: tenant, Roles: roles, Authed: true}, nil
 }
 
 func (o *OIDC) discover(ctx context.Context) (map[string]string, error) {
@@ -527,7 +527,7 @@ func hashToken(s string) []byte {
 	return sum[:]
 }
 
-func nullID(id ks.ID) any {
+func nullID(id am.ID) any {
 	if id.IsNil() {
 		return nil
 	}

@@ -5,9 +5,9 @@
 package billing
 
 import (
-	"keystone.dev/keystone/example/myapp/gen"
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/example/myapp/gen"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 // Actions is the implementation table the generated entrypoint names. Writing it as a
@@ -40,8 +40,8 @@ func sendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, 
 		return nil, gen.ErrSendInvoiceNotDraft()
 	}
 	updated, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{
-		Status: ks.Set(gen.InvoiceStatusSent),
-		SentAt: ks.Set(c.Clock.Now()),
+		Status: am.Set(gen.InvoiceStatusSent),
+		SentAt: am.Set(c.Clock.Now()),
 	}.Assignments())
 	if err != nil {
 		return nil, err
@@ -73,8 +73,8 @@ func markPaid(c *gen.MarkPaidCtx, in gen.MarkPaidInput) (*gen.Invoice, error) {
 		return nil, err
 	}
 	return c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{
-		Status: ks.Set(gen.InvoiceStatusPaid),
-		PaidAt: ks.Set(c.Clock.Now()),
+		Status: am.Set(gen.InvoiceStatusPaid),
+		PaidAt: am.Set(c.Clock.Now()),
 	}.Assignments())
 }
 

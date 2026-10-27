@@ -34,7 +34,7 @@ type UnsafeFact struct {
 // identity is the action and the kind, not the position.
 func (u UnsafeFact) Key() string { return u.Module + "." + u.Action + "|" + u.Kind }
 
-// AllowFact records one //ks:allow suppression with its stated reason (§14.1).
+// AllowFact records one //am:allow suppression with its stated reason (§14.1).
 type AllowFact struct {
 	Rule   string `json:"rule"`
 	File   string `json:"file"`

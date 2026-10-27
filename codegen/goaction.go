@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // writeGoActions emits, for one module's actions, the generated contract: the context
@@ -16,7 +16,7 @@ func writeGoActions(b *strings.Builder, app *model.App, module string, actions [
 	b.WriteString(header + "\n")
 	b.WriteString("package gen\n\n")
 	b.WriteString("import (\n\t\"context\"\n\t\"encoding/json\"\n\t\"log/slog\"\n\t\"time\"\n\n" +
-		"\t\"keystone.dev/keystone/ks\"\n\t\"keystone.dev/keystone/model\"\n\t\"keystone.dev/keystone/runtime\"\n)\n\n")
+		"\t\"github.com/abhilashiig/ambit/am\"\n\t\"github.com/abhilashiig/ambit/model\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
 	b.WriteString("var (\n\t_ = context.Background\n\t_ = slog.Default\n\t_ = time.Now\n\t_ = json.Marshal\n\t_ = model.KindQuery\n)\n\n")
 	for i := range actions {
 		if err := writeAction(b, app, module, &actions[i]); err != nil {
@@ -36,7 +36,7 @@ func inputStruct(b *strings.Builder, a *model.Action, app *model.App) {
 		if f.Type.Kind == model.KindRef && f.Name != "" && !f.Optional {
 			for _, r := range refSourceNames(app, a) {
 				if r.field == f.Name && r.optional {
-					t = "ks.Opt[" + t + "]"
+					t = "am.Opt[" + t + "]"
 				}
 			}
 		}
@@ -103,8 +103,8 @@ func writeAction(b *strings.Builder, app *model.App, module string, a *model.Act
 				"\t// Limit is clamped to the app's maximum page size.\n\tLimit int `json:\"limit\"`\n")
 		}
 		b.WriteString("}\n\n")
-		b.WriteString("func (in *" + name + "Input) Validate() *ks.Error {\n")
-		b.WriteString("\tif in == nil {\n\t\treturn ks.Invalid(\"body\", \"the request has no body\")\n\t}\n")
+		b.WriteString("func (in *" + name + "Input) Validate() *am.Error {\n")
+		b.WriteString("\tif in == nil {\n\t\treturn am.Invalid(\"body\", \"the request has no body\")\n\t}\n")
 		for _, v := range validationsFor(a.Input, "in") {
 			b.WriteString(v)
 		}
@@ -140,8 +140,8 @@ func writeAction(b *strings.Builder, app *model.App, module string, a *model.Act
 	b.WriteString("// " + name + "Ctx is everything an action may reach. It embeds context.Context, so a\n")
 	b.WriteString("// cancellation or a deadline propagates to every query without the action threading\n")
 	b.WriteString("// anything (§7.2).\n")
-	b.WriteString("type " + name + "Ctx struct {\n\tcontext.Context\n\tActor ks.Actor\n\tDB " + name + "DB\n")
-	b.WriteString("\tLog *slog.Logger\n\tClock ks.Clock\n")
+	b.WriteString("type " + name + "Ctx struct {\n\tcontext.Context\n\tActor am.Actor\n\tDB " + name + "DB\n")
+	b.WriteString("\tLog *slog.Logger\n\tClock am.Clock\n")
 	for _, e := range a.Effects {
 		b.WriteString("\t// " + effectField(e) + " runs the " + string(e.Type) + " effect declared in the spec.\n")
 		b.WriteString("\t" + effectField(e) + " runtime.EffectHandle\n")
@@ -170,9 +170,9 @@ func writeAction(b *strings.Builder, app *model.App, module string, a *model.Act
 	for _, e := range a.Errors {
 		b.WriteString("// " + errorCtor(name, e.Code) + " is the declared failure " + e.Code + ". A failure an\n")
 		b.WriteString("// action returns without a declared code is a bug, not a 400 (§7.4).\n")
-		b.WriteString("func " + errorCtor(name, e.Code) + "(why ...string) *ks.Error {\n")
+		b.WriteString("func " + errorCtor(name, e.Code) + "(why ...string) *am.Error {\n")
 		b.WriteString("\tm := \"" + e.Code + "\"\n\tif len(why) > 0 && why[0] != \"\" {\n\t\tm = why[0]\n\t}\n")
-		b.WriteString("\treturn ks.Declared(\"" + e.Code + "\", m)\n}\n\n")
+		b.WriteString("\treturn am.Declared(\"" + e.Code + "\", m)\n}\n\n")
 	}
 
 	// The handler adapter.
@@ -354,7 +354,7 @@ func validations(f *model.Field, expr string) []string {
 	var out []string
 	for _, r := range rules {
 		cond := strings.ReplaceAll(r.cond, "V", expr)
-		out = append(out, "\tif "+cond+" {\n\t\treturn ks.Invalid(\""+f.Name+"\", \""+r.msg+"\")\n\t}\n")
+		out = append(out, "\tif "+cond+" {\n\t\treturn am.Invalid(\""+f.Name+"\", \""+r.msg+"\")\n\t}\n")
 	}
 	if !f.Optional {
 		return out
@@ -365,7 +365,7 @@ func validations(f *model.Field, expr string) []string {
 	body.WriteString("\tif " + expr + ".Present() {\n\t\tv, _ := " + expr + ".Get()\n")
 	for _, r := range rules {
 		cond := strings.ReplaceAll(r.cond, "V", "v")
-		body.WriteString("\t\tif " + cond + " {\n\t\t\treturn ks.Invalid(\"" + f.Name + "\", \"" + r.msg + "\")\n\t\t}\n")
+		body.WriteString("\t\tif " + cond + " {\n\t\t\treturn am.Invalid(\"" + f.Name + "\", \"" + r.msg + "\")\n\t\t}\n")
 	}
 	body.WriteString("\t}\n")
 	return []string{body.String()}

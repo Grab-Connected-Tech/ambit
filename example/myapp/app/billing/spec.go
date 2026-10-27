@@ -3,10 +3,10 @@
 package billing
 
 import (
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 
-	"keystone.dev/keystone/example/myapp/app"
-	"keystone.dev/keystone/example/myapp/app/customers"
+	"github.com/abhilashiig/ambit/example/myapp/app"
+	"github.com/abhilashiig/ambit/example/myapp/app/customers"
 )
 
 // Invoice is the module's central resource.

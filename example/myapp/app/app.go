@@ -3,7 +3,7 @@
 package app
 
 import (
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 )
 
 // Org is the tenant: the top-level isolation boundary.
@@ -28,7 +28,7 @@ var User = s.Account("User",
 		s.Text("passwordHash").Optional().MaxLen(200).Sensitive(),
 	),
 	// Sign-up creates exactly one account per call, so Create is open and the
-	// signup action itself carries a mandatory rate limit (KS-SEC-005).
+	// signup action itself carries a mandatory rate limit (AM-SEC-005).
 	s.Access(
 		s.Create(s.Always()),
 		s.Read(s.Owner("id").Or(Admin)),

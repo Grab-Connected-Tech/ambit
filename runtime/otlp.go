@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 )
 
 // The OTLP trace exporter of §18.1, on the standard library: spans are encoded as
@@ -21,7 +21,7 @@ import (
 // Sensitive() value cannot leave in a trace.
 //
 // ponytail: export is best effort: a full buffer drops spans (counted in
-// ks_otlp_dropped) rather than slowing requests, and a failed post is not retried.
+// am_otlp_dropped) rather than slowing requests, and a failed post is not retried.
 
 const otlpBatch, otlpBuffer = 256, 4096
 
@@ -99,15 +99,15 @@ func spansOf(t Trace) []otlpSpan {
 	}
 	end := t.Start.Add(time.Duration(t.Millis * float64(time.Millisecond)))
 	root := otlpSpan{TraceID: trace, SpanID: spanID(), Name: t.Action, Kind: 2, Start: nanos(t.Start), End: nanos(end),
-		Attributes: []otlpAttr{str("ks.action", t.Action), str("ks.actor.kind", string(t.Actor.Kind)),
-			str("ks.tenant_id", string(t.Actor.Tenant)), num("ks.queries", int64(len(t.Stmts)))},
+		Attributes: []otlpAttr{str("am.action", t.Action), str("am.actor.kind", string(t.Actor.Kind)),
+			str("am.tenant_id", string(t.Actor.Tenant)), num("am.queries", int64(len(t.Stmts)))},
 		Status: otlpStatus{Code: 1}}
 	if t.Err != nil {
-		e := ks.AsError(t.Err)
+		e := am.AsError(t.Err)
 		root.Status = otlpStatus{Code: 2, Message: e.Code}
-		root.Attributes = append(root.Attributes, str("ks.error.code", e.Code))
+		root.Attributes = append(root.Attributes, str("am.error.code", e.Code))
 		if e.Code == "forbidden" {
-			root.Attributes = append(root.Attributes, str("ks.policy.decision", "deny"))
+			root.Attributes = append(root.Attributes, str("am.policy.decision", "deny"))
 		}
 	}
 	out := []otlpSpan{root}
@@ -123,7 +123,7 @@ func spansOf(t Trace) []otlpSpan {
 	for _, e := range t.Effects {
 		out = append(out, otlpSpan{TraceID: trace, SpanID: spanID(), ParentSpanID: root.SpanID, Name: "effect " + string(e.Type),
 			Kind: 3, Start: nanos(t.Start), End: nanos(t.Start),
-			Attributes: []otlpAttr{str("ks.effect.type", string(e.Type)), str("ks.effect.mode", e.Mode)}})
+			Attributes: []otlpAttr{str("am.effect.type", string(e.Type)), str("am.effect.mode", e.Mode)}})
 	}
 	return out
 }
@@ -141,7 +141,7 @@ func (x *otlpExporter) record(t Trace) {
 		select {
 		case x.spans <- s:
 		default:
-			x.a.metric("ks_otlp_dropped", 1)
+			x.a.metric("am_otlp_dropped", 1)
 		}
 	}
 }
@@ -187,18 +187,18 @@ func (x *otlpExporter) run(ctx context.Context) {
 func (x *otlpExporter) post(spans []otlpSpan) {
 	body, err := json.Marshal(map[string]any{"resourceSpans": []any{map[string]any{
 		"resource":   map[string]any{"attributes": []otlpAttr{str("service.name", x.a.Cfg.App)}},
-		"scopeSpans": []any{map[string]any{"scope": map[string]any{"name": "keystone"}, "spans": spans}},
+		"scopeSpans": []any{map[string]any{"scope": map[string]any{"name": "ambit"}, "spans": spans}},
 	}}})
 	if err != nil {
 		return
 	}
 	res, err := x.client.Post(x.endpoint, "application/json", bytes.NewReader(body))
 	if err != nil {
-		x.a.metric("ks_otlp_failed", 1)
+		x.a.metric("am_otlp_failed", 1)
 		return
 	}
 	res.Body.Close()
 	if res.StatusCode >= 300 {
-		x.a.metric("ks_otlp_failed", 1)
+		x.a.metric("am_otlp_failed", 1)
 	}
 }

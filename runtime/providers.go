@@ -23,10 +23,10 @@ import (
 	"text/template"
 	"time"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
-// providersFromConfig builds the providers ks.yaml configures under effects (§10.3,
+// providersFromConfig builds the providers am.yaml configures under effects (§10.3,
 // §18.2). Every kind has one: an unconfigured kind logs instead of failing, so a new app
 // runs before anyone has credentials, and HTTP always uses the guarded client.
 //
@@ -141,7 +141,7 @@ func (p *SMTPProvider) message(e EffectCall) ([]byte, []string, error) {
 		}
 	}
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMessage-ID: <%s@keystone>\r\n", p.From, strings.Join(m.To, ", "), subject, e.IdempotencyKey)
+	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMessage-ID: <%s@ambit>\r\n", p.From, strings.Join(m.To, ", "), subject, e.IdempotencyKey)
 	b.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n")
 	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
 	return b.Bytes(), m.To, nil
@@ -176,7 +176,7 @@ func (p *SMTPProvider) render(name string, data map[string]any) (string, string,
 // WebhookProvider posts each webhook effect to the subscriber endpoint, signed with
 // HMAC-SHA256 over the timestamp and body, the scheme receivers verify with:
 //
-//	Keystone-Signature: t=<unix seconds>,v1=<hex hmac(secret, "<t>.<body>")>
+//	Ambit-Signature: t=<unix seconds>,v1=<hex hmac(secret, "<t>.<body>")>
 type WebhookProvider struct {
 	Endpoint string
 	Secret   []byte
@@ -219,9 +219,9 @@ func (p *WebhookProvider) Execute(ctx context.Context, e EffectCall) (EffectResu
 		return EffectResult{}, Permanent(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Keystone-Topic", e.Topic)
+	req.Header.Set("Ambit-Topic", e.Topic)
 	req.Header.Set("Idempotency-Key", e.IdempotencyKey)
-	req.Header.Set("Keystone-Signature", p.Sign(now(), body))
+	req.Header.Set("Ambit-Signature", p.Sign(now(), body))
 	return doLimited(p.Client, req, e)
 }
 

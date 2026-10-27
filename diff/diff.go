@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // Risk ranks a change.
@@ -64,7 +64,7 @@ type Change struct {
 	Detail   string `json:"detail"`
 	Why      string `json:"why,omitempty"`
 	// Blocked is a change the review cannot approve as is: a breaking API change whose
-	// old shape was not deprecated for a release first (KS-API-001, §12.4).
+	// old shape was not deprecated for a release first (AM-API-001, §12.4).
 	Blocked bool `json:"blocked,omitempty"`
 }
 
@@ -136,7 +136,7 @@ func Between(base, head *model.App, bf, hf model.Facts) Report {
 	}
 	if r.Allow > 0 {
 		r.Changes = append([]Change{{Risk: High, Category: CatCode, Subject: "suppressions",
-			Detail: fmt.Sprintf("%d new //ks:allow suppression(s)", r.Allow)}}, r.Changes...)
+			Detail: fmt.Sprintf("%d new //am:allow suppression(s)", r.Allow)}}, r.Changes...)
 	}
 	sort.SliceStable(r.Changes, func(i, j int) bool {
 		if r.Changes[i].Risk != r.Changes[j].Risk {
@@ -732,7 +732,7 @@ func breakingChange(ref, detail, deprecated, compat string) Change {
 	c := Change{Risk: High, Category: CatAPI, Subject: ref, Detail: detail}
 	if compat != "none" && deprecated == "" {
 		c.Blocked = true
-		c.Detail += " without a release of Deprecated() first (KS-API-001)"
+		c.Detail += " without a release of Deprecated() first (AM-API-001)"
 	}
 	return c
 }

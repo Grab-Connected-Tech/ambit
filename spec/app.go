@@ -3,7 +3,7 @@ package spec
 import (
 	"time"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // IdentityDecl collects the app's authentication surface (§9.2). Exactly one
@@ -136,7 +136,7 @@ func NoBreachChecks() PasswordOption {
 }
 
 // AppName names the app for generated routes, clients and metrics. The CLI passes
-// the name from ks.yaml when the spec does not declare one.
+// the name from am.yaml when the spec does not declare one.
 func AppName(name string) *AppNameDecl {
 	if registry.appName != "" {
 		specErr("spec: s.AppName declared twice")

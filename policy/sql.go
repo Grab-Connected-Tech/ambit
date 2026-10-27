@@ -56,14 +56,14 @@ type Bind struct {
 const rootMarker = "__KS_ROOT__"
 
 const (
-	gucActorID  = "coalesce(nullif(current_setting('ks.actor_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
-	gucTenantID = "coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
-	gucIsSystem = "coalesce(nullif(current_setting('ks.actor_system', true), ''), 'off')::bool"
-	gucCross    = "coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool"
+	gucActorID  = "coalesce(nullif(current_setting('am.actor_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
+	gucTenantID = "coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
+	gucIsSystem = "coalesce(nullif(current_setting('am.actor_system', true), ''), 'off')::bool"
+	gucCross    = "coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool"
 )
 
-// membershipTable is the generated ks_membership table that grants roles.
-const membershipTable = "ks_membership"
+// membershipTable is the generated am_membership table that grants roles.
+const membershipTable = "am_membership"
 
 // compiler state.
 type comp struct {
@@ -310,7 +310,7 @@ func (c *comp) path(p []string) string {
 		// The foreign key column is the target id, no subquery needed.
 		return rootMarker + "." + f.Column
 	}
-	sub := "ks_sub"
+	sub := "am_sub"
 	return fmt.Sprintf("(SELECT %s.%s FROM %s %s WHERE %s.%s = %s.%s)",
 		sub, g.ColumnFor(""), f.RefTo.Table, sub, sub, f.RefTo.IDColumn, rootMarker, f.Column)
 }

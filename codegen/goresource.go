@@ -1,11 +1,11 @@
 package codegen
 
 import (
-	"regexp"
 	"fmt"
+	"regexp"
 	"strings"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // This file writes the resource half of the gen package: the row struct, its enum types,
@@ -38,7 +38,7 @@ type col struct {
 func writeGoResources(b *strings.Builder, app *model.App, module string, resources []model.Resource) error {
 	b.WriteString(header + "\n")
 	b.WriteString("package gen\n\n")
-	b.WriteString("import (\n\t\"encoding/json\"\n\t\"time\"\n\n\t\"keystone.dev/keystone/ks\"\n\t\"keystone.dev/keystone/runtime\"\n)\n\n")
+	b.WriteString("import (\n\t\"encoding/json\"\n\t\"time\"\n\n\t\"github.com/abhilashiig/ambit/am\"\n\t\"github.com/abhilashiig/ambit/runtime\"\n)\n\n")
 	b.WriteString("var (\n\t_ = json.RawMessage{}\n\t_ = time.Now\n\t_ = runtime.Always\n)\n\n")
 	for i := range resources {
 		if err := writeResource(b, app, module, &resources[i]); err != nil {
@@ -99,7 +99,7 @@ func writeResource(b *strings.Builder, app *model.App, module string, res *model
 	b.WriteString("// " + name + "Table is the storage description, built from the app model at startup so\n")
 	b.WriteString("// the compiled rules live in one place rather than in emitted text (§6, §7.1).\n")
 	b.WriteString("var " + name + "Table = runtime.BuildTable[" + name + "](Model, \"" + module + "\", \"" + name + "\", &runtime.Table[" + name + "]{\n")
-	b.WriteString("\tIDOf:      func(r *" + name + ") ks.ID { return r.ID },\n")
+	b.WriteString("\tIDOf:      func(r *" + name + ") am.ID { return r.ID },\n")
 	b.WriteString("\tVersionOf: func(r *" + name + ") int64 { return int64(r.Version) },\n")
 	b.WriteString("\tScan: func(row runtime.Row) (*" + name + ", error) {\n")
 	b.WriteString("\t\tif row.Err() != nil {\n\t\t\treturn nil, row.Err()\n\t\t}\n")
@@ -194,7 +194,7 @@ func writeWithLoader(b *strings.Builder, name string, f *model.Field) {
 	b.WriteString("// row (§8.2).\n")
 	b.WriteString("var With" + name + f.GoName + " = runtime.With[" + name + "]{\n\tName: \"" + f.Name + "\",\n")
 	b.WriteString("\tLoad: func(v *runtime.View[" + name + "], rows []*" + name + ") error {\n")
-	b.WriteString("\t\tids := make([]ks.ID, 0, len(rows))\n\t\tat := map[ks.ID][]int{}\n\t\tfor i, r := range rows {\n")
+	b.WriteString("\t\tids := make([]am.ID, 0, len(rows))\n\t\tat := map[am.ID][]int{}\n\t\tfor i, r := range rows {\n")
 	b.WriteString("\t\t\tif r." + f.GoName + "ID.IsNil() {\n\t\t\t\tcontinue\n\t\t\t}\n")
 	b.WriteString("\t\t\tids = append(ids, r." + f.GoName + "ID)\n\t\t\tat[r." + f.GoName + "ID] = append(at[r." + f.GoName + "ID], i)\n\t\t}\n")
 	b.WriteString("\t\tif len(ids) == 0 {\n\t\t\treturn nil\n\t\t}\n")
@@ -216,12 +216,12 @@ func writeWithLoader(b *strings.Builder, name string, f *model.Field) {
 // generated scanner indexes by position, so the two must agree exactly (§6, §7.1).
 func resourceColumns(app *model.App, module string, res *model.Resource) []col {
 	out := []col{
-		{fields: "ID ks.ID `json:\"id\"`", descName: "ID", descType: "runtime.IDCol",
+		{fields: "ID am.ID `json:\"id\"`", descName: "ID", descType: "runtime.IDCol",
 			expr: fmt.Sprintf("runtime.NewIDCol(\"t.id\", %q)", model.Qual(module, res.Name)),
 			scan: func(k int) string { return fmt.Sprintf("out.ID = row.ID(%d)", k) }},
 	}
 	if res.Tenant {
-		out = append(out, col{index: 1, fields: "TenantID ks.ID `json:\"tenant_id\"`", descName: "TenantID", descType: "runtime.IDCol",
+		out = append(out, col{index: 1, fields: "TenantID am.ID `json:\"tenant_id\"`", descName: "TenantID", descType: "runtime.IDCol",
 			expr: "runtime.NewIDCol(\"t.tenant_id\", \"\")",
 			scan: func(k int) string { return fmt.Sprintf("out.TenantID = row.ID(%d)", k) }})
 	}
@@ -232,9 +232,9 @@ func resourceColumns(app *model.App, module string, res *model.Resource) []col {
 		{fields: "UpdatedAt time.Time `json:\"updated_at\"`", descName: "UpdatedAt", descType: "runtime.Col[time.Time]",
 			expr: "runtime.NewCol[time.Time](\"t.updated_at\")",
 			scan: func(k int) string { return fmt.Sprintf("out.UpdatedAt = row.Time(%d)", k) }},
-		{fields: "Version ks.Version `json:\"version\"`", descName: "Version", descType: "runtime.Col[ks.Version]",
-			expr: "runtime.NewCol[ks.Version](\"t.version\")",
-			scan: func(k int) string { return fmt.Sprintf("out.Version = ks.Version(row.Int(%d))", k) }},
+		{fields: "Version am.Version `json:\"version\"`", descName: "Version", descType: "runtime.Col[am.Version]",
+			expr: "runtime.NewCol[am.Version](\"t.version\")",
+			scan: func(k int) string { return fmt.Sprintf("out.Version = am.Version(row.Int(%d))", k) }},
 	} {
 		c.index = len(runtimeCols(out))
 		out = append(out, c)
@@ -294,7 +294,7 @@ func declaredColumn(res *model.Resource, f *model.Field) col {
 	// column name, so the loaded row can sit under the field name (§12).
 	c.fields = g + " " + optOr(f, c.gotype) + " `json:\"" + f.Name + "\"`"
 	if c.ref {
-		c.fields = g + " ks.ID `json:\"" + f.Column + "\"`\n// " + strings.TrimSuffix(g, "ID") + " is loaded by With" + res.Name +
+		c.fields = g + " am.ID `json:\"" + f.Column + "\"`\n// " + strings.TrimSuffix(g, "ID") + " is loaded by With" + res.Name +
 			strings.TrimSuffix(g, "ID") + ", and is nil until a query asks for it (§8.2).\n" +
 			strings.TrimSuffix(g, "ID") + " *" + refName(f) + " `json:\"" + f.Name + ",omitempty\"`"
 	}
@@ -333,7 +333,7 @@ func declaredColumn(res *model.Resource, f *model.Field) col {
 
 // scanFor is the statement that fills one field from the row at a position. A nullable
 // column keeps the difference between an empty value and no value at all, which is the whole
-// reason optional fields are ks.Opt (§5.2).
+// reason optional fields are am.Opt (§5.2).
 func scanFor(f *model.Field, g, gotype string) func(i int) string {
 	return func(i int) string {
 		var read string
@@ -346,21 +346,21 @@ func scanFor(f *model.Field, g, gotype string) func(i int) string {
 			read = fmt.Sprintf("row.Bool(%d)", i)
 		case "time.Time":
 			read = fmt.Sprintf("row.Time(%d)", i)
-		case "ks.Date":
-			read = fmt.Sprintf("ks.DateFromTime(row.Time(%d))", i)
-		case "ks.Decimal":
+		case "am.Date":
+			read = fmt.Sprintf("am.DateFromTime(row.Time(%d))", i)
+		case "am.Decimal":
 			read = fmt.Sprintf("row.Decimal(%d)", i)
 		case "[]byte", "json.RawMessage":
 			read = fmt.Sprintf("row.Blob(%d)", i)
-		case "ks.ID":
-			read = fmt.Sprintf("ksMustID(row.Raw(%d))", i)
-		case "ks.Money":
-			read = fmt.Sprintf("ks.MoneyOf(row.Int(%d), row.Str(%d))", i, i+1)
+		case "am.ID":
+			read = fmt.Sprintf("amMustID(row.Raw(%d))", i)
+		case "am.Money":
+			read = fmt.Sprintf("am.MoneyOf(row.Int(%d), row.Str(%d))", i, i+1)
 		default: // an enum: a named string type
 			read = fmt.Sprintf("%s(row.Str(%d))", gotype, i)
 		}
 		if f.Optional {
-			return fmt.Sprintf("if row.Null(%d) { out.%s = ks.Unset[%s]() } else { out.%s = ks.Set(%s) }", i, g, gotype, g, read)
+			return fmt.Sprintf("if row.Null(%d) { out.%s = am.Unset[%s]() } else { out.%s = am.Set(%s) }", i, g, gotype, g, read)
 		}
 		return fmt.Sprintf("out.%s = %s", g, read)
 	}
@@ -369,19 +369,19 @@ func scanFor(f *model.Field, g, gotype string) func(i int) string {
 func baseScalarOf(f *model.Field) string {
 	switch f.Type.Kind {
 	case model.KindID, model.KindRef:
-		return "ks.ID"
+		return "am.ID"
 	case model.KindInt:
 		return "int64"
 	case model.KindMoney:
-		return "ks.Money"
+		return "am.Money"
 	case model.KindBool:
 		return "bool"
 	case model.KindTimestamp:
 		return "time.Time"
 	case model.KindDate:
-		return "ks.Date"
+		return "am.Date"
 	case model.KindDecimal:
-		return "ks.Decimal"
+		return "am.Decimal"
 	case model.KindBytes:
 		return "[]byte"
 	case model.KindJSON:
@@ -395,7 +395,7 @@ func baseScalarOf(f *model.Field) string {
 
 func optOr(f *model.Field, base string) string {
 	if f.Optional {
-		return "ks.Opt[" + base + "]"
+		return "am.Opt[" + base + "]"
 	}
 	return base
 }
@@ -403,13 +403,13 @@ func optOr(f *model.Field, base string) string {
 func optType(res *model.Resource, f *model.Field) string {
 	switch {
 	case f.Type.Kind == model.KindMoney:
-		return "ks.Opt[ks.Money]"
+		return "am.Opt[am.Money]"
 	case f.Type.Kind == model.KindRef:
-		return "ks.Opt[ks.ID]"
+		return "am.Opt[am.ID]"
 	case f.Type.Kind == model.KindEnum:
-		return "ks.Opt[" + enumType(res, f) + "]"
+		return "am.Opt[" + enumType(res, f) + "]"
 	default:
-		return "ks.Opt[" + baseScalar(f) + "]"
+		return "am.Opt[" + baseScalar(f) + "]"
 	}
 }
 
@@ -422,13 +422,13 @@ func baseScalar(f *model.Field) string {
 	case model.KindTimestamp:
 		return "time.Time"
 	case model.KindDecimal:
-		return "ks.Decimal"
+		return "am.Decimal"
 	case model.KindBytes:
 		return "[]byte"
 	case model.KindJSON:
 		return "json.RawMessage"
 	case model.KindID, model.KindRef:
-		return "ks.ID"
+		return "am.ID"
 	default:
 		return "string"
 	}
@@ -489,9 +489,9 @@ func timeDescType(f *model.Field) string {
 
 func decDescType(f *model.Field) string {
 	if f.Optional {
-		return "runtime.OptCol[ks.Decimal]"
+		return "runtime.OptCol[am.Decimal]"
 	}
-	return "runtime.Col[ks.Decimal]"
+	return "runtime.Col[am.Decimal]"
 }
 
 // frameworkField names the columns the framework owns. It is a predicate on the *declared*
@@ -542,12 +542,12 @@ func (c col) patchName() string {
 func (c col) patchType() string {
 	t := c.gotype
 	if c.ref {
-		t = "ks.ID"
+		t = "am.ID"
 	}
 	if c.money {
-		t = "ks.Money"
+		t = "am.Money"
 	}
-	return "ks.Opt[" + t + "]"
+	return "am.Opt[" + t + "]"
 }
 
 func (c col) patchKind() string {
@@ -581,7 +581,7 @@ var structField = regexp.MustCompile(`(?m)^(\w+) (\S+) .*json:"([^",]+)(,omitemp
 // is boxed.
 func writeEncoder(b *strings.Builder, name, fields string) {
 	b.WriteString("// MarshalJSON writes the row without reflection (§11.1).\n")
-	b.WriteString("func (x " + name + ") MarshalJSON() ([]byte, error) {\n\tw := ks.NewW(256)\n\tw.ObjStart()\n")
+	b.WriteString("func (x " + name + ") MarshalJSON() ([]byte, error) {\n\tw := am.NewW(256)\n\tw.ObjStart()\n")
 	for _, m := range structField.FindAllStringSubmatch(fields, -1) {
 		field, typ, key := m[1], m[2], m[3]
 		if m[4] != "" { // a loaded relation: present only when a query asked for it
@@ -595,19 +595,19 @@ func writeEncoder(b *strings.Builder, name, fields string) {
 
 func encodeCall(typ, v string) string {
 	switch {
-	case typ == "ks.ID":
+	case typ == "am.ID":
 		return "w.ID(" + v + ")"
 	case typ == "time.Time":
 		return "w.Time(" + v + ")"
-	case typ == "ks.Version", typ == "int64", typ == "int":
+	case typ == "am.Version", typ == "int64", typ == "int":
 		return "w.Num(int64(" + v + "))"
-	case typ == "ks.Money":
+	case typ == "am.Money":
 		return "w.Money(" + v + ")"
 	case typ == "bool":
 		return "w.Bool(" + v + ")"
 	case typ == "string":
 		return "w.Str(" + v + ")"
-	case strings.HasPrefix(typ, "ks.Opt["):
+	case strings.HasPrefix(typ, "am.Opt["):
 		return v + ".AppendTo(w)"
 	case !strings.ContainsAny(typ, ".[*"): // a generated enum: a named string type
 		return "w.Str(string(" + v + "))"
