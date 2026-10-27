@@ -79,9 +79,9 @@ var Customers = struct {
 	CreatedAt:  runtime.NewCol[time.Time]("t.created_at"),
 	UpdatedAt:  runtime.NewCol[time.Time]("t.updated_at"),
 	Version:    runtime.NewCol[ks.Version]("t.version"),
-	Email:      runtime.NewTextCol("'+sql+'"),
+	Email:      runtime.NewTextCol("t.email"),
 	ExternalId: runtime.NewCol[string]("t.external_id"),
-	Name:       runtime.NewTextCol("'+sql+'"),
+	Name:       runtime.NewTextCol("t.name"),
 	OwnerID:    runtime.NewIDCol("t.owner_id", "app.User"),
 }
 
@@ -96,7 +96,7 @@ var CustomerTable = runtime.BuildTable[Customer](Model, "customers", "Customer",
 		}
 		out := &Customer{}
 		out.ID = row.ID(0)
-		out.TenantID = row.ID(0)
+		out.TenantID = row.ID(1)
 		out.CreatedAt = row.Time(2)
 		out.UpdatedAt = row.Time(3)
 		out.Version = ks.Version(row.Int(4))

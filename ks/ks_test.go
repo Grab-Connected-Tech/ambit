@@ -262,6 +262,9 @@ func TestErrorVocabularyMapsToSpecStatuses(t *testing.T) {
 			t.Errorf("code %q want %q", AsError(tc.err).Code, tc.code)
 		}
 	}
+	if RateLimited(30).RetryAfter != 30 {
+		t.Fatal("RateLimited must keep the Retry-After it is given")
+	}
 	// Any error that is not a *Error must collapse to a redacted internal error.
 	e := AsError(errors.New("postgres said: password=hunter2"))
 	if e.Code != CodeInternal || strings.Contains(e.Message, "hunter2") {

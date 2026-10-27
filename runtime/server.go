@@ -404,6 +404,9 @@ func writeError(w http.ResponseWriter, r *http.Request, err error, traceID strin
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Trace-Id", traceID)
+	if e.RetryAfter > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))
+	}
 	w.WriteHeader(status)
 	_, _ = w.Write(raw)
 	if e.Internal != nil {
@@ -520,12 +523,10 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	if err != nil {
 		return out, err
 	}
-	appOpt := func(d *DB) { d.app = a.Model }
 	d := a.NewDB(tx, actor, WithApp(a), WithLogger(log), WithAction(h.Ref), WithClock(a.Clock),
 		WithCrossTenant(h.Spec.CrossTenant),
 		WithBudget(orInt(h.Spec.Limits.QueryBudget, a.Cfg.QueryBudget), int64(orInt(h.Spec.Limits.RowBudget, int(a.Cfg.RowBudget))), a.FailOnBudget),
 	)
-	_ = appOpt
 	d.invocation = invocation
 	d.conn = tx
 	if a.Clock == nil {
@@ -534,7 +535,6 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	call := &Call{Context: ctx, Actor: actor, DB: d, Log: log, Clock: a.Clock, Body: in.Body, Query: in.Query,
 		Headers: in.Headers, IP: in.IP, Key: in.Key, Invocation: invocation, Trace: logTrace(log), App: a}
 	result, callErr := h.Handle(call)
-	result, callErr = h.Handle(call)
 	out = HandlerOutput{}
 	if callErr == nil {
 		encoded, encErr := Encode(result)

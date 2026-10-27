@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -200,7 +202,7 @@ func Generate(o Options) (*Result, error) {
 	var sb strings.Builder
 	sb.WriteString("-- generated from the app model by ks gen; do not edit\n\n")
 	for _, stmt := range ddl {
-		sb.WriteString(strings.TrimSpace(stmt) + ";\n\n")
+		sb.WriteString(strings.TrimSuffix(strings.TrimSpace(stmt), ";") + ";\n\n")
 	}
 	if err := write(filepath.Join(sqlDir, "schema.gen.sql"), []byte(sb.String()), false); err != nil {
 		return nil, err
@@ -284,13 +286,20 @@ func loadModelByRunning(o Options, dir string) (*model.App, error) {
 	if o.Module == "" {
 		o.Module = readModulePath(dir)
 	}
+	tmp, err := os.MkdirTemp("", "ksmodel")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
 	paths := strings.Fields(string(out))
 	var spec []string
+	// A file that imports the generated package would ask a half-written file to compile,
+	// but the spec beside it in the same package is still needed: the model is read with
+	// those files replaced by an empty file of the same package (go build -overlay).
+	overlay := map[string]string{}
 	for _, p := range paths {
-		// A package that imports the generated package would ask a half-written file to
-		// compile; the spec packages declare themselves and are enough.
-		if importsGen(dir, p) {
-			continue
+		if err := stubGenFiles(dir, p, tmp, overlay); err != nil {
+			return nil, err
 		}
 		if !specImports(dir, p) {
 			continue
@@ -315,11 +324,6 @@ func loadModelByRunning(o Options, dir string) (*model.App, error) {
 		load = append(load, p)
 	}
 	spec = load
-	tmp, err := os.MkdirTemp("", "ksmodel")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tmp)
 	var b strings.Builder
 	b.WriteString(header)
 	b.WriteString("\npackage main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\n")
@@ -335,7 +339,15 @@ func loadModelByRunning(o Options, dir string) (*model.App, error) {
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return nil, err
 	}
-	run := exec.Command("go", "run", path)
+	rawOverlay, err := json.Marshal(map[string]any{"Replace": overlay})
+	if err != nil {
+		return nil, err
+	}
+	overlayPath := filepath.Join(tmp, "overlay.json")
+	if err := os.WriteFile(overlayPath, rawOverlay, 0o644); err != nil {
+		return nil, err
+	}
+	run := exec.Command("go", "run", "-overlay", overlayPath, path)
 	run.Dir = dir
 	var stdout, stderr bytes.Buffer
 	run.Stdout = &stdout
@@ -397,7 +409,7 @@ func appLevelResources(app *model.App) []model.Resource {
 			fields = append(fields, f)
 		}
 		out = append(out, model.Resource{
-			Name: name, Table: t.Table, Tenant: name == app.App.Tenant,
+			Name: name, Table: t.Table, Tenant: true,
 			Fields: fields, Timestamps: true, Versioned: true,
 			Access: model.Access{Read: policy.Always()},
 		})
@@ -471,20 +483,38 @@ func (o Options) selfPackage(dir string) string {
 
 func (o Options) noGen() {}
 
-// importsGen reports whether a package imports the generated package.
-func importsGen(dir, importPath string) bool {
-	cmd := exec.Command("go", "list", "-e", "-f", "{{join .Imports \" \"}}", importPath)
+// stubGenFiles records, in overlay, an empty stand-in for every file of a package that
+// imports a generated package, so the rest of the package compiles without it.
+func stubGenFiles(dir, importPath, tmp string, overlay map[string]string) error {
+	cmd := exec.Command("go", "list", "-e", "-f", "{{.Dir}}\n{{.Name}}\n{{join .GoFiles \"\\n\"}}", importPath)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
-		return false
+		return nil // a package go list cannot describe is not a spec package either
 	}
-	for _, dep := range strings.Fields(string(out)) {
-		if strings.HasSuffix(dep, "/gen") {
-			return true
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 3 {
+		return nil
+	}
+	pkgDir, name := lines[0], lines[1]
+	for _, f := range lines[2:] {
+		path := filepath.Join(pkgDir, f)
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			continue
+		}
+		for _, imp := range parsed.Imports {
+			if strings.HasSuffix(strings.Trim(imp.Path.Value, `"`), "/gen") {
+				stub := filepath.Join(tmp, fmt.Sprintf("stub%d.go", len(overlay)))
+				if err := os.WriteFile(stub, []byte("package "+name+"\n"), 0o644); err != nil {
+					return err
+				}
+				overlay[path] = stub
+				break
+			}
 		}
 	}
-	return false
+	return nil
 }
 
 // compiles reports whether a written file parses. Generation is two passes over the same

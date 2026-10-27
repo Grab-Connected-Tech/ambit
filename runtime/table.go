@@ -49,7 +49,7 @@ func BuildTable[T any](app *model.App, module, resource string, t *Table[T]) *Ta
 	// the spec happened to use or on whether a checker already normalised the model.
 	norm := func(n *policy.Node) *policy.Node {
 		if n == nil {
-			return nil
+			return policy.Never()
 		}
 		return policy.Normalize(n)
 	}
@@ -146,7 +146,7 @@ func ColumnsOf(res *model.Resource) []Column {
 	}
 	// The tenant column belongs to a tenant-scoped resource only.
 	if !res.Tenant {
-		out = out[:1]
+		out = append(out[:1], out[2:]...)
 		delete(seeded, "tenant_id")
 	}
 	// The projection walks the model's own field list. A framework field appearing in

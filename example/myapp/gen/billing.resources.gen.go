@@ -129,7 +129,7 @@ var InvoiceTable = runtime.BuildTable[Invoice](Model, "billing", "Invoice", &run
 		}
 		out := &Invoice{}
 		out.ID = row.ID(0)
-		out.TenantID = row.ID(0)
+		out.TenantID = row.ID(1)
 		out.CreatedAt = row.Time(2)
 		out.UpdatedAt = row.Time(3)
 		out.Version = ks.Version(row.Int(4))

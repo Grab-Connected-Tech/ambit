@@ -32,6 +32,8 @@ type Error struct {
 	Fields   map[string]string
 	Status   int
 	Internal error
+	// RetryAfter is the Retry-After header value in seconds, when non-zero.
+	RetryAfter int
 }
 
 func (e *Error) Error() string {
@@ -109,7 +111,7 @@ func Declared(code, message string) *Error {
 }
 
 func RateLimited(retryAfter int) *Error {
-	return &Error{Code: CodeRateLimited, Status: http.StatusTooManyRequests, Message: "Too many requests."}
+	return &Error{Code: CodeRateLimited, Status: http.StatusTooManyRequests, Message: "Too many requests.", RetryAfter: retryAfter}
 }
 
 // BudgetExceeded reports an action going over its query or row budget.

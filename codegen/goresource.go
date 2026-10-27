@@ -217,7 +217,7 @@ func resourceColumns(app *model.App, module string, res *model.Resource) []col {
 			scan: func(k int) string { return fmt.Sprintf("out.ID = row.ID(%d)", k) }},
 	}
 	if res.Tenant {
-		out = append(out, col{fields: "TenantID ks.ID", descName: "TenantID", descType: "runtime.IDCol",
+		out = append(out, col{index: 1, fields: "TenantID ks.ID", descName: "TenantID", descType: "runtime.IDCol",
 			expr: "runtime.NewIDCol(\"t.tenant_id\", \"\")",
 			scan: func(k int) string { return fmt.Sprintf("out.TenantID = row.ID(%d)", k) }})
 	}
@@ -308,7 +308,7 @@ func declaredColumn(res *model.Resource, f *model.Field) col {
 		if f.Optional {
 			c.descType, c.expr = "runtime.Col[string]", `runtime.NewCol[string]("`+sql+`")`
 		} else {
-			c.descType, c.expr = "runtime.TextCol", `runtime.NewTextCol("'+sql+'")`
+			c.descType, c.expr = "runtime.TextCol", `runtime.NewTextCol("`+sql+`")`
 		}
 	case f.Optional:
 		c.descType = "runtime.OptCol[" + c.gotype + "]"

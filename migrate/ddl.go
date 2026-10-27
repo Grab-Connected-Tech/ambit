@@ -5,6 +5,7 @@ package migrate
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -74,7 +75,11 @@ func orderedResources(a *model.App) []string {
 			}
 			ready := true
 			for _, f := range res.Fields {
-				if f.Ref != nil && !have[f.Ref.Resource] && f.Ref.Resource != ref {
+				if f.Ref == nil || f.Ref.Resource == ref {
+					continue
+				}
+				// By table: an app-level target is spelled "app.User", "User" or its table.
+				if t := a.FindResource(f.Ref.Resource); t == nil || !have[t.Table] {
 					ready = false
 				}
 			}
@@ -397,16 +402,15 @@ func tenantTableDDL(a *model.App, fw model.Tenant) []string {
 }
 
 func accountTableDDL(a *model.App, fw model.Tenant) []string {
-	r := model.Resource{Name: fw.Name, Table: fw.Table, Tenant: true, Fields: append(model.BuiltInFields(true), fw.Fields...), Timestamps: true}
-	// BuiltInFields already includes tenant_id; drop the duplicate from the spec.
-	var keep []model.Field
-	for _, f := range r.Fields {
-		if f.Name == "tenant_id" {
-			continue
+	// The account is tenant-scoped (its RLS filters on tenant_id). The model usually
+	// spells the built-in columns already; add only the ones it does not.
+	var fields []model.Field
+	for _, b := range model.BuiltInFields(true) {
+		if !slices.ContainsFunc(fw.Fields, func(f model.Field) bool { return f.Column == b.Column }) {
+			fields = append(fields, b)
 		}
-		keep = append(keep, f)
 	}
-	r.Fields = keep
+	r := model.Resource{Name: fw.Name, Table: fw.Table, Tenant: true, Fields: append(fields, fw.Fields...), Timestamps: true}
 	return resourceDDL(a, fw.Name, r)
 }
 

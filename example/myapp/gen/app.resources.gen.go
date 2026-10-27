@@ -73,7 +73,7 @@ var Orgs = struct {
 	CreatedAt: runtime.NewCol[time.Time]("t.created_at"),
 	UpdatedAt: runtime.NewCol[time.Time]("t.updated_at"),
 	Version:   runtime.NewCol[ks.Version]("t.version"),
-	Name:      runtime.NewTextCol("'+sql+'"),
+	Name:      runtime.NewTextCol("t.name"),
 	Plan:      runtime.ColOf[OrgPlan]("t.plan", "::text"),
 }
 
@@ -88,7 +88,7 @@ var OrgTable = runtime.BuildTable[Org](Model, "", "Org", &runtime.Table[Org]{
 		}
 		out := &Org{}
 		out.ID = row.ID(0)
-		out.TenantID = row.ID(0)
+		out.TenantID = row.ID(1)
 		out.CreatedAt = row.Time(2)
 		out.UpdatedAt = row.Time(3)
 		out.Version = ks.Version(row.Int(4))
@@ -109,6 +109,7 @@ func ScopedOrgs(d *runtime.DB) *OrgView {
 // User is one row of .User (table user_account).
 type User struct {
 	ID           ks.ID
+	TenantID     ks.ID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	Version      ks.Version
@@ -150,6 +151,7 @@ func (p UserPatch) Assignments() []runtime.Assignment {
 // Users carries the typed predicates and orderings for .User. A query cannot name a column the resource does not have (§7.1).
 var Users = struct {
 	ID           runtime.IDCol
+	TenantID     runtime.IDCol
 	CreatedAt    runtime.Col[time.Time]
 	UpdatedAt    runtime.Col[time.Time]
 	Version      runtime.Col[ks.Version]
@@ -159,10 +161,11 @@ var Users = struct {
 	PasswordHash runtime.Col[string]
 }{
 	ID:           runtime.NewIDCol("t.id", ".User"),
+	TenantID:     runtime.NewIDCol("t.tenant_id", ""),
 	CreatedAt:    runtime.NewCol[time.Time]("t.created_at"),
 	UpdatedAt:    runtime.NewCol[time.Time]("t.updated_at"),
 	Version:      runtime.NewCol[ks.Version]("t.version"),
-	Email:        runtime.NewTextCol("'+sql+'"),
+	Email:        runtime.NewTextCol("t.email"),
 	Name:         runtime.NewCol[string]("t.name"),
 	LastLogin:    runtime.NewOptCol[time.Time]("t.last_login"),
 	PasswordHash: runtime.NewCol[string]("t.password_hash"),
@@ -179,24 +182,25 @@ var UserTable = runtime.BuildTable[User](Model, "", "User", &runtime.Table[User]
 		}
 		out := &User{}
 		out.ID = row.ID(0)
-		out.CreatedAt = row.Time(1)
-		out.UpdatedAt = row.Time(2)
-		out.Version = ks.Version(row.Int(3))
-		out.Email = row.Str(4)
-		if row.Null(5) {
+		out.TenantID = row.ID(1)
+		out.CreatedAt = row.Time(2)
+		out.UpdatedAt = row.Time(3)
+		out.Version = ks.Version(row.Int(4))
+		out.Email = row.Str(5)
+		if row.Null(6) {
 			out.Name = ks.Unset[string]()
 		} else {
-			out.Name = ks.Set(row.Str(5))
-		}
-		if row.Null(6) {
-			out.LastLogin = ks.Unset[time.Time]()
-		} else {
-			out.LastLogin = ks.Set(row.Time(6))
+			out.Name = ks.Set(row.Str(6))
 		}
 		if row.Null(7) {
+			out.LastLogin = ks.Unset[time.Time]()
+		} else {
+			out.LastLogin = ks.Set(row.Time(7))
+		}
+		if row.Null(8) {
 			out.PasswordHash = ks.Unset[string]()
 		} else {
-			out.PasswordHash = ks.Set(row.Str(7))
+			out.PasswordHash = ks.Set(row.Str(8))
 		}
 		return out, nil
 	},

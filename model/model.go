@@ -405,6 +405,7 @@ func (a *App) FindResource(ref string) *Resource {
 				Name: fw.Name, Table: fw.Table, Fields: fw.Fields,
 				Tenant:  isTenant(fw.Name) || isAccount(fw.Name),
 				Account: isAccount(fw.Name),
+				Access:  Access{Read: policy.Always()},
 			}
 		}
 	}
