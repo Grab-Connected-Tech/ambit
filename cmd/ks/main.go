@@ -444,10 +444,17 @@ func cmdTest(args []string) error {
 	}
 	cmd := exec.Command("go", append(goArgs, "./...")...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	// Tests need a Postgres to clone per-test databases from (§16.1).
+	// Tests need a Postgres to clone per-test databases from (§16.1): the configured one,
+	// or a disposable one started for this run.
 	cmd.Env = os.Environ()
-	if os.Getenv("KS_TEST_DB_URL") == "" && os.Getenv("KS_DATABASE_URL") != "" {
-		cmd.Env = append(cmd.Env, "KS_TEST_DB_URL="+os.Getenv("KS_DATABASE_URL"))
+	if os.Getenv("KS_TEST_DB_URL") == "" {
+		url, stop, err := disposablePostgres()
+		if err != nil {
+			return err
+		}
+		defer stop()
+		fmt.Fprintln(os.Stderr, "ks test: started a disposable Postgres")
+		cmd.Env = append(cmd.Env, "KS_TEST_DB_URL="+url)
 	}
 	if err := cmd.Run(); err != nil {
 		return exitError{1}
