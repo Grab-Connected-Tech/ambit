@@ -22,7 +22,7 @@ Source of truth: `Ambit Go framework for AI-built backends — technical specifi
   on `go/ast` + `go/types` (stdlib) instead of `x/tools/go/analysis`, to keep the dependency set
   minimal (§2.10 "boring infrastructure"). Same pass structure, same diagnostics.
 
-## Repo layout (single module `github.com/abhilashiig/ambit`)
+## Repo layout (single module `github.com/Grab-Connected-Tech/ambit`)
 ```
 am/         public scalars, errors, Actor, Clock, Opt, ID, Money, Decimal, Date, Email, URL, Unsafe
 spec/       declarative builders + init-time registry + raw model dump (no runtime behavior)

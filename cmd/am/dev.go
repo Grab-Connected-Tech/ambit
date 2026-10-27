@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 // cmdDev runs the app with AM_DEV=1 (which turns on /_am introspection), reseeds it, and

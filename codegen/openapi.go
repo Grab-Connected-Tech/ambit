@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // OpenAPI renders the app's HTTP surface as an OpenAPI 3.1 document (§7.1). It comes from

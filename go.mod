@@ -1,4 +1,4 @@
-module github.com/abhilashiig/ambit
+module github.com/Grab-Connected-Tech/ambit
 
 go 1.25.0
 

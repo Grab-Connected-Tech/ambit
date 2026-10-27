@@ -3,8 +3,8 @@
 package customers
 
 import (
-	"github.com/abhilashiig/ambit/example/myapp/gen"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 var Actions = struct {

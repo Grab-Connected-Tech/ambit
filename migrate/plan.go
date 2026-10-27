@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 // Class is how §13.2 names a schema change. It decides what the tool may do

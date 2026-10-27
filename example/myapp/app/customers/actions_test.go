@@ -3,10 +3,10 @@ package customers
 import (
 	"testing"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/amtest"
-	"github.com/abhilashiig/ambit/example/myapp/app"
-	"github.com/abhilashiig/ambit/example/myapp/gen"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/amtest"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
 )
 
 func TestCreateGetAndListCustomers(t *testing.T) {

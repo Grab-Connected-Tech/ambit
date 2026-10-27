@@ -20,9 +20,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 // Conn is satisfied by both a pool and a transaction, so the same scoped code runs

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // DevMode reports whether the introspection API is on. Only the environment can turn it

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // The get-vanilla case of the AWS SigV4 test suite.

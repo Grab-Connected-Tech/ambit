@@ -3,9 +3,9 @@
 package customers
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 
-	"github.com/abhilashiig/ambit/example/myapp/app"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app"
 )
 
 // Customer is who an invoice is billed to.

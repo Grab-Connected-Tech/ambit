@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhilashiig/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/am"
 )
 
 // The committed example app is the fixture: generating it again must leave every file
@@ -21,7 +21,7 @@ func TestGenerateExampleIsStableBuildsAndApplies(t *testing.T) {
 		t.Skip("runs the go tool")
 	}
 	dir := filepath.Join("..", "example", "myapp")
-	opts := Options{Dir: dir, AppPackage: "github.com/abhilashiig/ambit/example/myapp/app"}
+	opts := Options{Dir: dir, AppPackage: "github.com/Grab-Connected-Tech/ambit/example/myapp/app"}
 	res, err := Generate(opts)
 	if err != nil {
 		t.Fatal(err)

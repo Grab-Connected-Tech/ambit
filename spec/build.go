@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 // buildResource turns one declaration into model form, reporting every reference

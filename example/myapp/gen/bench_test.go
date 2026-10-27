@@ -5,11 +5,11 @@ package gen_test
 import (
 	"testing"
 
-	billing "github.com/abhilashiig/ambit/example/myapp/app/billing"
-	customers "github.com/abhilashiig/ambit/example/myapp/app/customers"
+	billing "github.com/Grab-Connected-Tech/ambit/example/myapp/app/billing"
+	customers "github.com/Grab-Connected-Tech/ambit/example/myapp/app/customers"
 
-	"github.com/abhilashiig/ambit/amtest"
-	"github.com/abhilashiig/ambit/example/myapp/gen"
+	"github.com/Grab-Connected-Tech/ambit/amtest"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
 )
 
 // BenchmarkActions measures every action through the full pipeline; am bench runs one.

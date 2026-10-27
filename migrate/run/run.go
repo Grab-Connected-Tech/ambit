@@ -20,8 +20,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/migrate"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/migrate"
 )
 
 var migrationName = regexp.MustCompile(`^(\d{4})_([a-z0-9_]+)\.plan\.json$`)

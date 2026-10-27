@@ -56,7 +56,7 @@ func newModule(name string) error {
 package %[1]s
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 
 	"%[2]s"
 )
@@ -148,8 +148,8 @@ func spliceAction(src []byte, name string) ([]byte, error) {
 	s = s[:end] + value + s[end:]
 	s = s[:mid] + field + s[mid:]
 	s += stub
-	if !strings.Contains(s, `"github.com/abhilashiig/ambit/am"`) {
-		s = strings.Replace(s, "import (\n", "import (\n\t\"github.com/abhilashiig/ambit/am\"\n", 1)
+	if !strings.Contains(s, `"github.com/Grab-Connected-Tech/ambit/am"`) {
+		s = strings.Replace(s, "import (\n", "import (\n\t\"github.com/Grab-Connected-Tech/ambit/am\"\n", 1)
 	}
 	formatted, err := format.Source([]byte(s))
 	if err != nil {

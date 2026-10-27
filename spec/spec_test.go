@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/policy"
-	s "github.com/abhilashiig/ambit/spec"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/policy"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 
 	// The reference app's spec packages are the fixtures: importing them is
 	// exactly what the am gen dump program does (§3.2).
-	"github.com/abhilashiig/ambit/example/myapp/app"
-	"github.com/abhilashiig/ambit/example/myapp/app/billing"
-	"github.com/abhilashiig/ambit/example/myapp/app/customers"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app/billing"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app/customers"
 )
 
 func build(t *testing.T) *model.App {

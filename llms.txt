@@ -2,7 +2,7 @@
 
 > Ambit is an open-source Go framework for secure, multi-tenant backends written mostly by AI coding agents and reviewed by people. A declarative spec defines resources, access rules, invariants and actions. Ambit generates a typed Go API, a PostgreSQL schema with row-level security, migrations, OpenAPI, a TypeScript client and tests, and it confines agent-written code to the data and side effects the spec grants. Each change produces a risk-ranked behavior diff for human review.
 
-Ambit needs Go 1.25+ and PostgreSQL 15+. The CLI is `am`. The module path is `github.com/abhilashiig/ambit`.
+Ambit needs Go 1.25+ and PostgreSQL 15+. The CLI is `am`. The module path is `github.com/Grab-Connected-Tech/ambit`.
 
 ## Docs
 

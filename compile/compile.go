@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/model"
-	"github.com/abhilashiig/ambit/policy"
+	"github.com/Grab-Connected-Tech/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/policy"
 )
 
 // Severity names how a diagnostic fails a build (§14.1).

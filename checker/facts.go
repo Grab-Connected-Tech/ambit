@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/compile"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/compile"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // exprText renders an expression back to Go source, for the substring tests that

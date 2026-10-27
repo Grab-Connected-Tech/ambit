@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // ResourceDecl is a declared resource. Specs pass the pointer to other builders

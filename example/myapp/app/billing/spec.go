@@ -3,10 +3,10 @@
 package billing
 
 import (
-	s "github.com/abhilashiig/ambit/spec"
+	s "github.com/Grab-Connected-Tech/ambit/spec"
 
-	"github.com/abhilashiig/ambit/example/myapp/app"
-	"github.com/abhilashiig/ambit/example/myapp/app/customers"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/app/customers"
 )
 
 // Invoice is the module's central resource.

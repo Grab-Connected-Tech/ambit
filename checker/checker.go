@@ -15,8 +15,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/abhilashiig/ambit/compile"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/compile"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // Config selects what to analyze.
@@ -60,7 +60,7 @@ var stdAllowed = map[string]bool{
 	"strings": true, "strconv": true, "errors": true, "fmt": true, "slices": true,
 	"maps": true, "sort": true, "math": true, "unicode": true, "unicode/utf8": true,
 	"regexp": true, "time": true, "encoding/json": true, "math/bits": true,
-	"github.com/abhilashiig/ambit/am": true,
+	"github.com/Grab-Connected-Tech/ambit/am": true,
 }
 
 var allowRe = regexp.MustCompile(`//\s*am:allow\s+(AM-[A-Z]+-\d+)\s*(.*)$`)
@@ -243,7 +243,7 @@ func (v *visitor) checkSpecFile() {
 	}
 	for _, imp := range v.file.Imports {
 		p := strings.Trim(imp.Path.Value, `"`)
-		if strings.HasSuffix(p, "/spec") || p == "github.com/abhilashiig/ambit/spec" {
+		if strings.HasSuffix(p, "/spec") || p == "github.com/Grab-Connected-Tech/ambit/spec" {
 			continue
 		}
 		if strings.Contains(p, "/actions") || strings.Contains(p, "/gen") {
@@ -451,7 +451,7 @@ func (v *visitor) checkTimeUse(x *ast.SelectorExpr) {
 func (v *visitor) checkImports() {
 	for _, imp := range v.file.Imports {
 		p := strings.Trim(imp.Path.Value, `"`)
-		if !strings.Contains(p, ".") || strings.HasPrefix(p, "github.com/abhilashiig/ambit/") {
+		if !strings.Contains(p, ".") || strings.HasPrefix(p, "github.com/Grab-Connected-Tech/ambit/") {
 			if !strings.Contains(p, ".") {
 				v.res.Facts.Imports = append(v.res.Facts.Imports, p)
 			}
@@ -479,12 +479,12 @@ func (v *visitor) checkImports() {
 			v.at("AM-CODE-002", imp, "importing another module's actions package skips its rules",
 				"declare the call with s.Calls and invoke it through the context")
 		case stdAllowed[p]:
-		case p == "github.com/abhilashiig/ambit/spec":
+		case p == "github.com/Grab-Connected-Tech/ambit/spec":
 			if v.kind == fileAction {
 				v.at("AM-CODE-001", imp, "action code may not import the spec package",
 					"actions use generated types; the spec is the declaration of what exists")
 			}
-		case strings.HasPrefix(p, "github.com/abhilashiig/ambit"):
+		case strings.HasPrefix(p, "github.com/Grab-Connected-Tech/ambit"):
 		case strings.HasPrefix(p, v.cfg.ModulePath):
 			if v.kind == fileAction && !strings.HasSuffix(p, "/gen") && !strings.HasSuffix(p, "/"+v.module) && !strings.HasSuffix(p, "/app") {
 				v.at("AM-CODE-002", imp, "actions may only import another module's gen package",

@@ -5,9 +5,9 @@
 package billing
 
 import (
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/example/myapp/gen"
-	"github.com/abhilashiig/ambit/runtime"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
+	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
 // Actions is the implementation table the generated entrypoint names. Writing it as a

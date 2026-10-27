@@ -3,7 +3,7 @@ package spec
 import (
 	"time"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // IdentityDecl collects the app's authentication surface (§9.2). Exactly one

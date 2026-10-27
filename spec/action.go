@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // ActionDecl is a declared action. Its pointer is what other specs reference for

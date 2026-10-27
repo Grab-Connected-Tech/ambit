@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abhilashiig/ambit/am"
-	"github.com/abhilashiig/ambit/model"
+	"github.com/Grab-Connected-Tech/ambit/am"
+	"github.com/Grab-Connected-Tech/ambit/model"
 )
 
 // EffectCall is one recorded side effect. Deferred calls become outbox rows inside
