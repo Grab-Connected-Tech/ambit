@@ -1426,8 +1426,8 @@ func TestOutboxDispatcherClaimsOnceAndRetries(t *testing.T) {
 	if _, err := outbox.Dispatch(context.Background(), 10); err != nil {
 		t.Fatal(detail(err))
 	}
-	if len(rec.CallsOf(model.EffectEmail)) != 2 {
-		t.Fatalf("the provider should have been called twice: %d", len(rec.CallsOf(model.EffectEmail)))
+	if len(rec.AttemptsOf(model.EffectEmail)) != 2 {
+		t.Fatalf("the provider should have been attempted twice: %d", len(rec.AttemptsOf(model.EffectEmail)))
 	}
 	state, _, _ = h.stateAttempts(`SELECT coalesce(state,''), 0, '{}'::text[] FROM ks_outbox WHERE action='billing.SendInvoice' ORDER BY created_at DESC LIMIT 1`)
 	if state != "done" {
@@ -1636,6 +1636,12 @@ func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 
 	// A mutation handler with a per-actor limit sheds after the declared count (§3.3).
 	n := 0
+	var limitErrors int
+	h.app.MetricSink = func(name string, delta float64) {
+		if name == "ks_rate_limit_error" {
+			limitErrors++
+		}
+	}
 	h.app.Handlers["billing.Limited"] = &runtime.Handler{
 		Ref: "billing.Limited", Module: "billing", Name: "Limited", Kind: model.KindMutation,
 		Path: "/api/billing/Limited",
@@ -1652,8 +1658,11 @@ func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 		_, err := h.app.Run(context.Background(), h.app.Handlers["billing.Limited"], lim, runtime.HandlerInput{Actor: lim}, h.app.Log)
 		limited = err
 	}
+	if limitErrors != 0 {
+		t.Fatalf("the rate limit store must work; it failed %d times and the check failed open", limitErrors)
+	}
 	if code(limited) != ks.CodeRateLimited {
-		t.Fatalf("the limit must shed after 4 calls, got %v (executed %d)", limited, n)
+		t.Fatalf("the limit must shed after 4 calls, got %v cause=%v (executed %d)", limited, errors.Unwrap(limited), n)
 	}
 	if n != 4 {
 		t.Fatalf("the action ran %d times under a limit of 4", n)

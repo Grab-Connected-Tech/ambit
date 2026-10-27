@@ -451,9 +451,12 @@ func instanceID() string {
 // Recorder is the provider the test harness installs: it records what would have been
 // sent and never touches the network (§16.1).
 type Recorder struct {
-	mu     sync.Mutex
-	Calls  []EffectCall
-	FailOn func(EffectCall) error
+	mu sync.Mutex
+	// Calls holds the attempts that succeeded; Attempts holds every call made, so a
+	// retry test can count the failure as well as the recovery.
+	Calls    []EffectCall
+	Attempts []EffectCall
+	FailOn   func(EffectCall) error
 }
 
 func (r *Recorder) Name() string { return "recorder" }
@@ -461,6 +464,7 @@ func (r *Recorder) Name() string { return "recorder" }
 func (r *Recorder) Execute(ctx context.Context, e EffectCall) (EffectResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.Attempts = append(r.Attempts, e)
 	if r.FailOn != nil {
 		if err := r.FailOn(e); err != nil {
 			return EffectResult{}, err
@@ -471,6 +475,19 @@ func (r *Recorder) Execute(ctx context.Context, e EffectCall) (EffectResult, err
 }
 
 func (r *Recorder) Retryable(err error) bool { return !errors.Is(err, errPermanent) }
+
+// AttemptsOf counts calls including the ones the fake provider rejected.
+func (r *Recorder) AttemptsOf(kind model.EffectKind) []EffectCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []EffectCall
+	for _, c := range r.Attempts {
+		if c.Type == kind {
+			out = append(out, c)
+		}
+	}
+	return out
+}
 
 func (r *Recorder) CallsOf(kind model.EffectKind) []EffectCall {
 	r.mu.Lock()

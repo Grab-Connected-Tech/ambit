@@ -637,34 +637,38 @@ func (a *App) recordInvocation(ctx context.Context, id ks.ID, h *Handler, actor 
 func (a *App) checkRateLimit(ctx context.Context, h *Handler, actor ks.Actor, ip string) error {
 	for _, l := range h.Spec.Limits.RateLimit {
 		key := bucketKey(l.Scope, actor, ip, h.Ref)
-		if allow, _ := a.Buckets.allow(key, l.Limit, l.Per); allow {
-			continue
+		if _, answered := a.Buckets.allow(key, l.Limit, l.Per); answered {
+			// A refusal the cache still stands behind; no statement is spent on it.
+			return ks.RateLimited(int(a.Buckets.until(key).Seconds()) + 1)
 		}
 		rows, err := a.Pool.Query(ctx,
 			`WITH upsert AS (
 			   INSERT INTO ks_rate_bucket (id, action, scope, bucket_key, tokens, max_tokens, refill_seconds, updated_at)
-			     VALUES (ks_new_id(), $1, $2, $3, $4 - 1, $4, $5, now())
+			     VALUES ($6, $1, $2, $3, $4 - 1, $4, $5, now())
 			     ON CONFLICT (action, scope, bucket_key)
-			     DO UPDATE SET tokens = LEAST(minimum($4, ks_rate_bucket.tokens + (EXTRACT(EPOCH FROM (now() - ks_rate_bucket.updated_at)) / $5)), $4) - 1,
+			     DO UPDATE SET tokens = LEAST($4, LEAST($4, ks_rate_bucket.tokens + (EXTRACT(EPOCH FROM (now() - ks_rate_bucket.updated_at)) / $5))) - 1,
 			                   updated_at = now()
 			     RETURNING tokens)
-			 SELECT tokens >= 0 FROM upsert`,
-			h.Ref, l.Scope, key, float64(l.Limit), periodSeconds(l.Per))
+			 SELECT tokens FROM upsert`,
+			h.Ref, l.Scope, key, float64(l.Limit), periodSeconds(l.Per), ks.NewID())
 		if err != nil {
-			// A broken limit must fail closed for a public action and open for a
-			// private one: refusing all traffic over an unrelated outage is worse.
-			a.Log.Warn("rate limit unavailable, allowing", "err", err, "action", h.Ref)
+			// A broken limit fails open rather than refusing all traffic over an
+			// unrelated outage, but it must not be silent: the code that should shed
+			// is not consulted, so the only defence left is the query budget.
+			a.Log.Warn("rate limit unavailable, allowing", "err", err, "cause", errors.Unwrap(err), "action", h.Ref)
+			a.metric("ks_rate_limit_error", 1)
 			continue
 		}
-		var ok bool
+		var remaining float64 = -1
 		for rows.Next() {
-			_ = rows.Scan(&ok)
+			_ = rows.Scan(&remaining)
 		}
 		rows.Close()
-		if !ok {
-			return ks.RateLimited(1)
+		if remaining < 0 {
+			wait := a.Buckets.denied(key, l.Limit, l.Per)
+			return ks.RateLimited(int(wait.Seconds()) + 1)
 		}
-		a.Buckets.mark(key, l.Limit, l.Per)
+		a.Buckets.allowed(key)
 	}
 	return nil
 }

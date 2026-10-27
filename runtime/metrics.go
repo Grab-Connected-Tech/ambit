@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/signal"
 	"sort"
@@ -162,26 +163,20 @@ func (m *Metrics) Bytes() []byte {
 	return []byte(b.String())
 }
 
-// Buckets is the in-process token-bucket cache that keeps a rate limit from costing a
-// statement on every request (§3.3 step 5).
+// Buckets is the in-process cache behind the Postgres rate-limit store (§3.3 step 5).
+//
+// It caches denials only. A cached *allowance* would let one instance hand out requests
+// the shared bucket never granted, and a limit of four-per-minute would quietly become
+// four-per-minute-per-cache-cycle. Refusing needs no shared state to be correct, so that
+// is the answer worth remembering: a flood is shed with a map lookup, and the store is
+// consulted only by requests that might be allowed.
 type Buckets struct {
-	mu     sync.Mutex
-	seen   map[string]*bucket
-	Clock  func() time.Time
-	Window time.Duration
+	mu    sync.Mutex
+	empty map[string]time.Time
+	Clock func() time.Time
 }
 
-type bucket struct {
-	tokens  float64
-	max     float64
-	last    time.Time
-	refill  float64
-	checked time.Time
-}
-
-func newBuckets() *Buckets {
-	return &Buckets{seen: map[string]*bucket{}, Window: time.Second}
-}
+func newBuckets() *Buckets { return &Buckets{empty: map[string]time.Time{}} }
 
 func (b *Buckets) now() time.Time {
 	if b.Clock != nil {
@@ -190,37 +185,58 @@ func (b *Buckets) now() time.Time {
 	return time.Now()
 }
 
-// allow decides locally when a bucket was checked recently, so a burst costs one
-// statement per window.
+// allow asks the cache. answered is false when the store has to be consulted, which is
+// the common case for a key that is not currently refusing.
 func (b *Buckets) allow(key string, limit int, per string) (bool, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	cur, ok := b.seen[key]
+	until, ok := b.empty[key]
 	if !ok {
-		b.seen[key] = &bucket{tokens: float64(limit) - 1, max: float64(limit), last: b.now(), refill: periodSeconds(per), checked: b.now()}
 		return true, false
 	}
-	if b.now().Sub(cur.checked) < b.Window {
-		if cur.tokens <= 0 {
-			return false, true
-		}
-		cur.tokens--
-		return true, true
+	if b.now().Before(until) {
+		return false, true
 	}
-	return false, false
+	delete(b.empty, key)
+	return true, false
 }
 
-func (b *Buckets) mark(key string, limit int, per string) {
+// denied records a refusal and returns how long it stands: the bucket refills at
+// max tokens per period, so one token costs period/max.
+func (b *Buckets) denied(key string, limit int, per string) time.Duration {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	cur, ok := b.seen[key]
-	if !ok {
-		b.seen[key] = &bucket{max: float64(limit), tokens: float64(limit), last: b.now(), refill: periodSeconds(per), checked: b.now()}
-		return
+	wait := time.Duration(periodSeconds(per) / math.Max(float64(limit), 1) * float64(time.Second))
+	if wait <= 0 {
+		wait = time.Second
 	}
-	cur.max = float64(limit)
-	cur.tokens = float64(limit)
-	cur.checked = b.now()
+	b.empty[key] = b.now().Add(wait)
+	return wait
+}
+
+// allowed clears a refusal the store has since forgiven.
+func (b *Buckets) allowed(key string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.empty, key)
+}
+
+// until reports how long a cached refusal still stands, for a Retry-After value.
+func (b *Buckets) until(key string) time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	until, ok := b.empty[key]
+	if !ok || !until.After(b.now()) {
+		return 0
+	}
+	return until.Sub(b.now())
+}
+
+// Reset forgets every cached refusal; tests use it to isolate one another.
+func (b *Buckets) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.empty = map[string]time.Time{}
 }
 
 // signalContext cancels on SIGTERM and SIGINT, which is the drain signal (§11.2).
