@@ -31,6 +31,36 @@ type Customer struct {
 	Owner *User `json:"owner,omitempty"`
 }
 
+// MarshalJSON writes the row without reflection (§11.1).
+func (x Customer) MarshalJSON() ([]byte, error) {
+	w := ks.NewW(256)
+	w.ObjStart()
+	w.Key("id")
+	w.ID(x.ID)
+	w.Key("tenant_id")
+	w.ID(x.TenantID)
+	w.Key("created_at")
+	w.Time(x.CreatedAt)
+	w.Key("updated_at")
+	w.Time(x.UpdatedAt)
+	w.Key("version")
+	w.Num(int64(x.Version))
+	w.Key("email")
+	w.Str(x.Email)
+	w.Key("external_id")
+	x.ExternalId.AppendTo(w)
+	w.Key("name")
+	w.Str(x.Name)
+	w.Key("owner_id")
+	w.ID(x.OwnerID)
+	if x.Owner != nil {
+		w.Key("owner")
+		w.Any(x.Owner)
+	}
+	w.ObjEnd()
+	return w.Bytes(), w.Err()
+}
+
 // CustomerPatch is the set of columns an update may change. A field that is unset
 // is not written at all, which is what makes PATCH mean PATCH (§7.1).
 type CustomerPatch struct {

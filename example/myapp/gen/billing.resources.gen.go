@@ -34,6 +34,42 @@ type Invoice struct {
 	TaxId    ks.Opt[string]    `json:"tax_id"`
 }
 
+// MarshalJSON writes the row without reflection (§11.1).
+func (x Invoice) MarshalJSON() ([]byte, error) {
+	w := ks.NewW(256)
+	w.ObjStart()
+	w.Key("id")
+	w.ID(x.ID)
+	w.Key("tenant_id")
+	w.ID(x.TenantID)
+	w.Key("created_at")
+	w.Time(x.CreatedAt)
+	w.Key("updated_at")
+	w.Time(x.UpdatedAt)
+	w.Key("version")
+	w.Num(int64(x.Version))
+	w.Key("amount")
+	w.Money(x.Amount)
+	w.Key("customer_id")
+	w.ID(x.CustomerID)
+	if x.Customer != nil {
+		w.Key("customer")
+		w.Any(x.Customer)
+	}
+	w.Key("notes")
+	x.Notes.AppendTo(w)
+	w.Key("paid_at")
+	x.PaidAt.AppendTo(w)
+	w.Key("sent_at")
+	x.SentAt.AppendTo(w)
+	w.Key("status")
+	w.Str(string(x.Status))
+	w.Key("tax_id")
+	x.TaxId.AppendTo(w)
+	w.ObjEnd()
+	return w.Bytes(), w.Err()
+}
+
 // InvoiceStatus is the domain of Invoice.status.
 type InvoiceStatus string
 

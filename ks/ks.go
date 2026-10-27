@@ -142,6 +142,15 @@ func (o Opt[T]) Or(def T) T {
 	return def
 }
 
+// AppendTo writes the value, or null when absent, for generated encoders (§11.1).
+func (o Opt[T]) AppendTo(w *W) {
+	if !o.set {
+		w.Null()
+		return
+	}
+	w.Any(o.value)
+}
+
 // MarshalJSON writes the value, or null when absent.
 func (o Opt[T]) MarshalJSON() ([]byte, error) {
 	if !o.set {

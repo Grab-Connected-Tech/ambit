@@ -27,6 +27,28 @@ type Org struct {
 	Plan      OrgPlan    `json:"plan"`
 }
 
+// MarshalJSON writes the row without reflection (§11.1).
+func (x Org) MarshalJSON() ([]byte, error) {
+	w := ks.NewW(256)
+	w.ObjStart()
+	w.Key("id")
+	w.ID(x.ID)
+	w.Key("tenant_id")
+	w.ID(x.TenantID)
+	w.Key("created_at")
+	w.Time(x.CreatedAt)
+	w.Key("updated_at")
+	w.Time(x.UpdatedAt)
+	w.Key("version")
+	w.Num(int64(x.Version))
+	w.Key("name")
+	w.Str(x.Name)
+	w.Key("plan")
+	w.Str(string(x.Plan))
+	w.ObjEnd()
+	return w.Bytes(), w.Err()
+}
+
 // OrgPlan is the domain of Org.plan.
 type OrgPlan string
 
@@ -117,6 +139,32 @@ type User struct {
 	Name         ks.Opt[string]    `json:"name"`
 	LastLogin    ks.Opt[time.Time] `json:"last_login"`
 	PasswordHash ks.Opt[string]    `json:"passwordHash"`
+}
+
+// MarshalJSON writes the row without reflection (§11.1).
+func (x User) MarshalJSON() ([]byte, error) {
+	w := ks.NewW(256)
+	w.ObjStart()
+	w.Key("id")
+	w.ID(x.ID)
+	w.Key("tenant_id")
+	w.ID(x.TenantID)
+	w.Key("created_at")
+	w.Time(x.CreatedAt)
+	w.Key("updated_at")
+	w.Time(x.UpdatedAt)
+	w.Key("version")
+	w.Num(int64(x.Version))
+	w.Key("email")
+	w.Str(x.Email)
+	w.Key("name")
+	x.Name.AppendTo(w)
+	w.Key("last_login")
+	x.LastLogin.AppendTo(w)
+	w.Key("passwordHash")
+	x.PasswordHash.AppendTo(w)
+	w.ObjEnd()
+	return w.Bytes(), w.Err()
 }
 
 // UserPatch is the set of columns an update may change. A field that is unset

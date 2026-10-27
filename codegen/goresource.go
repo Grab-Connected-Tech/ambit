@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"regexp"
 	"fmt"
 	"strings"
 
@@ -54,10 +55,13 @@ func writeResource(b *strings.Builder, app *model.App, module string, res *model
 
 	b.WriteString("// " + name + " is one row of " + model.Qual(module, name) + " (table " + res.Table + ").\n")
 	b.WriteString("type " + name + " struct {\n")
+	var body strings.Builder
 	for _, c := range cols {
+		body.WriteString(c.fields + "\n")
 		b.WriteString("\t" + strings.ReplaceAll(c.fields, "\n", "\n\t") + "\n")
 	}
 	b.WriteString("}\n\n")
+	writeEncoder(b, name, body.String())
 
 	for _, f := range res.Fields {
 		if f.Type.Kind != model.KindEnum {
@@ -567,4 +571,46 @@ func frameworkColumnCount(res *model.Resource) int {
 		return 5
 	}
 	return 4
+}
+
+var structField = regexp.MustCompile(`(?m)^(\w+) (\S+) .*json:"([^",]+)(,omitempty)?"`)
+
+// writeEncoder emits MarshalJSON for a row: an append-based writer instead of encoding/json
+// walking the struct by reflection (§11.1). The keys are read back from the struct's own
+// tags, so the two cannot disagree, and each field is written by a typed call, so nothing
+// is boxed.
+func writeEncoder(b *strings.Builder, name, fields string) {
+	b.WriteString("// MarshalJSON writes the row without reflection (§11.1).\n")
+	b.WriteString("func (x " + name + ") MarshalJSON() ([]byte, error) {\n\tw := ks.NewW(256)\n\tw.ObjStart()\n")
+	for _, m := range structField.FindAllStringSubmatch(fields, -1) {
+		field, typ, key := m[1], m[2], m[3]
+		if m[4] != "" { // a loaded relation: present only when a query asked for it
+			fmt.Fprintf(b, "\tif x.%s != nil {\n\t\tw.Key(%q)\n\t\tw.Any(x.%s)\n\t}\n", field, key, field)
+			continue
+		}
+		fmt.Fprintf(b, "\tw.Key(%q)\n\t%s\n", key, encodeCall(typ, "x."+field))
+	}
+	b.WriteString("\tw.ObjEnd()\n\treturn w.Bytes(), w.Err()\n}\n\n")
+}
+
+func encodeCall(typ, v string) string {
+	switch {
+	case typ == "ks.ID":
+		return "w.ID(" + v + ")"
+	case typ == "time.Time":
+		return "w.Time(" + v + ")"
+	case typ == "ks.Version", typ == "int64", typ == "int":
+		return "w.Num(int64(" + v + "))"
+	case typ == "ks.Money":
+		return "w.Money(" + v + ")"
+	case typ == "bool":
+		return "w.Bool(" + v + ")"
+	case typ == "string":
+		return "w.Str(" + v + ")"
+	case strings.HasPrefix(typ, "ks.Opt["):
+		return v + ".AppendTo(w)"
+	case !strings.ContainsAny(typ, ".[*"): // a generated enum: a named string type
+		return "w.Str(string(" + v + "))"
+	}
+	return "w.Any(" + v + ")"
 }

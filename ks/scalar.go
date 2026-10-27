@@ -1,6 +1,7 @@
 package ks
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"regexp"
@@ -114,6 +115,20 @@ func (d Decimal) rat() *big.Rat {
 }
 
 // String renders the shortest exact decimal form.
+// MarshalJSON writes a decimal as a string, so no precision is lost to a float (§12).
+func (d Decimal) MarshalJSON() ([]byte, error) { return json.Marshal(d.String()) }
+
+// UnmarshalJSON reads a decimal from a string or a JSON number.
+func (d *Decimal) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	v, err := ParseDecimal(s)
+	if err != nil {
+		return err
+	}
+	*d = v
+	return nil
+}
+
 func (d Decimal) String() string {
 	return d.rat().FloatString(12)
 }

@@ -2,8 +2,10 @@ package ks
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,69 @@ import (
 type W struct {
 	B    []byte
 	deep int
+	err  error
+}
+
+// Err is the first error an Any fallback met.
+func (w *W) Err() error { return w.err }
+
+// appender is a value that writes itself, such as Opt.
+type appender interface{ AppendTo(*W) }
+
+// Any writes a value of a framework type directly, and anything else through
+// encoding/json. Generated encoders call it for every field (§11.1).
+func (w *W) Any(v any) {
+	switch t := v.(type) {
+	case nil:
+		w.Null()
+	case string:
+		w.Str(t)
+	case ID:
+		w.ID(t)
+	case bool:
+		w.Bool(t)
+	case int:
+		w.Num(int64(t))
+	case int32:
+		w.Num(int64(t))
+	case int64:
+		w.Num(t)
+	case Version:
+		w.Num(int64(t))
+	case time.Time:
+		w.Time(t)
+	case Money:
+		w.Money(t)
+	case Decimal:
+		w.Str(t.String())
+	case appender:
+		t.AppendTo(w)
+	case json.Marshaler: // a loaded relation: its own generated encoder
+		raw, err := t.MarshalJSON()
+		if err != nil && w.err == nil {
+			w.err = err
+		}
+		w.B = append(w.B, raw...)
+	default:
+		// A generated enum is a named string type.
+		if rv := reflect.ValueOf(v); rv.Kind() == reflect.String {
+			w.Str(rv.String())
+			return
+		}
+		w.fallback(v)
+	}
+}
+
+func (w *W) fallback(v any) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		if w.err == nil {
+			w.err = err
+		}
+		w.Null()
+		return
+	}
+	w.B = append(w.B, raw...)
 }
 
 // NewW returns a writer with a preallocated buffer.
@@ -37,7 +102,7 @@ func (w *W) ObjEnd() { w.B = append(w.B, '}'); w.deep-- }
 
 // Key writes an object key.
 func (w *W) Key(k string) {
-	if len(w.B) > 0 && !strings.HasSuffix(string(w.B[max(0, len(w.B)-1):]), "{") {
+	if n := len(w.B); n > 0 && w.B[n-1] != '{' {
 		w.B = append(w.B, ',')
 	}
 	w.B = AppendJSONString(w.B, k)
@@ -167,9 +232,10 @@ func max(a, b int) int {
 	return b
 }
 
-const hexUpper = "0123456789ABCDEF"
 
 // AppendJSONString appends s as a quoted JSON string, escaping minimally.
+const hexLower = "0123456789abcdef"
+
 func AppendJSONString(dst []byte, s string) []byte {
 	dst = append(dst, '"')
 	for i := 0; i < len(s); {
@@ -187,10 +253,15 @@ func AppendJSONString(dst []byte, s string) []byte {
 				dst = append(dst, `\r`...)
 			case '\t':
 				dst = append(dst, `\t`...)
+			case '<', '>', '&':
+				// As encoding/json does, so a response is the same bytes whichever
+				// encoder wrote it, and safe to embed in HTML.
+				dst = append(dst, `\u00`...)
+				dst = append(dst, hexLower[c>>4], hexLower[c&0xf])
 			default:
 				if c < 0x20 {
 					dst = append(dst, `\u00`...)
-					dst = append(dst, hexUpper[c>>4], hexUpper[c&0xf])
+					dst = append(dst, hexLower[c>>4], hexLower[c&0xf])
 				} else {
 					dst = append(dst, c)
 				}
@@ -202,6 +273,12 @@ func AppendJSONString(dst []byte, s string) []byte {
 		if r == utf8.RuneError && size == 1 {
 			dst = append(dst, `\ufffd`...)
 			i++
+			continue
+		}
+		if r == '\u2028' || r == '\u2029' { // line separators break JavaScript string literals
+			dst = append(dst, `\u202`...)
+			dst = append(dst, hexLower[r&0xf])
+			i += size
 			continue
 		}
 		dst = append(dst, s[i:i+size]...)

@@ -353,3 +353,26 @@ func TestOptRoundTripsThroughJSON(t *testing.T) {
 		t.Fatalf("decoded %+v", back)
 	}
 }
+
+// Generated encoders call W.Any per field; its output must be byte-identical to what
+// encoding/json writes for the same values, or the wire format would depend on the path.
+func TestWriterMatchesEncodingJSON(t *testing.T) {
+	type status string
+	when := time.Date(2030, 1, 2, 3, 4, 5, 600, time.UTC)
+	dec, _ := ParseDecimal("12.50")
+	for _, v := range []any{
+		"a\"b<>&\x01\u2028é\n", ID("01a17b95-cb96-7fd6-8f53-0483d9c8b3f9"), true, 42, int64(-7), Version(3),
+		when, MoneyOf(1250, "EUR"), dec, Set("x"), Unset[string](), Set(when), Set(MoneyOf(1, "USD")),
+		status("draft"), []string{"a"}, nil,
+	} {
+		w := NewW(0)
+		w.Any(v)
+		want, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(w.Bytes()) != string(want) || w.Err() != nil {
+			t.Errorf("%T: writer %s, encoding/json %s", v, w.Bytes(), want)
+		}
+	}
+}
