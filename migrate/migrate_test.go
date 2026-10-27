@@ -131,7 +131,7 @@ func TestFreshDDL(t *testing.T) {
 		"CREATE INDEX \"customer_id_idx\" ON \"invoice\" (\"customer_id\");",
 		"ALTER TABLE \"invoice\" FORCE ROW LEVEL SECURITY;",
 		"CREATE POLICY ks_tenant_isolation ON \"invoice\"",
-		"USING ((\"invoice\".tenant_id = coalesce(nullif(current_setting('app.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR",
+		"USING ((\"invoice\".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR",
 		"WITH CHECK ((\"invoice\".tenant_id = coalesce",
 		"CREATE TABLE \"ks_membership\"", // framework tables are in the same stream
 		"CREATE TABLE \"ks_outbox\"",

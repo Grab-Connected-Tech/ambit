@@ -219,6 +219,12 @@ const (
 	KindSchedule ActionKind = "schedule"
 )
 
+// RunAs values for jobs (§5.7).
+const (
+	RunAsSystem   = "system"
+	RunAsEnqueuer = "enqueuer"
+)
+
 // Action is a named unit of behavior.
 type Action struct {
 	Name         string        `json:"name"`
@@ -560,7 +566,8 @@ func (a *App) Canonical() {
 			for f := range res.Fields {
 				sort.Strings(res.Fields[f].Type.Values)
 				sort.Strings(res.Fields[f].Type.Schemes)
-				sort.Strings(res.Fields[f].Columns)
+				// money columns keep their (minor, currency) order: it is the
+				// storage layout, not a set.
 			}
 			sort.Slice(res.Indexes, func(i, j int) bool { return res.Indexes[i].Name < res.Indexes[j].Name })
 			sort.Slice(res.Invariants, func(i, j int) bool { return res.Invariants[i].Name < res.Invariants[j].Name })

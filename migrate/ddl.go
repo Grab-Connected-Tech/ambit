@@ -16,25 +16,95 @@ import (
 // resource, with constraints, indexes and row-level security (§8.5).
 func DDL(a *model.App) []string {
 	var out []string
-	out = append(out, FrameworkDDL(a)...)
-	for _, m := range a.Modules {
-		for _, r := range m.Resources {
-			out = append(out, resourceDDL(a, model.Qual(m.Name, r.Name), r)...)
-		}
-	}
-	for _, fw := range a.Framework() {
-		if fw.Name == "Membership" || fw.Name == a.App.Tenant || (a.Account != nil && fw.Name == a.Account.Name) {
-			continue
-		}
-		out = append(out, tenantTableDDL(a, fw)...)
-	}
+	// Order matters: the tenant table first, because the framework's own tables
+	// reference it, then the framework, then module tables.
+	out = append(out, helpersDDL()...)
 	if a.Tenant != nil {
 		out = append(out, tenantTableDDL(a, *a.Tenant)...)
 	}
 	if a.Account != nil {
 		out = append(out, accountTableDDL(a, *a.Account)...)
 	}
+	out = append(out, FrameworkDDL(a)...)
+	for _, ref := range orderedResources(a) {
+		res := a.FindResource(ref)
+		if res == nil || frameworkOwned(a, res) {
+			continue // the tenant, account and ks_* tables are written above
+		}
+		out = append(out, resourceDDL(a, ref, *res)...)
+	}
 	return out
+}
+
+// frameworkOwned reports a table the framework writes itself.
+func frameworkOwned(a *model.App, r *model.Resource) bool {
+	if strings.HasPrefix(r.Table, "ks_") {
+		return true
+	}
+	if a.Tenant != nil && (r.Name == a.Tenant.Name || r.Table == a.Tenant.Table) {
+		return true
+	}
+	if a.Account != nil && (r.Name == a.Account.Name || r.Table == a.Account.Table) {
+		return true
+	}
+	return false
+}
+
+// orderedResources sorts resources so a table is created after the ones it points at.
+// Cycles fall back to declaration order, which the compiler would have rejected anyway.
+func orderedResources(a *model.App) []string {
+	pending := make([]string, 0, len(a.AllResources()))
+	for _, r := range a.AllResources() {
+		pending = append(pending, r.Ref)
+	}
+	sort.Strings(pending)
+	var done []string
+	have := map[string]bool{}
+	for _, fw := range a.Framework() {
+		have[fw.Name] = true
+		have[fw.Table] = true
+	}
+	for len(pending) > 0 {
+		progressed := false
+		var next []string
+		for _, ref := range pending {
+			res := a.FindResource(ref)
+			if res == nil {
+				continue
+			}
+			ready := true
+			for _, f := range res.Fields {
+				if f.Ref != nil && !have[f.Ref.Resource] && f.Ref.Resource != ref {
+					ready = false
+				}
+			}
+			if ready {
+				done = append(done, ref)
+				have[ref] = true
+				if r := a.FindResource(ref); r != nil {
+					have[r.Table] = true
+				}
+				progressed = true
+				continue
+			}
+			next = append(next, ref)
+		}
+		if !progressed {
+			done = append(done, next...)
+			break
+		}
+		pending = next
+	}
+	return done
+}
+
+// helpersDDL writes the SQL functions the framework's own statements and triggers use.
+func helpersDDL() []string {
+	return []string{
+		`CREATE OR REPLACE FUNCTION ks_new_id() RETURNS uuid AS $$
+  SELECT gen_random_uuid()
+$$ LANGUAGE sql VOLATILE;`,
+	}
 }
 
 func resourceDDL(a *model.App, ref string, r model.Resource) []string {

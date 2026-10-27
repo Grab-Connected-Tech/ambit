@@ -56,10 +56,10 @@ type Bind struct {
 const rootMarker = "__KS_ROOT__"
 
 const (
-	gucActorID  = "coalesce(nullif(current_setting('app.actor_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
-	gucTenantID = "coalesce(nullif(current_setting('app.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
-	gucIsSystem = "coalesce(nullif(current_setting('app.actor_system', true), ''), 'off')::bool"
-	gucCross    = "coalesce(nullif(current_setting('app.cross_tenant', true), ''), 'off')::bool"
+	gucActorID  = "coalesce(nullif(current_setting('ks.actor_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
+	gucTenantID = "coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid"
+	gucIsSystem = "coalesce(nullif(current_setting('ks.actor_system', true), ''), 'off')::bool"
+	gucCross    = "coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool"
 )
 
 // membershipTable is the generated ks_membership table that grants roles.
@@ -422,8 +422,10 @@ func (c *comp) cmp(n *Node) string {
 		rhs := c.add(Bind{Kind: BindLit, Lit: litOf(b), Cast: "text"})
 		return fmt.Sprintf("(%s LIKE (%s || '%%'))", lhs, rhs)
 	}
+	// The right side may itself be an operand — actor.id, now(), or another column —
+	// so it goes through the same renderer rather than being forced into a literal.
 	rhsLit := litOf(b)
-	rhs := c.add(Bind{Kind: BindLit, Lit: rhsLit})
+	rhs := c.operand(b)
 	// A single-segment field selects its comparison column by literal kind (money
 	// compares on minor units). Multi-segment paths already rendered a subselect.
 	if a.Op == OpField && len(a.Path) == 1 {
@@ -656,14 +658,18 @@ func TenantFilter(target Target, crossTenant bool) *SQL {
 	if crossTenant {
 		return &SQL{Text: "true"}
 	}
-	if target == TargetRLS {
-		return &SQL{Text: rootMarker + ".tenant_id = " + gucTenantID}
+	if target == TargetRLS || target == TargetPolicy {
+		return &SQL{Text: rootMarker + ".tenant_id = ?", Binds: []Bind{{Kind: BindActorTenant}}}
 	}
 	return &SQL{
 		Text:  rootMarker + ".tenant_id = ?",
 		Binds: []Bind{{Kind: BindActorTenant}},
 	}
 }
+
+// TenantPolicy returns the isolation predicate for generated code, which keeps
+// actor values as parameters and inlines nothing else.
+func TenantPolicy(cross bool) *SQL { return TenantFilter(TargetPolicy, cross) }
 
 // RLSPredicate is the row-level security expression used by generated policies:
 // the tenant boundary, plus the explicit cross-tenant opt-in for declared actions.
