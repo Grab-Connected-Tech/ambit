@@ -13,14 +13,14 @@ import (
 	"sort"
 	"strings"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 const conventions = `// Conventions (see AGENTS.md):
 // - implement actions in the module's Actions struct; signatures are fixed by gen
 // - reach data only through c.DB, effects only through the context, time only through c.Clock
 // - return declared failures with the generated Err<Action><Code>() constructors
-// - change behaviour in spec.go, then run ks gen, ks check --json and ks test --json
+// - change behaviour in spec.go, then run am gen, am check --json and am test --json
 `
 
 // cmdContext prints a compact, deterministic bundle for one module or action (§17.2):
@@ -42,7 +42,7 @@ func cmdContext(args []string) error {
 		}
 	}
 	if module == "" {
-		return fmt.Errorf("usage: ks context <module> [--action module.Action]")
+		return fmt.Errorf("usage: am context <module> [--action module.Action]")
 	}
 	spec, err := os.ReadFile(filepath.Join("app", module, "spec.go"))
 	if err != nil {

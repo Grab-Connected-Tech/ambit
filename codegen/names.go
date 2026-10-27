@@ -3,7 +3,7 @@ package codegen
 import (
 	"strings"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // splitRef divides "billing.Invoice" into its module and name.
@@ -54,7 +54,7 @@ func pluralVar(ref string) string {
 func fieldGoType(f *model.Field) string {
 	base := scalarGoType(f)
 	if f.Optional {
-		return "ks.Opt[" + base + "]"
+		return "am.Opt[" + base + "]"
 	}
 	return base
 }
@@ -62,19 +62,19 @@ func fieldGoType(f *model.Field) string {
 func scalarGoType(f *model.Field) string {
 	switch f.Type.Kind {
 	case model.KindID, model.KindRef:
-		return "ks.ID"
+		return "am.ID"
 	case model.KindInt:
 		return "int64"
 	case model.KindMoney:
-		return "ks.Money"
+		return "am.Money"
 	case model.KindDecimal:
-		return "ks.Decimal"
+		return "am.Decimal"
 	case model.KindBool:
 		return "bool"
 	case model.KindTimestamp:
 		return "time.Time"
 	case model.KindDate:
-		return "ks.Date"
+		return "am.Date"
 	case model.KindBytes:
 		return "[]byte"
 	case model.KindJSON:

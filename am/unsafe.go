@@ -1,4 +1,4 @@
-package ks
+package am
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type Rows interface {
 	Close()
 }
 
-// RawTx is the transaction handle available inside ks.Unsafe (§8.6). Calls still
+// RawTx is the transaction handle available inside am.Unsafe (§8.6). Calls still
 // carry the tenant settings used by row-level security and count against the
 // action's query budget.
 type RawTx interface {
@@ -26,21 +26,21 @@ type RawTx interface {
 
 type rawTxKey struct{}
 
-// WithRawTx attaches the raw-SQL runner used by ks.Unsafe. The runtime calls it;
+// WithRawTx attaches the raw-SQL runner used by am.Unsafe. The runtime calls it;
 // app code never does.
 func WithRawTx(ctx context.Context, tx RawTx) context.Context {
 	return context.WithValue(ctx, rawTxKey{}, tx)
 }
 
 // Unsafe runs a raw-SQL block, marking the weakened guarantee for the behavior
-// diff. The reason is mandatory: an empty reason fails the checker (KS-SEC-003).
+// diff. The reason is mandatory: an empty reason fails the checker (AM-SEC-003).
 func Unsafe(ctx context.Context, reason string, fn func(RawTx) error) error {
 	if reason == "" {
-		return Invalid("reason", "ks.Unsafe requires a non-empty reason (KS-SEC-003)")
+		return Invalid("reason", "am.Unsafe requires a non-empty reason (AM-SEC-003)")
 	}
 	tx, ok := ctx.Value(rawTxKey{}).(RawTx)
 	if !ok {
-		return InternalError(errors.New("ks: ks.Unsafe called outside an action transaction"))
+		return InternalError(errors.New("am: am.Unsafe called outside an action transaction"))
 	}
 	if err := checkRawFn(fn); err != nil {
 		return err

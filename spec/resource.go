@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // ResourceDecl is a declared resource. Specs pass the pointer to other builders
 // (s.Ref, s.Writes, s.Returns), so a reference is a Go reference: there is no
-// string to typo, and moving a resource is a compile error (KS-SPEC-002).
+// string to typo, and moving a resource is a compile error (AM-SPEC-002).
 type ResourceDecl struct {
 	module, name string
 	line         int
@@ -258,7 +258,7 @@ func Encrypted(inner *Field) *Field {
 func Ref(name string, target *ResourceDecl) *Field {
 	f := newField(name, model.KindRef)
 	if target == nil {
-		f.err = fmt.Sprintf("field %q: Ref target is nil (KS-SPEC-002)", name)
+		f.err = fmt.Sprintf("field %q: Ref target is nil (AM-SPEC-002)", name)
 		return f
 	}
 	f.refTo = target

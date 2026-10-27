@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"keystone.dev/keystone/policy"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/policy"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 // stripLits removes SQL literals from rule text, leaving the structure: which columns and

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 )
 
-// Config is the validated view of ks.yaml (§18.2). Action code never sees a secret:
+// Config is the validated view of am.yaml (§18.2). Action code never sees a secret:
 // providers receive theirs from here, and the only secrets an app can read are the
 // ones it declared.
 type Config struct {
@@ -76,7 +76,7 @@ func Defaults() *Config {
 	}
 }
 
-// LoadConfig reads ks.yaml. The format is the restricted subset §18.2 shows: nested
+// LoadConfig reads am.yaml. The format is the restricted subset §18.2 shows: nested
 // maps, scalar values, lists of scalars and ${ENV} expansion. A parser small enough
 // to audit is one dependency avoided (§2.10).
 func LoadConfig(path string) (*Config, error) {
@@ -105,7 +105,7 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	m, ok := doc.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("ks.yaml: expected a mapping at the top level")
+		return nil, fmt.Errorf("am.yaml: expected a mapping at the top level")
 	}
 	c.DeclaredKeys = map[string]bool{}
 	flatten(m, nil, c.DeclaredKeys)
@@ -139,14 +139,14 @@ func parseBlock(lines []string, i *int, indent int) (any, error) {
 		case indentOf(line) < indent:
 			return m, nil
 		case indentOf(line) > indent:
-			return nil, fmt.Errorf("ks.yaml:%d: unexpected indentation in %q", *i+1, line)
+			return nil, fmt.Errorf("am.yaml:%d: unexpected indentation in %q", *i+1, line)
 		}
 		if isItem(line) {
 			return m, nil
 		}
 		key, rest, ok := strings.Cut(strings.TrimSpace(line), ":")
 		if !ok {
-			return nil, fmt.Errorf("ks.yaml:%d: expected key: value, got %q", *i+1, line)
+			return nil, fmt.Errorf("am.yaml:%d: expected key: value, got %q", *i+1, line)
 		}
 		*i++
 		rest = strings.TrimSpace(rest)
@@ -320,19 +320,19 @@ func parseDur(s string, def time.Duration) time.Duration {
 
 // applyEnv fills in what a config file may leave to the environment.
 func (c *Config) applyEnv() error {
-	if v := os.Getenv("KS_DATABASE_URL"); v != "" {
+	if v := os.Getenv("AM_DATABASE_URL"); v != "" {
 		c.DatabaseURL = v
 	}
-	if v := os.Getenv("KS_DATABASE_REPLICA_URL"); v != "" {
+	if v := os.Getenv("AM_DATABASE_REPLICA_URL"); v != "" {
 		c.ReplicaURL = v
 	}
 	if v := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); v != "" {
 		c.OTLPEndpoint = v
 	}
-	if v := os.Getenv("KS_ROLE"); v != "" {
+	if v := os.Getenv("AM_ROLE"); v != "" {
 		c.Role = v
 	}
-	if v := os.Getenv("KS_MAX_CONNS"); v != "" {
+	if v := os.Getenv("AM_MAX_CONNS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.MaxConns = n
 		}
@@ -353,7 +353,7 @@ func (c *Config) UnknownKeys() []string { return c.unknown }
 func (c *Config) Validate() error {
 	var problems []string
 	if c.DatabaseURL == "" {
-		problems = append(problems, "database.url is empty; set it in ks.yaml or KS_DATABASE_URL")
+		problems = append(problems, "database.url is empty; set it in am.yaml or AM_DATABASE_URL")
 	}
 	if len(c.unknown) > 0 {
 		problems = append(problems, "unknown config keys: "+strings.Join(c.unknown, ", "))
@@ -367,7 +367,7 @@ func (c *Config) Validate() error {
 		problems = append(problems, "limits.maxPageSize must be positive")
 	}
 	if len(problems) > 0 {
-		return ks.InvalidMulti(map[string]string{"config": strings.Join(problems, "; ")})
+		return am.InvalidMulti(map[string]string{"config": strings.Join(problems, "; ")})
 	}
 	return nil
 }

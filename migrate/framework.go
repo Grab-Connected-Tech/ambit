@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // FrameworkDDL writes the tables the runtime itself needs. They are all prefixed
-// ks_ so they never collide with an app's tables, and they are part of the same
+// am_ so they never collide with an app's tables, and they are part of the same
 // generated migration stream rather than a hidden bootstrap (§2.4: the code that
 // runs is the code you see).
 // ensureFrameworkSteps adds the framework tables that a plan is missing. They are
@@ -20,7 +20,7 @@ func ensureFrameworkSteps(a *model.App) []Step {
 	}
 	return []Step{{
 		Class:   Safe,
-		Subject: "ks framework tables",
+		Subject: "am framework tables",
 		Detail:  "ensure the runtime's own tables exist",
 		InTx:    withIFNotExists(stmts),
 	}}
@@ -44,7 +44,7 @@ func FrameworkDDL(a *model.App) []string {
 		tenant = a.Tenant.Table
 	}
 	out := []string{
-		`CREATE OR REPLACE FUNCTION ks_guard_immutable() RETURNS trigger AS $$
+		`CREATE OR REPLACE FUNCTION am_guard_immutable() RETURNS trigger AS $$
 DECLARE c text; old_v text; new_v text;
 BEGIN
   FOREACH c IN ARRAY TG_ARGV LOOP
@@ -57,12 +57,12 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;`,
-		`CREATE OR REPLACE FUNCTION ks_guard_append_only() RETURNS trigger AS $$
+		`CREATE OR REPLACE FUNCTION am_guard_append_only() RETURNS trigger AS $$
 BEGIN
   RAISE EXCEPTION 'this table is append-only' USING ERRCODE = '42501';
 END;
 $$ LANGUAGE plpgsql;`,
-		`CREATE OR REPLACE FUNCTION ks_touch_updated_at() RETURNS trigger AS $$
+		`CREATE OR REPLACE FUNCTION am_touch_updated_at() RETURNS trigger AS $$
 BEGIN
   NEW.updated_at := now();
   RETURN NEW;
@@ -73,14 +73,14 @@ $$ LANGUAGE plpgsql;`}
 		body   string
 		tenant bool
 	}{
-		{"ks_membership", fmt.Sprintf(`  id uuid NOT NULL PRIMARY KEY,
+		{"am_membership", fmt.Sprintf(`  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES %s(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
   role text NOT NULL,
   granted_by uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_membership_unique UNIQUE (tenant_id, actor_id, role)`, quoteIdent(tenant)), true},
-		{"ks_session", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_membership_unique UNIQUE (tenant_id, actor_id, role)`, quoteIdent(tenant)), true},
+		{"am_session", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES %s(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
   actor_kind text NOT NULL DEFAULT 'user',
@@ -93,8 +93,8 @@ $$ LANGUAGE plpgsql;`}
   expires_at timestamptz NOT NULL,
   idle_expires_at timestamptz,
   revoked_at timestamptz,
-  CONSTRAINT ks_session_token UNIQUE (token_hash)`, false},
-		{"ks_api_token", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_session_token UNIQUE (token_hash)`, false},
+		{"am_api_token", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES %s(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
   name text NOT NULL,
@@ -103,24 +103,24 @@ $$ LANGUAGE plpgsql;`}
   created_at timestamptz NOT NULL DEFAULT now(),
   last_used_at timestamptz,
   revoked_at timestamptz,
-  CONSTRAINT ks_api_token_hash UNIQUE (token_hash)`, false},
-		{"ks_identity_link", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_api_token_hash UNIQUE (token_hash)`, false},
+		{"am_identity_link", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES %s(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
   provider text NOT NULL,
   subject text NOT NULL,
   email text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_identity_link_unique UNIQUE (provider, subject)`, false},
-		{"ks_credential", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_identity_link_unique UNIQUE (provider, subject)`, false},
+		{"am_credential", `  id uuid NOT NULL PRIMARY KEY,
   actor_id uuid NOT NULL,
   algo text NOT NULL,
   hash bytea NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
   failed_attempts integer NOT NULL DEFAULT 0,
   locked_until timestamptz,
-  CONSTRAINT ks_credential_actor UNIQUE (actor_id)`, false},
-		{"ks_outbox", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_credential_actor UNIQUE (actor_id)`, false},
+		{"am_outbox", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   action text NOT NULL,
   invocation_id uuid,
@@ -143,9 +143,9 @@ $$ LANGUAGE plpgsql;`}
   created_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz,
   dead_lettered_at timestamptz,
-  CONSTRAINT ks_outbox_idem UNIQUE (idempotency_key),
-  CONSTRAINT ks_outbox_state CHECK (state IN ('pending','running','done','dead_letter'))`, false},
-		{"ks_jobs", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_outbox_idem UNIQUE (idempotency_key),
+  CONSTRAINT am_outbox_state CHECK (state IN ('pending','running','done','dead_letter'))`, false},
+		{"am_jobs", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   action text NOT NULL,
   args jsonb NOT NULL DEFAULT '{}',
@@ -166,23 +166,23 @@ $$ LANGUAGE plpgsql;`}
   policy jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz,
-  CONSTRAINT ks_jobs_priority CHECK (priority BETWEEN 0 AND 9),
-  CONSTRAINT ks_jobs_state CHECK (state IN ('queued','running','done','dead_letter','canceled'))`, false},
-		{"ks_scheduled_runs", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_jobs_priority CHECK (priority BETWEEN 0 AND 9),
+  CONSTRAINT am_jobs_state CHECK (state IN ('queued','running','done','dead_letter','canceled'))`, false},
+		{"am_scheduled_runs", `  id uuid NOT NULL PRIMARY KEY,
   schedule text NOT NULL,
   slot text NOT NULL,
   tenant_id uuid,
   job_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_scheduled_run_unique UNIQUE (schedule, slot, tenant_id)`, false},
-		{"ks_invocations", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_scheduled_run_unique UNIQUE (schedule, slot, tenant_id)`, false},
+		{"am_invocations", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   actor_id uuid,
   actor_kind text NOT NULL DEFAULT 'user',
   actor_roles text[] NOT NULL DEFAULT '{}',
   action text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()`, false},
-		{"ks_audit", `  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+		{"am_audit", `  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   tenant_id uuid,
   actor_id uuid,
   actor_kind text NOT NULL,
@@ -194,14 +194,14 @@ $$ LANGUAGE plpgsql;`}
   value_after jsonb,
   trace_id text,
   created_at timestamptz NOT NULL DEFAULT now()`, true},
-		{"ks_migrations", `  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+		{"am_migrations", `  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   version text NOT NULL UNIQUE,
   name text NOT NULL,
   checksum text NOT NULL,
   model_hash text NOT NULL,
   applied_at timestamptz NOT NULL DEFAULT now(),
   destructive_allowed boolean NOT NULL DEFAULT false`, false},
-		{"ks_backfills", `  id uuid NOT NULL PRIMARY KEY,
+		{"am_backfills", `  id uuid NOT NULL PRIMARY KEY,
   version text NOT NULL,
   column_name text NOT NULL,
   cursor jsonb,
@@ -209,8 +209,8 @@ $$ LANGUAGE plpgsql;`}
   total_estimated bigint,
   state text NOT NULL DEFAULT 'pending',
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_backfill_unique UNIQUE (version, column_name)`, false},
-		{"ks_idempotency", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_backfill_unique UNIQUE (version, column_name)`, false},
+		{"am_idempotency", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   action text NOT NULL,
   key text NOT NULL,
@@ -219,8 +219,8 @@ $$ LANGUAGE plpgsql;`}
   status_code integer,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
-  CONSTRAINT ks_idempotency_unique UNIQUE (action, tenant_id, key)`, false},
-		{"ks_rate_bucket", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_idempotency_unique UNIQUE (action, tenant_id, key)`, false},
+		{"am_rate_bucket", `  id uuid NOT NULL PRIMARY KEY,
   scope text NOT NULL,
   bucket_key text NOT NULL,
   action text NOT NULL,
@@ -228,25 +228,25 @@ $$ LANGUAGE plpgsql;`}
   max_tokens double precision NOT NULL,
   refill_seconds double precision NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_rate_bucket_unique UNIQUE (action, scope, bucket_key)`, false},
-		{"ks_cache_entry", `  id uuid NOT NULL PRIMARY KEY,
+  CONSTRAINT am_rate_bucket_unique UNIQUE (action, scope, bucket_key)`, false},
+		{"am_cache_entry", `  id uuid NOT NULL PRIMARY KEY,
   cache_key text NOT NULL UNIQUE,
   tenant_id uuid,
   value jsonb NOT NULL,
   expires_at timestamptz NOT NULL,
   generation bigint NOT NULL DEFAULT 0`, false},
-		{"ks_cache_generation", `  id uuid NOT NULL PRIMARY KEY,
+		{"am_cache_generation", `  id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL,
   resource text NOT NULL,
   generation bigint NOT NULL DEFAULT 1,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_cache_generation_unique UNIQUE (tenant_id, resource)`, false},
+  CONSTRAINT am_cache_generation_unique UNIQUE (tenant_id, resource)`, false},
 	}
 	for _, t := range tables {
-		if t.name == "ks_credential" && (a == nil || a.Identity.Passwords == nil) {
+		if t.name == "am_credential" && (a == nil || a.Identity.Passwords == nil) {
 			continue
 		}
-		if t.name == "ks_identity_link" && (a == nil || len(a.Identity.OIDC) == 0) {
+		if t.name == "am_identity_link" && (a == nil || len(a.Identity.OIDC) == 0) {
 			continue
 		}
 		body := t.body
@@ -258,13 +258,13 @@ $$ LANGUAGE plpgsql;`}
 		out = append(out, rlsof(res)...)
 	}
 	out = append(out,
-		"CREATE INDEX IF NOT EXISTS ks_outbox_claim ON ks_outbox (state, run_after) WHERE state = 'pending';",
-		"CREATE INDEX IF NOT EXISTS ks_jobs_claim ON ks_jobs (priority, run_after) WHERE state = 'queued';",
-		"CREATE INDEX IF NOT EXISTS ks_session_actor ON ks_session (actor_id);",
-		"CREATE INDEX IF NOT EXISTS ks_audit_tenant_time ON ks_audit (tenant_id, created_at);",
+		"CREATE INDEX IF NOT EXISTS am_outbox_claim ON am_outbox (state, run_after) WHERE state = 'pending';",
+		"CREATE INDEX IF NOT EXISTS am_jobs_claim ON am_jobs (priority, run_after) WHERE state = 'queued';",
+		"CREATE INDEX IF NOT EXISTS am_session_actor ON am_session (actor_id);",
+		"CREATE INDEX IF NOT EXISTS am_audit_tenant_time ON am_audit (tenant_id, created_at);",
 		// Audit records are append-only: the database refuses edits even to the owner.
-		"CREATE TRIGGER ks_audit_guard BEFORE UPDATE OR DELETE ON ks_audit FOR EACH ROW EXECUTE FUNCTION ks_guard_append_only();",
-		"REVOKE UPDATE, DELETE, TRUNCATE ON ks_audit FROM PUBLIC;",
+		"CREATE TRIGGER am_audit_guard BEFORE UPDATE OR DELETE ON am_audit FOR EACH ROW EXECUTE FUNCTION am_guard_append_only();",
+		"REVOKE UPDATE, DELETE, TRUNCATE ON am_audit FROM PUBLIC;",
 	)
 	return out
 }

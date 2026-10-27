@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // ActionDecl is a declared action. Its pointer is what other specs reference for
@@ -139,7 +139,7 @@ type pageSpec struct{ resource *ResourceDecl }
 func Page(res *ResourceDecl) any { return pageSpec{resource: res} }
 
 // Requires names the rule that lets a caller invoke the action. Either Requires or
-// Public is mandatory (KS-SPEC-004).
+// Public is mandatory (AM-SPEC-004).
 func Requires(rule Rule) AOption {
 	return aOptionFunc(func(d *ActionDecl) {
 		if d.public {
@@ -151,7 +151,7 @@ func Requires(rule Rule) AOption {
 }
 
 // Public opts out of authorization for this action. Public mutations must also
-// declare a rate limit (KS-SEC-005).
+// declare a rate limit (AM-SEC-005).
 func Public() AOption {
 	return aOptionFunc(func(d *ActionDecl) {
 		if d.requires != nil {

@@ -1,4 +1,4 @@
-package ks
+package am
 
 import (
 	"encoding/json"

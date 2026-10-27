@@ -1,6 +1,6 @@
--- generated from the app model by ks gen; do not edit
+-- generated from the app model by am gen; do not edit
 
-CREATE OR REPLACE FUNCTION ks_new_id() RETURNS uuid AS $$
+CREATE OR REPLACE FUNCTION am_new_id() RETURNS uuid AS $$
   SELECT gen_random_uuid()
 $$ LANGUAGE sql VOLATILE;
 
@@ -15,15 +15,15 @@ CREATE TABLE "org" (
   CONSTRAINT "org_pk" PRIMARY KEY (id)
 );
 
-COMMENT ON TABLE "org" IS 'resource Org; managed by ks, do not edit';
+COMMENT ON TABLE "org" IS 'resource Org; managed by am, do not edit';
 
 ALTER TABLE "org" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "org" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_tenant_isolation ON "org";
+DROP POLICY IF EXISTS am_tenant_isolation ON "org";
 
-CREATE POLICY ks_tenant_isolation ON "org" AS PERMISSIVE FOR ALL USING (("org".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("org".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));
+CREATE POLICY am_tenant_isolation ON "org" AS PERMISSIVE FOR ALL USING (("org".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("org".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool));
 
 CREATE TABLE "user_account" (
   "tenant_id" uuid NOT NULL REFERENCES "org"(id) ON DELETE CASCADE,
@@ -38,7 +38,7 @@ CREATE TABLE "user_account" (
   CONSTRAINT "user_account_pk" PRIMARY KEY (id)
 );
 
-COMMENT ON TABLE "user_account" IS 'resource User; managed by ks, do not edit';
+COMMENT ON TABLE "user_account" IS 'resource User; managed by am, do not edit';
 
 CREATE UNIQUE INDEX "user_account_email_uniq" ON "user_account" ("tenant_id", "email");
 
@@ -46,11 +46,11 @@ ALTER TABLE "user_account" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "user_account" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_tenant_isolation ON "user_account";
+DROP POLICY IF EXISTS am_tenant_isolation ON "user_account";
 
-CREATE POLICY ks_tenant_isolation ON "user_account" AS PERMISSIVE FOR ALL USING (("user_account".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("user_account".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));
+CREATE POLICY am_tenant_isolation ON "user_account" AS PERMISSIVE FOR ALL USING (("user_account".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("user_account".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool));
 
-CREATE OR REPLACE FUNCTION ks_guard_immutable() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION am_guard_immutable() RETURNS trigger AS $$
 DECLARE c text; old_v text; new_v text;
 BEGIN
   FOREACH c IN ARRAY TG_ARGV LOOP
@@ -64,40 +64,40 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION ks_guard_append_only() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION am_guard_append_only() RETURNS trigger AS $$
 BEGIN
   RAISE EXCEPTION 'this table is append-only' USING ERRCODE = '42501';
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION ks_touch_updated_at() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION am_touch_updated_at() RETURNS trigger AS $$
 BEGIN
   NEW.updated_at := now();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TABLE IF EXISTS "ks_membership" CASCADE;
-CREATE TABLE "ks_membership" (
+DROP TABLE IF EXISTS "am_membership" CASCADE;
+CREATE TABLE "am_membership" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES "org"(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
   role text NOT NULL,
   granted_by uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_membership_unique UNIQUE (tenant_id, actor_id, role)
+  CONSTRAINT am_membership_unique UNIQUE (tenant_id, actor_id, role)
 );
 
-ALTER TABLE "ks_membership" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_membership" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_membership" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_membership" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_tenant_isolation ON "ks_membership";
+DROP POLICY IF EXISTS am_tenant_isolation ON "am_membership";
 
-CREATE POLICY ks_tenant_isolation ON "ks_membership" AS PERMISSIVE FOR ALL USING (("ks_membership".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("ks_membership".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));
+CREATE POLICY am_tenant_isolation ON "am_membership" AS PERMISSIVE FOR ALL USING (("am_membership".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("am_membership".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool));
 
-DROP TABLE IF EXISTS "ks_session" CASCADE;
-CREATE TABLE "ks_session" (
+DROP TABLE IF EXISTS "am_session" CASCADE;
+CREATE TABLE "am_session" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES "org"(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
@@ -111,19 +111,19 @@ CREATE TABLE "ks_session" (
   expires_at timestamptz NOT NULL,
   idle_expires_at timestamptz,
   revoked_at timestamptz,
-  CONSTRAINT ks_session_token UNIQUE (token_hash)
+  CONSTRAINT am_session_token UNIQUE (token_hash)
 );
 
-ALTER TABLE "ks_session" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_session" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_session" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_session" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_session";
+DROP POLICY IF EXISTS am_public ON "am_session";
 
-CREATE POLICY ks_public ON "ks_session" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_session" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_api_token" CASCADE;
-CREATE TABLE "ks_api_token" (
+DROP TABLE IF EXISTS "am_api_token" CASCADE;
+CREATE TABLE "am_api_token" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES "org"(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
@@ -133,19 +133,19 @@ CREATE TABLE "ks_api_token" (
   created_at timestamptz NOT NULL DEFAULT now(),
   last_used_at timestamptz,
   revoked_at timestamptz,
-  CONSTRAINT ks_api_token_hash UNIQUE (token_hash)
+  CONSTRAINT am_api_token_hash UNIQUE (token_hash)
 );
 
-ALTER TABLE "ks_api_token" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_api_token" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_api_token" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_api_token" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_api_token";
+DROP POLICY IF EXISTS am_public ON "am_api_token";
 
-CREATE POLICY ks_public ON "ks_api_token" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_api_token" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_identity_link" CASCADE;
-CREATE TABLE "ks_identity_link" (
+DROP TABLE IF EXISTS "am_identity_link" CASCADE;
+CREATE TABLE "am_identity_link" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES "org"(id) ON DELETE CASCADE,
   actor_id uuid NOT NULL,
@@ -153,19 +153,19 @@ CREATE TABLE "ks_identity_link" (
   subject text NOT NULL,
   email text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_identity_link_unique UNIQUE (provider, subject)
+  CONSTRAINT am_identity_link_unique UNIQUE (provider, subject)
 );
 
-ALTER TABLE "ks_identity_link" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_identity_link" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_identity_link" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_identity_link" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_identity_link";
+DROP POLICY IF EXISTS am_public ON "am_identity_link";
 
-CREATE POLICY ks_public ON "ks_identity_link" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_identity_link" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_outbox" CASCADE;
-CREATE TABLE "ks_outbox" (
+DROP TABLE IF EXISTS "am_outbox" CASCADE;
+CREATE TABLE "am_outbox" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   action text NOT NULL,
@@ -189,20 +189,20 @@ CREATE TABLE "ks_outbox" (
   created_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz,
   dead_lettered_at timestamptz,
-  CONSTRAINT ks_outbox_idem UNIQUE (idempotency_key),
-  CONSTRAINT ks_outbox_state CHECK (state IN ('pending','running','done','dead_letter'))
+  CONSTRAINT am_outbox_idem UNIQUE (idempotency_key),
+  CONSTRAINT am_outbox_state CHECK (state IN ('pending','running','done','dead_letter'))
 );
 
-ALTER TABLE "ks_outbox" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_outbox" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_outbox" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_outbox" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_outbox";
+DROP POLICY IF EXISTS am_public ON "am_outbox";
 
-CREATE POLICY ks_public ON "ks_outbox" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_outbox" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_jobs" CASCADE;
-CREATE TABLE "ks_jobs" (
+DROP TABLE IF EXISTS "am_jobs" CASCADE;
+CREATE TABLE "am_jobs" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   action text NOT NULL,
@@ -224,39 +224,39 @@ CREATE TABLE "ks_jobs" (
   policy jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz,
-  CONSTRAINT ks_jobs_priority CHECK (priority BETWEEN 0 AND 9),
-  CONSTRAINT ks_jobs_state CHECK (state IN ('queued','running','done','dead_letter','canceled'))
+  CONSTRAINT am_jobs_priority CHECK (priority BETWEEN 0 AND 9),
+  CONSTRAINT am_jobs_state CHECK (state IN ('queued','running','done','dead_letter','canceled'))
 );
 
-ALTER TABLE "ks_jobs" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_jobs" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_jobs" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_jobs" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_jobs";
+DROP POLICY IF EXISTS am_public ON "am_jobs";
 
-CREATE POLICY ks_public ON "ks_jobs" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_jobs" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_scheduled_runs" CASCADE;
-CREATE TABLE "ks_scheduled_runs" (
+DROP TABLE IF EXISTS "am_scheduled_runs" CASCADE;
+CREATE TABLE "am_scheduled_runs" (
   id uuid NOT NULL PRIMARY KEY,
   schedule text NOT NULL,
   slot text NOT NULL,
   tenant_id uuid,
   job_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_scheduled_run_unique UNIQUE (schedule, slot, tenant_id)
+  CONSTRAINT am_scheduled_run_unique UNIQUE (schedule, slot, tenant_id)
 );
 
-ALTER TABLE "ks_scheduled_runs" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_scheduled_runs" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_scheduled_runs" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_scheduled_runs" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_scheduled_runs";
+DROP POLICY IF EXISTS am_public ON "am_scheduled_runs";
 
-CREATE POLICY ks_public ON "ks_scheduled_runs" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_scheduled_runs" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_invocations" CASCADE;
-CREATE TABLE "ks_invocations" (
+DROP TABLE IF EXISTS "am_invocations" CASCADE;
+CREATE TABLE "am_invocations" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   actor_id uuid,
@@ -266,16 +266,16 @@ CREATE TABLE "ks_invocations" (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE "ks_invocations" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_invocations" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_invocations" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_invocations" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_invocations";
+DROP POLICY IF EXISTS am_public ON "am_invocations";
 
-CREATE POLICY ks_public ON "ks_invocations" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_invocations" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_audit" CASCADE;
-CREATE TABLE "ks_audit" (
+DROP TABLE IF EXISTS "am_audit" CASCADE;
+CREATE TABLE "am_audit" (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   tenant_id uuid,
   actor_id uuid,
@@ -290,16 +290,16 @@ CREATE TABLE "ks_audit" (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE "ks_audit" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_audit" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_audit" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_audit" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_tenant_isolation ON "ks_audit";
+DROP POLICY IF EXISTS am_tenant_isolation ON "am_audit";
 
-CREATE POLICY ks_tenant_isolation ON "ks_audit" AS PERMISSIVE FOR ALL USING (("ks_audit".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("ks_audit".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));
+CREATE POLICY am_tenant_isolation ON "am_audit" AS PERMISSIVE FOR ALL USING (("am_audit".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("am_audit".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool));
 
-DROP TABLE IF EXISTS "ks_migrations" CASCADE;
-CREATE TABLE "ks_migrations" (
+DROP TABLE IF EXISTS "am_migrations" CASCADE;
+CREATE TABLE "am_migrations" (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   version text NOT NULL UNIQUE,
   name text NOT NULL,
@@ -309,16 +309,16 @@ CREATE TABLE "ks_migrations" (
   destructive_allowed boolean NOT NULL DEFAULT false
 );
 
-ALTER TABLE "ks_migrations" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_migrations" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_migrations" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_migrations" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_migrations";
+DROP POLICY IF EXISTS am_public ON "am_migrations";
 
-CREATE POLICY ks_public ON "ks_migrations" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_migrations" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_backfills" CASCADE;
-CREATE TABLE "ks_backfills" (
+DROP TABLE IF EXISTS "am_backfills" CASCADE;
+CREATE TABLE "am_backfills" (
   id uuid NOT NULL PRIMARY KEY,
   version text NOT NULL,
   column_name text NOT NULL,
@@ -327,19 +327,19 @@ CREATE TABLE "ks_backfills" (
   total_estimated bigint,
   state text NOT NULL DEFAULT 'pending',
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_backfill_unique UNIQUE (version, column_name)
+  CONSTRAINT am_backfill_unique UNIQUE (version, column_name)
 );
 
-ALTER TABLE "ks_backfills" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_backfills" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_backfills" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_backfills" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_backfills";
+DROP POLICY IF EXISTS am_public ON "am_backfills";
 
-CREATE POLICY ks_public ON "ks_backfills" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_backfills" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_idempotency" CASCADE;
-CREATE TABLE "ks_idempotency" (
+DROP TABLE IF EXISTS "am_idempotency" CASCADE;
+CREATE TABLE "am_idempotency" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid,
   action text NOT NULL,
@@ -349,19 +349,19 @@ CREATE TABLE "ks_idempotency" (
   status_code integer,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
-  CONSTRAINT ks_idempotency_unique UNIQUE (action, tenant_id, key)
+  CONSTRAINT am_idempotency_unique UNIQUE (action, tenant_id, key)
 );
 
-ALTER TABLE "ks_idempotency" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_idempotency" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_idempotency" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_idempotency" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_idempotency";
+DROP POLICY IF EXISTS am_public ON "am_idempotency";
 
-CREATE POLICY ks_public ON "ks_idempotency" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_idempotency" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_rate_bucket" CASCADE;
-CREATE TABLE "ks_rate_bucket" (
+DROP TABLE IF EXISTS "am_rate_bucket" CASCADE;
+CREATE TABLE "am_rate_bucket" (
   id uuid NOT NULL PRIMARY KEY,
   scope text NOT NULL,
   bucket_key text NOT NULL,
@@ -370,19 +370,19 @@ CREATE TABLE "ks_rate_bucket" (
   max_tokens double precision NOT NULL,
   refill_seconds double precision NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_rate_bucket_unique UNIQUE (action, scope, bucket_key)
+  CONSTRAINT am_rate_bucket_unique UNIQUE (action, scope, bucket_key)
 );
 
-ALTER TABLE "ks_rate_bucket" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_rate_bucket" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_rate_bucket" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_rate_bucket" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_rate_bucket";
+DROP POLICY IF EXISTS am_public ON "am_rate_bucket";
 
-CREATE POLICY ks_public ON "ks_rate_bucket" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_rate_bucket" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_cache_entry" CASCADE;
-CREATE TABLE "ks_cache_entry" (
+DROP TABLE IF EXISTS "am_cache_entry" CASCADE;
+CREATE TABLE "am_cache_entry" (
   id uuid NOT NULL PRIMARY KEY,
   cache_key text NOT NULL UNIQUE,
   tenant_id uuid,
@@ -391,43 +391,43 @@ CREATE TABLE "ks_cache_entry" (
   generation bigint NOT NULL DEFAULT 0
 );
 
-ALTER TABLE "ks_cache_entry" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_cache_entry" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_cache_entry" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_cache_entry" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_cache_entry";
+DROP POLICY IF EXISTS am_public ON "am_cache_entry";
 
-CREATE POLICY ks_public ON "ks_cache_entry" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_cache_entry" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-DROP TABLE IF EXISTS "ks_cache_generation" CASCADE;
-CREATE TABLE "ks_cache_generation" (
+DROP TABLE IF EXISTS "am_cache_generation" CASCADE;
+CREATE TABLE "am_cache_generation" (
   id uuid NOT NULL PRIMARY KEY,
   tenant_id uuid NOT NULL,
   resource text NOT NULL,
   generation bigint NOT NULL DEFAULT 1,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ks_cache_generation_unique UNIQUE (tenant_id, resource)
+  CONSTRAINT am_cache_generation_unique UNIQUE (tenant_id, resource)
 );
 
-ALTER TABLE "ks_cache_generation" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "am_cache_generation" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "ks_cache_generation" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "am_cache_generation" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "ks_cache_generation";
+DROP POLICY IF EXISTS am_public ON "am_cache_generation";
 
-CREATE POLICY ks_public ON "ks_cache_generation" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY am_public ON "am_cache_generation" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
 
-CREATE INDEX IF NOT EXISTS ks_outbox_claim ON ks_outbox (state, run_after) WHERE state = 'pending';
+CREATE INDEX IF NOT EXISTS am_outbox_claim ON am_outbox (state, run_after) WHERE state = 'pending';
 
-CREATE INDEX IF NOT EXISTS ks_jobs_claim ON ks_jobs (priority, run_after) WHERE state = 'queued';
+CREATE INDEX IF NOT EXISTS am_jobs_claim ON am_jobs (priority, run_after) WHERE state = 'queued';
 
-CREATE INDEX IF NOT EXISTS ks_session_actor ON ks_session (actor_id);
+CREATE INDEX IF NOT EXISTS am_session_actor ON am_session (actor_id);
 
-CREATE INDEX IF NOT EXISTS ks_audit_tenant_time ON ks_audit (tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS am_audit_tenant_time ON am_audit (tenant_id, created_at);
 
-CREATE TRIGGER ks_audit_guard BEFORE UPDATE OR DELETE ON ks_audit FOR EACH ROW EXECUTE FUNCTION ks_guard_append_only();
+CREATE TRIGGER am_audit_guard BEFORE UPDATE OR DELETE ON am_audit FOR EACH ROW EXECUTE FUNCTION am_guard_append_only();
 
-REVOKE UPDATE, DELETE, TRUNCATE ON ks_audit FROM PUBLIC;
+REVOKE UPDATE, DELETE, TRUNCATE ON am_audit FROM PUBLIC;
 
 CREATE TABLE "customer" (
   "created_at" timestamptz NOT NULL DEFAULT now(),
@@ -442,7 +442,7 @@ CREATE TABLE "customer" (
   CONSTRAINT "customer_pk" PRIMARY KEY (id)
 );
 
-COMMENT ON TABLE "customer" IS 'resource Customer; managed by ks, do not edit';
+COMMENT ON TABLE "customer" IS 'resource Customer; managed by am, do not edit';
 
 CREATE INDEX "customer_owner" ON "customer" ("tenant_id", "owner_id");
 
@@ -452,9 +452,9 @@ ALTER TABLE "customer" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "customer" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_tenant_isolation ON "customer";
+DROP POLICY IF EXISTS am_tenant_isolation ON "customer";
 
-CREATE POLICY ks_tenant_isolation ON "customer" AS PERMISSIVE FOR ALL USING (("customer".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("customer".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));
+CREATE POLICY am_tenant_isolation ON "customer" AS PERMISSIVE FOR ALL USING (("customer".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("customer".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool));
 
 CREATE TABLE "invoice" (
   "amount_minor" bigint NOT NULL,
@@ -477,7 +477,7 @@ CREATE TABLE "invoice" (
   CONSTRAINT "invoice_void_not_paid" CHECK ((NOT (invoice.status = 'void')) OR (NOT (invoice.paid_at IS NOT NULL)))
 );
 
-COMMENT ON TABLE "invoice" IS 'resource Invoice; managed by ks, do not edit';
+COMMENT ON TABLE "invoice" IS 'resource Invoice; managed by am, do not edit';
 
 CREATE INDEX "invoice_customer_status" ON "invoice" ("tenant_id", "customer_id", "status");
 
@@ -485,7 +485,7 @@ ALTER TABLE "invoice" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "invoice" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_tenant_isolation ON "invoice";
+DROP POLICY IF EXISTS am_tenant_isolation ON "invoice";
 
-CREATE POLICY ks_tenant_isolation ON "invoice" AS PERMISSIVE FOR ALL USING (("invoice".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("invoice".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));
+CREATE POLICY am_tenant_isolation ON "invoice" AS PERMISSIVE FOR ALL USING (("invoice".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("invoice".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('am.cross_tenant', true), ''), 'off')::bool));
 

@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"sort"
 
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // SchemaVersion is the format version of the model document.
@@ -716,7 +716,7 @@ func normalizeNodes(a *App) {
 	}
 }
 
-// Hash is the identity used by ks check (KS-CODE-001) and ks diff.
+// Hash is the identity used by am check (AM-CODE-001) and am diff.
 func (a *App) Hash() string {
 	sum := sha256.Sum256(a.Bytes())
 	return hex.EncodeToString(sum[:])

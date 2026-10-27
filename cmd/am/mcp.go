@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// The Model Context Protocol face of ks dev (§17.4): the introspection API as tools an
+// The Model Context Protocol face of am dev (§17.4): the introspection API as tools an
 // agent calls natively, over newline-delimited JSON-RPC 2.0 on stdio.
 
 type rpcRequest struct {
@@ -39,10 +39,10 @@ func object(props map[string]any, required ...string) map[string]any {
 }
 
 var mcpTools = []mcpTool{
-	{Name: "ks_actions", Description: "Every action of the running app with its kind, input fields and required roles.",
+	{Name: "am_actions", Description: "Every action of the running app with its kind, input fields and required roles.",
 		InputSchema: object(map[string]any{}), method: http.MethodGet,
-		path: func(map[string]any) string { return "/_ks/actions" }},
-	{Name: "ks_call", Description: "Run an action through the full pipeline as an actor; returns its output or error and a trace id.",
+		path: func(map[string]any) string { return "/_am/actions" }},
+	{Name: "am_call", Description: "Run an action through the full pipeline as an actor; returns its output or error and a trace id.",
 		InputSchema: object(map[string]any{
 			"action": map[string]any{"type": "string", "description": "module.Action"},
 			"actor": object(map[string]any{
@@ -52,23 +52,23 @@ var mcpTools = []mcpTool{
 			}),
 			"input": map[string]any{"type": "object"},
 		}, "action", "actor"),
-		method: http.MethodPost, path: func(map[string]any) string { return "/_ks/call" },
+		method: http.MethodPost, path: func(map[string]any) string { return "/_am/call" },
 		body: func(a map[string]any) any { return a }},
-	{Name: "ks_trace", Description: "What one call did: its queries with timings, its effects, its error.",
+	{Name: "am_trace", Description: "What one call did: its queries with timings, its effects, its error.",
 		InputSchema: object(map[string]any{"id": map[string]any{"type": "string"}}, "id"), method: http.MethodGet,
-		path: func(a map[string]any) string { return "/_ks/traces/" + url.PathEscape(fmt.Sprint(a["id"])) }},
-	{Name: "ks_logs", Description: "Structured log lines after a cursor; pass the returned next to continue.",
+		path: func(a map[string]any) string { return "/_am/traces/" + url.PathEscape(fmt.Sprint(a["id"])) }},
+	{Name: "am_logs", Description: "Structured log lines after a cursor; pass the returned next to continue.",
 		InputSchema: object(map[string]any{"since": map[string]any{"type": "integer"}}), method: http.MethodGet,
 		path: func(a map[string]any) string {
 			since := 0.0
 			if v, ok := a["since"].(float64); ok {
 				since = v
 			}
-			return fmt.Sprintf("/_ks/logs?since=%.0f", since)
+			return fmt.Sprintf("/_am/logs?since=%.0f", since)
 		}},
-	{Name: "ks_reset", Description: "Empty the database and reload the seed files.",
+	{Name: "am_reset", Description: "Empty the database and reload the seed files.",
 		InputSchema: object(map[string]any{}), method: http.MethodPost,
-		path: func(map[string]any) string { return "/_ks/reset" }},
+		path: func(map[string]any) string { return "/_am/reset" }},
 }
 
 // mcpServe answers MCP requests from in on out until in closes, forwarding tool calls to
@@ -107,7 +107,7 @@ func mcpServe(in io.Reader, out io.Writer, base string) error {
 			}
 			reply(req.ID, map[string]any{"protocolVersion": p.ProtocolVersion,
 				"capabilities": map[string]any{"tools": map[string]any{}},
-				"serverInfo":   map[string]any{"name": "keystone-dev", "version": "0.1"}}, nil)
+				"serverInfo":   map[string]any{"name": "ambit-dev", "version": "0.1"}}, nil)
 		case "ping":
 			reply(req.ID, map[string]any{}, nil)
 		case "tools/list":

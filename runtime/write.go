@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 )
 
 // Assignment is one column write produced from a generated Patch type. A patch field
@@ -28,7 +28,7 @@ type Assignment struct {
 func (v *View[T]) Insert(ctx context.Context, sets []Assignment, withs ...With[T]) (*T, error) {
 	d := v.db
 	if v.t.Create.Denies() {
-		return nil, ks.Forbidden("the resource declares no Create rule, so nothing may be inserted")
+		return nil, am.Forbidden("the resource declares no Create rule, so nothing may be inserted")
 	}
 	cols, vals, args := v.insertValues(sets)
 	sb := &sqlBuilder{params: args, a: actorValues(d.actor)}
@@ -52,7 +52,7 @@ func (v *View[T]) Insert(ctx context.Context, sets []Assignment, withs ...With[T
 		return nil, translate(err)
 	}
 	if len(out) == 0 {
-		return nil, ks.Forbidden("the Create rule refused the row")
+		return nil, am.Forbidden("the Create rule refused the row")
 	}
 	created := out[0]
 	if err := v.checkDeferred(ctx, created); err != nil {
@@ -67,7 +67,7 @@ func (v *View[T]) Insert(ctx context.Context, sets []Assignment, withs ...With[T
 
 // Update applies a patch under optimistic concurrency (§8.1). A stale version is a
 // 409, an invisible row a 404 and a refused rule a 403, in that order of discovery.
-func (v *View[T]) Update(ctx context.Context, id ks.ID, version ks.Version, sets []Assignment, withs ...With[T]) (*T, error) {
+func (v *View[T]) Update(ctx context.Context, id am.ID, version am.Version, sets []Assignment, withs ...With[T]) (*T, error) {
 	if len(sets) == 0 {
 		return v.Get(ctx, id, withs...)
 	}
@@ -134,9 +134,9 @@ func (v *View[T]) Update(ctx context.Context, id ks.ID, version ks.Version, sets
 	}
 	if len(out) == 0 {
 		if v.versionOf(before) != int64(version) {
-			return nil, ks.Conflict()
+			return nil, am.Conflict()
 		}
-		return nil, ks.Forbidden("a write rule refused the change")
+		return nil, am.Forbidden("a write rule refused the change")
 	}
 	after := out[0]
 	if err := v.checkDeferred(ctx, after); err != nil {
@@ -152,14 +152,14 @@ func (v *View[T]) Update(ctx context.Context, id ks.ID, version ks.Version, sets
 
 // Delete removes one row under optimistic concurrency. The method only exists on
 // resources whose Delete rule is not Never(), because the generator omits it (§8.1).
-func (v *View[T]) Delete(ctx context.Context, id ks.ID, version ks.Version) error {
+func (v *View[T]) Delete(ctx context.Context, id am.ID, version am.Version) error {
 	d := v.db
 	before, err := v.Get(ctx, id)
 	if err != nil {
 		return err
 	}
 	if v.t.Delete.Denies() {
-		return ks.Forbidden("the resource declares Delete(Never())")
+		return am.Forbidden("the resource declares Delete(Never())")
 	}
 	sb := &sqlBuilder{a: actorValues(d.actor)}
 	idSQL, err := sb.text("t."+quote(v.t.IDColumn)+" = ?", id.Bytes())
@@ -181,9 +181,9 @@ func (v *View[T]) Delete(ctx context.Context, id ks.ID, version ks.Version) erro
 	}
 	if tag.RowsAffected() == 0 {
 		if v.versionOf(before) != int64(version) {
-			return ks.Conflict()
+			return am.Conflict()
 		}
-		return ks.Forbidden("a delete rule refused the row")
+		return am.Forbidden("a delete rule refused the row")
 	}
 	d.recordAudit("delete", v.t.Ref, id, before, nil)
 	return nil
@@ -252,9 +252,9 @@ func (v *View[T]) checkDeferred(ctx context.Context, row *T) error {
 		}
 		if found {
 			if c.Forbidden {
-				return ks.Forbidden("the value after the change is not allowed")
+				return am.Forbidden("the value after the change is not allowed")
 			}
-			return ks.Invariant(c.Name)
+			return am.Invariant(c.Name)
 		}
 	}
 	return nil
@@ -271,9 +271,9 @@ func (v *View[T]) fieldWriteFrag(column string) *Frag {
 }
 
 // idOf reads a row's primary key through the generated accessor.
-func (v *View[T]) idOf(row *T) ks.ID {
+func (v *View[T]) idOf(row *T) am.ID {
 	if v.t.IDOf == nil || row == nil {
-		return ks.NilID
+		return am.NilID
 	}
 	return v.t.IDOf(row)
 }
@@ -321,7 +321,7 @@ func (v *View[T]) insertValues(sets []Assignment) ([]string, []string, []any) {
 		cols = append(cols, quote(col))
 		exprs = append(exprs, expr)
 	}
-	id := ks.NewID()
+	id := am.NewID()
 	add("id", "::uuid", id.Bytes())
 	for _, s := range sets {
 		switch s.Column {
@@ -399,7 +399,7 @@ func (v *View[T]) castFor(column string) string {
 
 // recordAudit appends the change to the in-transaction audit buffer (§9.5). It is
 // written in the same transaction, so an audit row cannot disagree with the data.
-func (d *DB) recordAudit(op, resource string, id ks.ID, before, after any) {
+func (d *DB) recordAudit(op, resource string, id am.ID, before, after any) {
 	rec := AuditRecord{
 		Tenant: d.actor.Tenant, Actor: d.actor, Action: d.action, Resource: resource,
 		RowID: id, Trace: d.traceID, At: d.clock.Now(),
@@ -441,11 +441,11 @@ func redact(d *DB, raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return nil
 	}
-	body, err := ks.ParseObject(raw)
+	body, err := am.ParseObject(raw)
 	if err != nil {
 		return raw
 	}
-	w := ks.NewW(len(raw))
+	w := am.NewW(len(raw))
 	w.ObjStart()
 	for _, k := range body.Keys() {
 		if isSensitiveKey(d, k) {
@@ -473,8 +473,8 @@ func isSensitiveKey(d *DB, key string) bool {
 }
 
 func diffKeys(before, after json.RawMessage) []string {
-	b, err1 := ks.ParseObject(before)
-	a, err2 := ks.ParseObject(after)
+	b, err1 := am.ParseObject(before)
+	a, err2 := am.ParseObject(after)
 	if err1 != nil || err2 != nil {
 		return nil
 	}
@@ -495,15 +495,15 @@ func diffKeys(before, after json.RawMessage) []string {
 	return out
 }
 
-func sameVal(a, b *ks.Val) bool {
+func sameVal(a, b *am.Val) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
 	return valText(a) == valText(b)
 }
 
-func valText(v *ks.Val) string {
-	w := ks.NewW(16)
+func valText(v *am.Val) string {
+	w := am.NewW(16)
 	w.Val(v)
 	return string(w.Bytes())
 }
@@ -521,7 +521,7 @@ func (a *App) flushAudit(ctx context.Context, d *DB) error {
 			after = rec.After
 		}
 		if _, err := d.exec(ctx,
-			`INSERT INTO ks_audit (tenant_id, actor_id, actor_kind, action, resource, resource_id, changed_fields, value_before, value_after, trace_id, created_at)
+			`INSERT INTO am_audit (tenant_id, actor_id, actor_kind, action, resource, resource_id, changed_fields, value_before, value_after, trace_id, created_at)
 	         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 			rec.Tenant.OrNil(), rec.Actor.ID.OrNil(), string(rec.Actor.Kind), rec.Action, rec.Resource,
 			rec.RowID.OrNil(), rec.Changed, nullJSON(before), nullJSON(after), rec.Trace, rec.At); err != nil {

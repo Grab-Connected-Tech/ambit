@@ -13,17 +13,17 @@ import (
 	"strings"
 	"sync"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // DevMode reports whether the introspection API is on. Only the environment can turn it
 // on, never a config file, so a production deploy cannot expose it by accident (§17.4).
-func DevMode() bool { return os.Getenv("KS_DEV") == "1" }
+func DevMode() bool { return os.Getenv("AM_DEV") == "1" }
 
 const devKeep = 500 // traces and log lines kept in memory
 
-// devAPI serves /_ks/* in development: actions, call-as-actor, traces, logs and reset.
+// devAPI serves /_am/* in development: actions, call-as-actor, traces, logs and reset.
 type devAPI struct {
 	a      *App
 	mu     sync.Mutex
@@ -107,7 +107,7 @@ func (t devTee) WithGroup(name string) slog.Handler {
 }
 
 func (d *devAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/_ks")
+	path := strings.TrimPrefix(r.URL.Path, "/_am")
 	switch {
 	case path == "/actions" && r.Method == http.MethodGet:
 		d.actions(w)
@@ -118,7 +118,7 @@ func (d *devAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t, ok := d.traces[strings.TrimPrefix(path, "/traces/")]
 		d.mu.Unlock()
 		if !ok {
-			writeError(w, r, ks.NotFound(), "")
+			writeError(w, r, am.NotFound(), "")
 			return
 		}
 		devJSON(w, http.StatusOK, devTrace(t))
@@ -136,19 +136,19 @@ func (d *devAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		devJSON(w, http.StatusOK, map[string]any{"logs": out, "next": next})
 	case path == "/reset" && r.Method == http.MethodPost:
 		if err := d.a.ResetToSeed(r.Context()); err != nil {
-			writeError(w, r, ks.InternalError(err), "")
+			writeError(w, r, am.InternalError(err), "")
 			return
 		}
 		devJSON(w, http.StatusOK, map[string]any{"reset": true})
 	default:
-		writeError(w, r, ks.NotFound(), "")
+		writeError(w, r, am.NotFound(), "")
 	}
 }
 
 func devTrace(t Trace) map[string]any {
 	out := map[string]any{"trace": t}
 	if t.Err != nil {
-		out["error"] = ks.AsError(t.Err)
+		out["error"] = am.AsError(t.Err)
 	}
 	return out
 }
@@ -183,24 +183,24 @@ func (d *devAPI) actions(w http.ResponseWriter) {
 func (d *devAPI) call(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Action string          `json:"action"`
-		Actor  ks.Actor        `json:"actor"`
+		Actor  am.Actor        `json:"actor"`
 		Input  json.RawMessage `json:"input"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, r, ks.Invalid("body", err.Error()), "")
+		writeError(w, r, am.Invalid("body", err.Error()), "")
 		return
 	}
 	h, ok := d.a.HandlerFor(req.Action)
 	if !ok {
-		writeError(w, r, ks.NotFound(), "")
+		writeError(w, r, am.NotFound(), "")
 		return
 	}
 	actor := req.Actor
 	if actor.Kind == "" {
-		actor.Kind = ks.ActorUser
+		actor.Kind = am.ActorUser
 	}
-	actor.Authed = actor.Kind != ks.ActorAnonymous
-	trace := string(ks.NewID())
+	actor.Authed = actor.Kind != am.ActorAnonymous
+	trace := string(am.NewID())
 	if len(req.Input) == 0 {
 		req.Input = json.RawMessage("{}")
 	}
@@ -208,7 +208,7 @@ func (d *devAPI) call(w http.ResponseWriter, r *http.Request) {
 		d.a.Log.With("traceId", trace, "action", h.Ref))
 	resp := map[string]any{"traceId": trace}
 	if err != nil {
-		resp["error"] = ks.AsError(err)
+		resp["error"] = am.AsError(err)
 	} else if len(out.Body) > 0 {
 		resp["output"] = json.RawMessage(out.Body)
 	}
@@ -225,8 +225,8 @@ func (a *App) ResetToSeed(ctx context.Context) error {
 	for _, r := range a.Model.AllResources() {
 		tables = append(tables, quoteTable(r.Resource.Table))
 	}
-	for _, t := range []string{"ks_session", "ks_api_token", "ks_identity_link", "ks_outbox", "ks_jobs",
-		"ks_scheduled_runs", "ks_invocations", "ks_audit", "ks_idempotency", "ks_rate_bucket", "ks_cache_entry"} {
+	for _, t := range []string{"am_session", "am_api_token", "am_identity_link", "am_outbox", "am_jobs",
+		"am_scheduled_runs", "am_invocations", "am_audit", "am_idempotency", "am_rate_bucket", "am_cache_entry"} {
 		tables = append(tables, t)
 	}
 	seeds, _ := filepath.Glob(filepath.Join(a.Cfg.AppDir, "seed", "*.sql"))
@@ -236,7 +236,7 @@ func (a *App) ResetToSeed(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, "SET LOCAL ks.cross_tenant = 'on'; SET LOCAL ks.actor_system = 'on'"); err != nil {
+	if _, err := tx.Exec(ctx, "SET LOCAL am.cross_tenant = 'on'; SET LOCAL am.actor_system = 'on'"); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, "TRUNCATE "+strings.Join(tables, ", ")+" CASCADE"); err != nil {

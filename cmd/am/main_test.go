@@ -24,7 +24,7 @@ func TestFlagsAcceptPositionalsAnywhere(t *testing.T) {
 }
 
 func TestToolDiagsReadCompilerPositions(t *testing.T) {
-	d := toolDiags("GO-BUILD", []byte("# keystone.dev/x\n./app/billing/actions.go:12:3: undefined: foo\nplain line\n"))
+	d := toolDiags("GO-BUILD", []byte("# github.com/abhilashiig/ambit/x\n./app/billing/actions.go:12:3: undefined: foo\nplain line\n"))
 	if len(d) != 2 {
 		t.Fatalf("got %d diagnostics: %+v", len(d), d)
 	}
@@ -47,8 +47,8 @@ func TestMCPForwardsToolsToTheDevServer(t *testing.T) {
 	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ks_call","arguments":{"action":"billing.CountDrafts","actor":{"Roles":["member"]}}}}
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ks_logs","arguments":{"since":7}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"am_call","arguments":{"action":"billing.CountDrafts","actor":{"Roles":["member"]}}}}
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"am_logs","arguments":{"since":7}}}
 {"jsonrpc":"2.0","id":5,"method":"nope"}
 `)
 	var out bytes.Buffer
@@ -59,13 +59,13 @@ func TestMCPForwardsToolsToTheDevServer(t *testing.T) {
 	if len(lines) != 5 {
 		t.Fatalf("one reply per request with an id, none for the notification: %d\n%s", len(lines), out.String())
 	}
-	if !strings.Contains(lines[0], `"protocolVersion":"2025-03-26"`) || !strings.Contains(lines[1], `"ks_trace"`) {
+	if !strings.Contains(lines[0], `"protocolVersion":"2025-03-26"`) || !strings.Contains(lines[1], `"am_trace"`) {
 		t.Fatalf("handshake or tool list: %s / %s", lines[0], lines[1])
 	}
 	if !strings.Contains(lines[2], `\"total\":3`) || !strings.Contains(lines[2], `"isError":false`) {
 		t.Fatalf("tool result: %s", lines[2])
 	}
-	if gotPath != "GET /_ks/logs?since=7" || !strings.Contains(lines[4], `-32601`) {
+	if gotPath != "GET /_am/logs?since=7" || !strings.Contains(lines[4], `-32601`) {
 		t.Fatalf("logs path %q, unknown method %s", gotPath, lines[4])
 	}
 }

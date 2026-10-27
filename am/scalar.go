@@ -1,4 +1,4 @@
-package ks
+package am
 
 import (
 	"encoding/json"
@@ -30,7 +30,7 @@ func ScanID(v any) (ID, error) {
 	case [16]byte:
 		return IDFromBytes(t[:])
 	}
-	return NilID, fmt.Errorf("ks: cannot scan %T as ID", v)
+	return NilID, fmt.Errorf("am: cannot scan %T as ID", v)
 }
 
 // Money is an exact monetary amount in minor units with a currency code.
@@ -90,14 +90,14 @@ func DecimalOf(s string) Decimal {
 func ParseDecimal(s string) (Decimal, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return Decimal{}, fmt.Errorf("ks: empty decimal")
+		return Decimal{}, fmt.Errorf("am: empty decimal")
 	}
 	if !decimalRe.MatchString(s) {
-		return Decimal{}, fmt.Errorf("ks: invalid decimal %q", s)
+		return Decimal{}, fmt.Errorf("am: invalid decimal %q", s)
 	}
 	r := new(big.Rat)
 	if _, ok := r.SetString(s); !ok {
-		return Decimal{}, fmt.Errorf("ks: invalid decimal %q", s)
+		return Decimal{}, fmt.Errorf("am: invalid decimal %q", s)
 	}
 	return Decimal{r: r}, nil
 }
@@ -155,7 +155,7 @@ func DateOf(y int, m, d int) Date { return Date{y: int16(y), m: uint8(m), d: uin
 func ParseDate(s string) (Date, error) {
 	t, err := time.Parse("2006-01-02", s)
 	if err != nil {
-		return Date{}, fmt.Errorf("ks: invalid date %q", s)
+		return Date{}, fmt.Errorf("am: invalid date %q", s)
 	}
 	return DateOf(t.Year(), int(t.Month()), t.Day()), nil
 }
@@ -190,7 +190,7 @@ var emailRe = regexp.MustCompile(`^[a-z0-9!#$%&'*+/=?^_` + "`" + `{|}~.-]+@[a-z0
 func NormalizeEmail(s string) (Email, error) {
 	e := Email(strings.ToLower(strings.TrimSpace(s)))
 	if !emailRe.MatchString(string(e)) {
-		return "", fmt.Errorf("ks: invalid email %q", s)
+		return "", fmt.Errorf("am: invalid email %q", s)
 	}
 	return e, nil
 }
@@ -210,12 +210,12 @@ func ParseURL(s string, schemes ...string) (URL, error) {
 	u := URL(strings.TrimSpace(s))
 	i := strings.Index(string(u), "://")
 	if i <= 0 {
-		return "", fmt.Errorf("ks: invalid url %q", s)
+		return "", fmt.Errorf("am: invalid url %q", s)
 	}
 	scheme := strings.ToLower(string(u)[:i])
 	if len(schemes) == 0 {
 		if !urlSchemes[scheme] {
-			return "", fmt.Errorf("ks: url scheme %q not allowed", scheme)
+			return "", fmt.Errorf("am: url scheme %q not allowed", scheme)
 		}
 		return u, nil
 	}
@@ -224,7 +224,7 @@ func ParseURL(s string, schemes ...string) (URL, error) {
 			return u, nil
 		}
 	}
-	return "", fmt.Errorf("ks: url scheme %q not allowed", scheme)
+	return "", fmt.Errorf("am: url scheme %q not allowed", scheme)
 }
 
 func (u URL) String() string { return string(u) }

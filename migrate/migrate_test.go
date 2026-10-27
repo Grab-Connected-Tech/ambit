@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 func intp(i int) *int { return &i }
@@ -92,7 +92,7 @@ func app() *model.App {
 		Tenant: &model.Tenant{Name: "Org", Table: "org",
 			Fields: append(model.BuiltInFields(false), field("name", "name", model.KindText,
 				func(f *model.Field) { f.Type.MaxLen = intp(200) }))},
-		Membership: &model.Tenant{Name: "Membership", Table: "ks_membership"},
+		Membership: &model.Tenant{Name: "Membership", Table: "am_membership"},
 		Account:    &model.Tenant{Name: "User", Table: "user_account"},
 		Modules: []model.Module{
 			{Name: "billing", Resources: []model.Resource{invoice}},
@@ -130,14 +130,14 @@ func TestFreshDDL(t *testing.T) {
 		// Tenant-led, and the (customer_id) index the reference implies is covered by it.
 		"CREATE INDEX \"invoice_customer_status\" ON \"invoice\" (\"tenant_id\", \"customer_id\", \"status\");",
 		"ALTER TABLE \"invoice\" FORCE ROW LEVEL SECURITY;",
-		"CREATE POLICY ks_tenant_isolation ON \"invoice\"",
-		"USING ((\"invoice\".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR",
+		"CREATE POLICY am_tenant_isolation ON \"invoice\"",
+		"USING ((\"invoice\".tenant_id = coalesce(nullif(current_setting('am.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR",
 		"WITH CHECK ((\"invoice\".tenant_id = coalesce",
-		"CREATE TABLE \"ks_membership\"", // framework tables are in the same stream
-		"CREATE TABLE \"ks_outbox\"",
-		"CREATE TABLE \"ks_jobs\"",
-		"CREATE TABLE \"ks_audit\"",
-		"ks_guard_immutable",
+		"CREATE TABLE \"am_membership\"", // framework tables are in the same stream
+		"CREATE TABLE \"am_outbox\"",
+		"CREATE TABLE \"am_jobs\"",
+		"CREATE TABLE \"am_audit\"",
+		"am_guard_immutable",
 	}
 	for _, w := range wants {
 		if !strings.Contains(sql, w) {
@@ -147,7 +147,7 @@ func TestFreshDDL(t *testing.T) {
 	if strings.Contains(sql, "invoice_customer_id_idx") {
 		t.Error("an index whose columns lead another index is redundant")
 	}
-	if strings.Contains(sql, "CREATE TABLE \"ks_membership\" (\n  id") && !strings.Contains(sql, "ks_membership_unique") {
+	if strings.Contains(sql, "CREATE TABLE \"am_membership\" (\n  id") && !strings.Contains(sql, "am_membership_unique") {
 		t.Error("membership must be unique per actor, tenant and role")
 	}
 }

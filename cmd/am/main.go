@@ -1,4 +1,4 @@
-// Command ks is the Keystone CLI (§19). Every command accepts --json and exits non-zero
+// Command am is the Ambit CLI (§19). Every command accepts --json and exits non-zero
 // on failure. It runs in the app's root directory: the one holding app/, gen/ and
 // app.model.json.
 package main
@@ -15,15 +15,15 @@ import (
 	"sort"
 	"strings"
 
-	"keystone.dev/keystone/checker"
-	"keystone.dev/keystone/codegen"
-	"keystone.dev/keystone/compile"
-	"keystone.dev/keystone/diff"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/checker"
+	"github.com/abhilashiig/ambit/codegen"
+	"github.com/abhilashiig/ambit/compile"
+	"github.com/abhilashiig/ambit/diff"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
-const usage = `usage: ks <command> [flags]
+const usage = `usage: am <command> [flags]
 
   init <name>                       create a new app
   new module <name>                 add a module with an empty spec
@@ -76,14 +76,14 @@ func main() {
 		if errors.As(err, &ee) {
 			os.Exit(ee.code)
 		}
-		fmt.Fprintln(os.Stderr, "ks:", err)
+		fmt.Fprintln(os.Stderr, "am:", err)
 		os.Exit(1)
 	}
 }
 
 // flags parses a command's flags; positional arguments may come before or after them.
 func flags(name string, args []string, define func(*flag.FlagSet)) (*flag.FlagSet, bool, error) {
-	fs := flag.NewFlagSet("ks "+name, flag.ContinueOnError)
+	fs := flag.NewFlagSet("am "+name, flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	if define != nil {
 		define(fs)
@@ -247,7 +247,7 @@ func cmdCheck(args []string) error {
 		return err
 	}
 	d = append(d, md...)
-	// Generated code must come from the current spec (KS-CODE-001).
+	// Generated code must come from the current spec (AM-CODE-001).
 	if raw, err := os.ReadFile("app.model.json"); err != nil {
 		d = append(d, stale("app.model.json is missing"))
 	} else if committed, err := model.Load(raw); err != nil || committed.Hash() != app.Hash() {
@@ -260,7 +260,7 @@ func cmdCheck(args []string) error {
 		return err
 	}
 	d = append(d, res.Diags...)
-	// Facts sit beside the model so ks diff can compare code risk across revisions (§6.3).
+	// Facts sit beside the model so am diff can compare code risk across revisions (§6.3).
 	res.Facts.ModelHash = app.Hash()
 	res.Facts.Sorted()
 	facts, _ := json.MarshalIndent(res.Facts, "", "  ")
@@ -276,8 +276,8 @@ func cmdCheck(args []string) error {
 }
 
 func stale(why string) compile.Diag {
-	return compile.Diag{Rule: "KS-CODE-001", Severity: compile.SevError, File: "app.model.json",
-		Message: why, Fix: "run ks gen", Docs: "ks explain KS-CODE-001"}
+	return compile.Diag{Rule: "AM-CODE-001", Severity: compile.SevError, File: "app.model.json",
+		Message: why, Fix: "run am gen", Docs: "am explain AM-CODE-001"}
 }
 
 // toolDiags turns a Go tool's "file:line:col: message" output into diagnostics.
@@ -328,7 +328,7 @@ func cmdExplain(args []string) error {
 	id := strings.ToUpper(fs.Arg(0))
 	rule, ok := checker.RuleByID(id)
 	if !ok {
-		return fmt.Errorf("no rule %s; run ks explain for the list", id)
+		return fmt.Errorf("no rule %s; run am explain for the list", id)
 	}
 	if asJSON {
 		printJSON(rule)
@@ -372,8 +372,8 @@ func cmdDiff(args []string) error {
 		// A revision without a model is the first release: everything is new.
 		baseApp, baseFacts = nil, model.Facts{}
 	}
-	// api.compatibility in ks.yaml opts an internal-only API out of §12.4.
-	if cfg, err := runtime.LoadConfig("ks.yaml"); err == nil && cfg.Compatibility != "" {
+	// api.compatibility in am.yaml opts an internal-only API out of §12.4.
+	if cfg, err := runtime.LoadConfig("am.yaml"); err == nil && cfg.Compatibility != "" {
 		headApp.Defaults.Compatibility = cfg.Compatibility
 	}
 	rep := diff.Between(baseApp, headApp, baseFacts, headFacts)
@@ -388,7 +388,7 @@ func readSide(read func(string) ([]byte, error)) (*model.App, model.Facts, error
 	var facts model.Facts
 	raw, err := read("app.model.json")
 	if err != nil {
-		return nil, facts, fmt.Errorf("app.model.json: %w (run ks gen)", err)
+		return nil, facts, fmt.Errorf("app.model.json: %w (run am gen)", err)
 	}
 	app, err := model.Load(raw)
 	if err != nil {
@@ -404,7 +404,7 @@ func readSide(read func(string) ([]byte, error)) (*model.App, model.Facts, error
 func gitPrefix() (string, error) {
 	out, err := exec.Command("git", "rev-parse", "--show-prefix").Output()
 	if err != nil {
-		return "", fmt.Errorf("ks diff needs a git repository: %w", err)
+		return "", fmt.Errorf("am diff needs a git repository: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -418,7 +418,7 @@ func cmdClient(args []string) error {
 		return err
 	}
 	if fs.Arg(0) != "ts" {
-		return fmt.Errorf("usage: ks client ts --out <dir>")
+		return fmt.Errorf("usage: am client ts --out <dir>")
 	}
 	app, diags, err := loadModel()
 	if err != nil {
@@ -460,19 +460,19 @@ func cmdTest(args []string) error {
 	// Tests need a Postgres to clone per-test databases from (§16.1): the configured one,
 	// or a disposable one started for this run.
 	cmd.Env = os.Environ()
-	// Query shapes are captured for ks perf (§11.4).
-	if capture, err := filepath.Abs(filepath.Join(".ks", "queries.jsonl")); err == nil && ksDir() == nil {
+	// Query shapes are captured for am perf (§11.4).
+	if capture, err := filepath.Abs(filepath.Join(".am", "queries.jsonl")); err == nil && amDir() == nil {
 		_ = os.Remove(capture)
-		cmd.Env = append(cmd.Env, "KS_CAPTURE_QUERIES="+capture)
+		cmd.Env = append(cmd.Env, "AM_CAPTURE_QUERIES="+capture)
 	}
-	if os.Getenv("KS_TEST_DB_URL") == "" {
+	if os.Getenv("AM_TEST_DB_URL") == "" {
 		url, stop, err := disposablePostgres()
 		if err != nil {
 			return err
 		}
 		defer stop()
-		fmt.Fprintln(os.Stderr, "ks test: started a disposable Postgres")
-		cmd.Env = append(cmd.Env, "KS_TEST_DB_URL="+url)
+		fmt.Fprintln(os.Stderr, "am test: started a disposable Postgres")
+		cmd.Env = append(cmd.Env, "AM_TEST_DB_URL="+url)
 	}
 	if err := cmd.Run(); err != nil {
 		return exitError{1}

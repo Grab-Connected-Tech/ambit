@@ -13,10 +13,10 @@ import (
 
 // Operating the outbox and the job queue (§10.1, §10.4):
 //
-//	ks outbox list [--state pending|dead_letter|done] [--limit n]
-//	ks outbox inspect <id>
-//	ks outbox replay <id>      put a dead-lettered or failed effect back in the queue
-//	ks jobs list|inspect|replay  the same for jobs
+//	am outbox list [--state pending|dead_letter|done] [--limit n]
+//	am outbox inspect <id>
+//	am outbox replay <id>      put a dead-lettered or failed effect back in the queue
+//	am jobs list|inspect|replay  the same for jobs
 //
 // Replay resets attempts and makes the row runnable now; the idempotency key is kept, so
 // a provider that saw the first attempt recognises the retry.
@@ -25,9 +25,9 @@ type queue struct {
 }
 
 var queues = map[string]queue{
-	"outbox": {"ks_outbox", "pending",
+	"outbox": {"am_outbox", "pending",
 		"id::text, coalesce(tenant_id::text,''), action, type, state, attempts, coalesce(last_error,''), created_at, run_after, payload::text"},
-	"jobs": {"ks_jobs", "queued",
+	"jobs": {"am_jobs", "queued",
 		"id::text, coalesce(tenant_id::text,''), action, 'job', state, attempts, coalesce(last_error,''), created_at, run_after, args::text"},
 }
 
@@ -58,7 +58,7 @@ func cmdQueue(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	url, err := databaseURL("KS_DATABASE_URL")
+	url, err := databaseURL("AM_DATABASE_URL")
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func cmdQueue(name string, args []string) error {
 	}
 	defer conn.Close(ctx)
 	// An operator works across tenants.
-	if _, err := conn.Exec(ctx, "SELECT set_config('ks.cross_tenant', 'on', false), set_config('ks.actor_system', 'on', false)"); err != nil {
+	if _, err := conn.Exec(ctx, "SELECT set_config('am.cross_tenant', 'on', false), set_config('am.actor_system', 'on', false)"); err != nil {
 		return err
 	}
 	scan := func(rows pgx.Rows) ([]queueRow, error) {
@@ -112,7 +112,7 @@ func cmdQueue(name string, args []string) error {
 	case "inspect", "replay":
 		id := fs.Arg(1)
 		if id == "" {
-			return fmt.Errorf("usage: ks %s %s <id>", name, fs.Arg(0))
+			return fmt.Errorf("usage: am %s %s <id>", name, fs.Arg(0))
 		}
 		if fs.Arg(0) == "replay" {
 			tag, err := conn.Exec(ctx, fmt.Sprintf(`UPDATE %s SET state = $2, attempts = 0, run_after = now(), last_error = NULL,
@@ -124,7 +124,7 @@ func cmdQueue(name string, args []string) error {
 				return fmt.Errorf("%s %s is not replayable (missing, already %s, or running)", name, id, q.live)
 			}
 			if name == "outbox" {
-				_, _ = conn.Exec(ctx, "SELECT pg_notify('ks_outbox', '')")
+				_, _ = conn.Exec(ctx, "SELECT pg_notify('am_outbox', '')")
 			}
 		}
 		rows, err := conn.Query(ctx, fmt.Sprintf("SELECT %s FROM %s WHERE id = $1::uuid", q.columns, q.table), id)
@@ -146,7 +146,7 @@ func cmdQueue(name string, args []string) error {
 		fmt.Println(string(raw))
 		return nil
 	}
-	return fmt.Errorf("usage: ks %s list|inspect|replay", name)
+	return fmt.Errorf("usage: am %s list|inspect|replay", name)
 }
 
 func oneLine(s string) string {

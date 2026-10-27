@@ -1,4 +1,4 @@
-package kstest
+package amtest
 
 import (
 	"context"
@@ -17,13 +17,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
-// The tests ks gen writes into gen/ call TableRules once per resource and ActionRules
+// The tests am gen writes into gen/ call TableRules once per resource and ActionRules
 // once with every action's adapter (§16.2). The cases are derived from the model when the
 // test runs, so they cannot drift from the rules they test.
 //
@@ -35,7 +35,7 @@ import (
 
 // Fixture creates a row of the resource in the tenant with placeholder values, creating
 // whatever it references first, and returns its id.
-func (e *Env) Fixture(ref string, tenant ks.ID) ks.ID {
+func (e *Env) Fixture(ref string, tenant am.ID) am.ID {
 	e.T.Helper()
 	_, name := model.SplitRef(ref)
 	if e.Model.Account != nil && name == e.Model.Account.Name {
@@ -46,9 +46,9 @@ func (e *Env) Fixture(ref string, tenant ks.ID) ks.ID {
 	}
 	res := e.Model.FindResource(ref)
 	if res == nil {
-		e.T.Fatalf("kstest: no resource %s", ref)
+		e.T.Fatalf("amtest: no resource %s", ref)
 	}
-	id := ks.NewID()
+	id := am.NewID()
 	set := map[string]any{}
 	if res.Tenant {
 		set["tenant_id"] = tenant
@@ -59,7 +59,7 @@ func (e *Env) Fixture(ref string, tenant ks.ID) ks.ID {
 }
 
 // assignments are the column values of a new row, the way an action would pass them.
-func (e *Env) assignments(res *model.Resource, tenant ks.ID) []runtime.Assignment {
+func (e *Env) assignments(res *model.Resource, tenant am.ID) []runtime.Assignment {
 	var out []runtime.Assignment
 	for _, f := range res.Fields {
 		if framework[f.Column] || f.Optional || f.Default != nil {
@@ -90,14 +90,14 @@ func currency(f model.Field) string {
 
 // As runs fn with a scoped DB for the actor, the way the pipeline opens one, and rolls
 // back: the generated tests only look at what each operation returns.
-func (e *Env) As(actor ks.Actor, fn func(ctx context.Context, d *runtime.DB) error) error {
+func (e *Env) As(actor am.Actor, fn func(ctx context.Context, d *runtime.DB) error) error {
 	ctx := context.Background()
-	tx, err := e.App.BeginTx(ctx, runtime.Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == ks.ActorSystem}, 5*time.Second, false)
+	tx, err := e.App.BeginTx(ctx, runtime.Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == am.ActorSystem}, 5*time.Second, false)
 	if err != nil {
 		return err
 	}
 	defer e.App.Rollback(ctx, tx)
-	d := e.App.NewDB(tx, actor, runtime.WithApp(e.App), runtime.WithAction("kstest"), runtime.WithClock(e.Clock), runtime.WithBudget(100, 100000, false))
+	d := e.App.NewDB(tx, actor, runtime.WithApp(e.App), runtime.WithAction("amtest"), runtime.WithClock(e.Clock), runtime.WithBudget(100, 100000, false))
 	return fn(ctx, d)
 }
 
@@ -148,7 +148,7 @@ func toAny(ss []string) []any {
 func TableRules[T any](t *testing.T, app *model.App, table *runtime.Table[T]) {
 	res := app.FindResource(table.Ref)
 	if res == nil {
-		t.Fatalf("kstest: %s is not in the model", table.Ref)
+		t.Fatalf("amtest: %s is not in the model", table.Ref)
 	}
 	if res.Tenant {
 		t.Run("tenant isolation", func(t *testing.T) { tenantIsolation(t, app, table, res) })
@@ -172,7 +172,7 @@ func TableRules[T any](t *testing.T, app *model.App, table *runtime.Table[T]) {
 			if readRoles, readAll, ok := rolesOnly(res.Access.Read); ok && !readAll && len(readRoles) > 0 && r.op != "read" && r.op != "create" {
 				reader = append(reader, readRoles[0])
 			}
-			var allowed, denied []ks.Actor
+			var allowed, denied []am.Actor
 			switch {
 			case all:
 				allowed = append(allowed, e.Actor(org, reader...))
@@ -207,8 +207,8 @@ func TableRules[T any](t *testing.T, app *model.App, table *runtime.Table[T]) {
 }
 
 // operate performs one operation on a fresh row as the actor.
-func operate[T any](e *Env, table *runtime.Table[T], res *model.Resource, op string, actor ks.Actor, org ks.ID) error {
-	var id ks.ID
+func operate[T any](e *Env, table *runtime.Table[T], res *model.Resource, op string, actor am.Actor, org am.ID) error {
+	var id am.ID
 	if op != "create" {
 		id = e.Fixture(table.Ref, org)
 	}
@@ -241,7 +241,7 @@ func tenantIsolation[T any](t *testing.T, app *model.App, table *runtime.Table[T
 	outsider := e.Actor(theirs, toAny(app.Roles)...)
 	err := e.As(outsider, func(ctx context.Context, d *runtime.DB) error {
 		v := runtime.Scoped(d, table)
-		if _, err := v.Get(ctx, id); code(err) != ks.CodeNotFound {
+		if _, err := v.Get(ctx, id); code(err) != am.CodeNotFound {
 			t.Errorf("another tenant's row must be not found, got %v", err)
 		}
 		if err := v.Delete(ctx, id, 1); err == nil {
@@ -287,14 +287,14 @@ func fieldRead[T any](t *testing.T, app *model.App, table *runtime.Table[T], res
 	if !ok {
 		t.Skipf("no placeholder for a %s field", f.Type.Kind)
 	}
-	id := ks.NewID()
+	id := am.NewID()
 	e.insertIn(res.Table, res.Fields, id, map[string]any{"tenant_id": org, f.Column: value}, org)
 	// Each reader also holds a role that may read the row, so only the field rule differs.
 	extra := []any{}
 	if !readAll && len(readRoles) > 0 {
 		extra = append(extra, readRoles[0])
 	}
-	see := func(a ks.Actor) bool {
+	see := func(a am.Actor) bool {
 		var visible bool
 		err := e.As(a, func(ctx context.Context, d *runtime.DB) error {
 			row, err := runtime.Scoped(d, table).Get(ctx, id)
@@ -428,11 +428,11 @@ func violation(e *Env, res *model.Resource, n *policy.Node) (map[string]any, boo
 }
 
 // tryInsert is insertIn that returns the database error instead of failing the test.
-func (e *Env) tryInsert(res *model.Resource, tenant ks.ID, set map[string]any) error {
-	cols, args := e.rowValues(res.Table, res.Fields, ks.NewID(), merge([]map[string]any{{"tenant_id": tenant}, set}), tenant)
+func (e *Env) tryInsert(res *model.Resource, tenant am.ID, set map[string]any) error {
+	cols, args := e.rowValues(res.Table, res.Fields, am.NewID(), merge([]map[string]any{{"tenant_id": tenant}, set}), tenant)
 	sql, _ := insertSQL(res.Table, cols)
 	return pgx.BeginFunc(context.Background(), e.owner, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(context.Background(), "SELECT set_config('ks.cross_tenant','on',true)"); err != nil {
+		if _, err := tx.Exec(context.Background(), "SELECT set_config('am.cross_tenant','on',true)"); err != nil {
 			return err
 		}
 		_, err := tx.Exec(context.Background(), sql, args...)
@@ -452,14 +452,14 @@ func ActionRules(t *testing.T, app *model.App, handlers []*runtime.Handler) {
 			roles, all, ok := rolesOnly(h.Spec.Requires)
 			e := New(t, app)
 			org := e.Tenant()
-			run := func(a ks.Actor, body map[string]any) error {
+			run := func(a am.Actor, body map[string]any) error {
 				raw, _ := json.Marshal(body)
-				_, err := e.App.Run(context.Background(), h, a, &runtime.Call{Actor: a, Body: raw, Key: string(ks.NewID())}, nil)
+				_, err := e.App.Run(context.Background(), h, a, &runtime.Call{Actor: a, Body: raw, Key: string(am.NewID())}, nil)
 				return err
 			}
 			if ok && !all {
 				denied := e.Actor(org, without(app.Roles, roles)...)
-				if code := code(run(denied, map[string]any{})); code != ks.CodeForbidden {
+				if code := code(run(denied, map[string]any{})); code != am.CodeForbidden {
 					t.Errorf("roles %v lack %v: got %q, want forbidden", denied.Roles, roles, code)
 				}
 			} else if !ok {
@@ -469,7 +469,7 @@ func ActionRules(t *testing.T, app *model.App, handlers []*runtime.Handler) {
 			caller := e.Actor(org, toAny(app.Roles)...)
 			for _, f := range h.Spec.Input {
 				for _, bad := range badInputs(f) {
-					if code := code(run(caller, map[string]any{f.Name: bad})); code != ks.CodeInvalid {
+					if code := code(run(caller, map[string]any{f.Name: bad})); code != am.CodeInvalid {
 						t.Errorf("%s = %v: got %q, want invalid", f.Name, short(bad), code)
 					}
 				}
@@ -500,7 +500,7 @@ func code(err error) string {
 	if err == nil {
 		return ""
 	}
-	return ks.AsError(err).Code
+	return am.AsError(err).Code
 }
 
 func short(v any) any {
@@ -513,20 +513,20 @@ func short(v any) any {
 // Fuzz runs an action repeatedly with random valid inputs as random actors in two tenants,
 // and asserts after every run that it did not fail internally and that no response holds
 // a row of a tenant other than the caller's (§16.4). Ids in the input are drawn from rows
-// of both tenants, so a missing scope shows up as a leak. KS_FUZZ_SEED replays a run.
+// of both tenants, so a missing scope shows up as a leak. AM_FUZZ_SEED replays a run.
 //
 // ponytail: the property is tenant isolation plus "no 500"; invariants rely on the
 // database's CHECKs and the pre-commit check rather than being re-evaluated here.
 func Fuzz[C, In, Out any](e *Env, wrap func(func(*C, In) (Out, error)) *runtime.Handler, fn func(*C, In) (Out, error), runs int) {
 	e.T.Helper()
 	seed := time.Now().UnixNano()
-	if v, err := strconv.ParseInt(os.Getenv("KS_FUZZ_SEED"), 10, 64); err == nil {
+	if v, err := strconv.ParseInt(os.Getenv("AM_FUZZ_SEED"), 10, 64); err == nil {
 		seed = v
 	}
 	rng := rand.New(rand.NewSource(seed))
 	h := wrap(fn)
-	tenants := []ks.ID{e.Tenant(), e.Tenant()}
-	ids := map[string][]ks.ID{} // referenced resource -> rows across both tenants
+	tenants := []am.ID{e.Tenant(), e.Tenant()}
+	ids := map[string][]am.ID{} // referenced resource -> rows across both tenants
 	for _, f := range h.Spec.Input {
 		if f.Ref == nil {
 			continue
@@ -556,8 +556,8 @@ func Fuzz[C, In, Out any](e *Env, wrap func(func(*C, In) (Out, error)) *runtime.
 			}
 		}
 		raw, _ := json.Marshal(body)
-		out, err := e.App.Run(context.Background(), h, actor, &runtime.Call{Actor: actor, Body: raw, Key: string(ks.NewID())}, nil)
-		if code(err) == ks.CodeInternal {
+		out, err := e.App.Run(context.Background(), h, actor, &runtime.Call{Actor: actor, Body: raw, Key: string(am.NewID())}, nil)
+		if code(err) == am.CodeInternal {
 			e.T.Fatalf("seed %d run %d: %s as %v with %s failed internally: %v", seed, run, h.Ref, actor.Roles, raw, errors.Unwrap(err))
 		}
 		if err != nil || len(out.Body) == 0 {
@@ -595,7 +595,7 @@ func foreignTenant(v any, mine string) string {
 }
 
 // randomValue draws a value the field's declaration accepts.
-func randomValue(rng *rand.Rand, f model.Field, ids map[string][]ks.ID, now time.Time) (any, bool) {
+func randomValue(rng *rand.Rand, f model.Field, ids map[string][]am.ID, now time.Time) (any, bool) {
 	if f.Ref != nil {
 		pool := ids[f.Ref.Resource]
 		if len(pool) == 0 {
@@ -628,11 +628,11 @@ func randomValue(rng *rand.Rand, f model.Field, ids map[string][]ks.ID, now time
 			return f.Type.Values[rng.Intn(len(f.Type.Values))], true
 		}
 	case model.KindMoney:
-		return ks.MoneyOf(int64(1+rng.Intn(100000)), currency(f)), true
+		return am.MoneyOf(int64(1+rng.Intn(100000)), currency(f)), true
 	case model.KindTimestamp:
 		return now.Add(time.Duration(rng.Intn(1000)) * time.Hour), true
 	case model.KindID:
-		return ks.NewID(), true
+		return am.NewID(), true
 	}
 	return nil, false
 }
@@ -648,7 +648,7 @@ func Bench[C, In, Out any](b *testing.B, app *model.App, wrap func(func(*C, In) 
 	h.Spec.Limits.RateLimit = nil
 	tenant := e.Tenant()
 	actor := e.Actor(tenant, toAny(app.Roles)...)
-	ids := map[string][]ks.ID{}
+	ids := map[string][]am.ID{}
 	for _, f := range h.Spec.Input {
 		if f.Ref != nil {
 			for i := 0; i < 5; i++ {
@@ -674,7 +674,7 @@ func Bench[C, In, Out any](b *testing.B, app *model.App, wrap func(func(*C, In) 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
-		_, err := e.App.Run(context.Background(), h, actor, &runtime.Call{Actor: actor, Body: bodies[i%len(bodies)], Key: string(ks.NewID())}, nil)
+		_, err := e.App.Run(context.Background(), h, actor, &runtime.Call{Actor: actor, Body: bodies[i%len(bodies)], Key: string(am.NewID())}, nil)
 		lat = append(lat, time.Since(start))
 		if err != nil {
 			failed++

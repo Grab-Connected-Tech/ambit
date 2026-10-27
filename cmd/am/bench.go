@@ -31,13 +31,13 @@ func cmdBench(args []string) error {
 	}
 	cmd := exec.Command("go", "test", "./gen", "-run", "^$", "-bench", pattern, "-benchmem", "-benchtime", *count)
 	cmd.Env = os.Environ()
-	if os.Getenv("KS_TEST_DB_URL") == "" {
+	if os.Getenv("AM_TEST_DB_URL") == "" {
 		url, stop, err := disposablePostgres()
 		if err != nil {
 			return err
 		}
 		defer stop()
-		cmd.Env = append(cmd.Env, "KS_TEST_DB_URL="+url)
+		cmd.Env = append(cmd.Env, "AM_TEST_DB_URL="+url)
 	}
 	out, err := cmd.CombinedOutput()
 	os.Stdout.Write(out)
@@ -45,7 +45,7 @@ func cmdBench(args []string) error {
 		return exitError{1}
 	}
 	if !strings.Contains(string(out), "BenchmarkActions/") {
-		return fmt.Errorf("no benchmark ran; is %q an action? (ks gen writes gen/bench_test.go)", fs.Arg(0))
+		return fmt.Errorf("no benchmark ran; is %q an action? (am gen writes gen/bench_test.go)", fs.Arg(0))
 	}
 	if *maxP95 > 0 {
 		for _, m := range benchLine.FindAllStringSubmatch(string(out), -1) {

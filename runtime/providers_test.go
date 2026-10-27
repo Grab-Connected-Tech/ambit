@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // The get-vanilla case of the AWS SigV4 test suite.
@@ -45,10 +45,10 @@ func TestWebhookIsSignedAndDelivered(t *testing.T) {
 		t.Fatalf("result %s", res.Body)
 	}
 	// What a receiver does: recompute the signature over the timestamp and the raw body.
-	if sig := got.Header.Get("Keystone-Signature"); sig != p.Sign(at, body) || !strings.HasPrefix(sig, "t=1700000000,v1=") {
+	if sig := got.Header.Get("Ambit-Signature"); sig != p.Sign(at, body) || !strings.HasPrefix(sig, "t=1700000000,v1=") {
 		t.Fatalf("signature %q", sig)
 	}
-	if got.Header.Get("Idempotency-Key") != "k1" || got.Header.Get("Keystone-Topic") != "invoice.paid" {
+	if got.Header.Get("Idempotency-Key") != "k1" || got.Header.Get("Ambit-Topic") != "invoice.paid" {
 		t.Fatalf("headers %v", got.Header)
 	}
 	// Without the test switch the SSRF guard refuses a loopback endpoint.
@@ -74,7 +74,7 @@ func TestSMTPRendersTemplatesAndRefusesHeaderInjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg := string(sent)
-	for _, want := range []string{"Subject: Invoice INV-1\r\n", "To: ada@example.com\r\n", "Message-ID: <k7@keystone>", "Hello Ada,\r\n"} {
+	for _, want := range []string{"Subject: Invoice INV-1\r\n", "To: ada@example.com\r\n", "Message-ID: <k7@ambit>", "Hello Ada,\r\n"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("message lacks %q:\n%s", want, msg)
 		}
@@ -147,7 +147,7 @@ func TestPprofNeedsTheAdminToken(t *testing.T) {
 	if get("") != http.StatusUnauthorized {
 		t.Fatal("with no token configured, profiles stay off")
 	}
-	t.Setenv("KS_ADMIN_TOKEN", "t0ken")
+	t.Setenv("AM_ADMIN_TOKEN", "t0ken")
 	if get("wrong") != http.StatusUnauthorized || get("t0ken") != http.StatusOK {
 		t.Fatal("only the admin token opens the profiles")
 	}

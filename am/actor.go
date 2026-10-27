@@ -1,4 +1,4 @@
-package ks
+package am
 
 import (
 	"context"
@@ -87,7 +87,7 @@ func ActorFrom(ctx context.Context) Actor {
 	return Anonymous()
 }
 
-// Clock is the only source of time available to action code (§7.4, KS-CODE-004).
+// Clock is the only source of time available to action code (§7.4, AM-CODE-004).
 type Clock interface {
 	Now() time.Time
 	Since(t time.Time) time.Duration

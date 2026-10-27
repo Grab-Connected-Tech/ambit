@@ -3,7 +3,7 @@ package runtime
 import (
 	"strings"
 
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 )
 
 // Col is a typed column descriptor: the generated `gen.Invoices.Status` in
@@ -75,7 +75,7 @@ func (c Col[T]) IsNotNull() Cond { return Cond{SQL: c.SQL + " IS NOT NULL"} }
 func (c Col[T]) Asc() orderTerm  { return orderTerm{SQL: c.SQL} }
 func (c Col[T]) Desc() orderTerm { return orderTerm{SQL: c.SQL, Desc: true} }
 
-// OptCol describes a column whose Go type is ks.Opt[T]; Set and Clear are the only ways
+// OptCol describes a column whose Go type is am.Opt[T]; Set and Clear are the only ways
 // to write it, which is what keeps "absent" different from "empty" (§5.2).
 type OptCol[T any] struct{ Col[*T] }
 
@@ -109,7 +109,7 @@ func escapeLike(v string) string {
 	return v
 }
 
-// MoneyCol spans the two columns a ks.Money is stored in (§5.2), so an equality test
+// MoneyCol spans the two columns a am.Money is stored in (§5.2), so an equality test
 // compares the pair and cannot match a different currency by accident.
 type MoneyCol struct {
 	Minor    Col[int64]
@@ -120,23 +120,23 @@ func NewMoneyCol(minor, currency string) MoneyCol {
 	return MoneyCol{Minor: NewCol[int64](minor), Currency: NewTextCol(currency)}
 }
 
-func (m MoneyCol) Eq(v ks.Money) Cond {
+func (m MoneyCol) Eq(v am.Money) Cond {
 	return AndOf(m.Minor.Eq(v.Minor), m.Currency.Eq(string(v.Currency)))
 }
 
-func (m MoneyCol) Gte(v ks.Money) Cond {
+func (m MoneyCol) Gte(v am.Money) Cond {
 	return AndOf(m.Currency.Eq(string(v.Currency)), m.Minor.Gte(v.Minor))
 }
 
-func (m MoneyCol) Gt(v ks.Money) Cond {
+func (m MoneyCol) Gt(v am.Money) Cond {
 	return AndOf(m.Currency.Eq(string(v.Currency)), m.Minor.Gt(v.Minor))
 }
 
-func (m MoneyCol) Lt(v ks.Money) Cond {
+func (m MoneyCol) Lt(v am.Money) Cond {
 	return AndOf(m.Currency.Eq(string(v.Currency)), m.Minor.Lt(v.Minor))
 }
 
-func (m MoneyCol) Lte(v ks.Money) Cond {
+func (m MoneyCol) Lte(v am.Money) Cond {
 	return AndOf(m.Currency.Eq(string(v.Currency)), m.Minor.Lte(v.Minor))
 }
 
@@ -149,18 +149,18 @@ type IDCol struct {
 
 func NewIDCol(sql, target string) IDCol { return IDCol{SQL: sql, Target: target} }
 
-func (c IDCol) pred(op string, v ks.ID) Cond {
+func (c IDCol) pred(op string, v am.ID) Cond {
 	return Cond{SQL: c.SQL + " " + op + " ?", Args: []any{v.Bytes()}}
 }
 
-func (c IDCol) Eq(v ks.ID) Cond { return c.pred("=", v) }
-func (c IDCol) Ne(v ks.ID) Cond { return c.pred("<>", v) }
+func (c IDCol) Eq(v am.ID) Cond { return c.pred("=", v) }
+func (c IDCol) Ne(v am.ID) Cond { return c.pred("<>", v) }
 func (c IDCol) IsNull() Cond    { return Cond{SQL: c.SQL + " IS NULL"} }
 func (c IDCol) IsNotNull() Cond { return Cond{SQL: c.SQL + " IS NOT NULL"} }
 func (c IDCol) Asc() orderTerm  { return orderTerm{SQL: c.SQL} }
 func (c IDCol) Desc() orderTerm { return orderTerm{SQL: c.SQL, Desc: true} }
 
-func (c IDCol) In(vs ...ks.ID) Cond {
+func (c IDCol) In(vs ...am.ID) Cond {
 	if len(vs) == 0 {
 		return Cond{SQL: "false"}
 	}

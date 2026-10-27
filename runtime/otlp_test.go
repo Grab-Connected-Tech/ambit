@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 )
 
 func TestOTLPExportsActionAndQuerySpansWithoutArguments(t *testing.T) {
@@ -32,9 +32,9 @@ func TestOTLPExportsActionAndQuerySpansWithoutArguments(t *testing.T) {
 	a.startOTLP()
 	start := time.Now()
 	a.OnCall(Trace{ID: strings.Repeat("ab", 16), Action: "billing.SendInvoice", Start: start, Millis: 3,
-		Actor: ks.Actor{Kind: ks.ActorUser, Tenant: "t-1"},
+		Actor: am.Actor{Kind: am.ActorUser, Tenant: "t-1"},
 		Stmts: []Stmt{{SQL: "SELECT t.id FROM invoice t WHERE t.tax_id = $1", Args: []any{"DE-SECRET"}, At: start, Millis: 1}},
-		Err:   ks.Forbidden("no")})
+		Err:   am.Forbidden("no")})
 	a.stopOTLP() // flushes
 	mu.Lock()
 	defer mu.Unlock()
@@ -57,7 +57,7 @@ func TestOTLPExportsActionAndQuerySpansWithoutArguments(t *testing.T) {
 		spans[1].Name != "db SELECT" || spans[0].TraceID != strings.Repeat("ab", 16) || spans[0].Status.Code != 2 {
 		t.Fatalf("spans %+v", spans)
 	}
-	if !strings.Contains(all, `"ks.policy.decision"`) || !strings.Contains(all, `"service.name"`) {
+	if !strings.Contains(all, `"am.policy.decision"`) || !strings.Contains(all, `"service.name"`) {
 		t.Fatalf("attributes missing: %s", all)
 	}
 }

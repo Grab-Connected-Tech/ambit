@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 )
 
 // PageOf is one keyset page (§8.1). There is no offset pagination anywhere.
@@ -21,9 +21,9 @@ type PageOf[T any] struct {
 
 // Get fetches one row by id. A row the actor may not see is indistinguishable from
 // a row that does not exist, so existence never leaks (§9.1 IDOR control).
-func (v *View[T]) Get(ctx context.Context, id ks.ID, withs ...With[T]) (*T, error) {
+func (v *View[T]) Get(ctx context.Context, id am.ID, withs ...With[T]) (*T, error) {
 	if id.IsNil() {
-		return nil, ks.NotFound()
+		return nil, am.NotFound()
 	}
 	d := v.db
 	b := &sqlBuilder{a: actorValues(d.actor)}
@@ -50,7 +50,7 @@ func (v *View[T]) Get(ctx context.Context, id ks.ID, withs ...With[T]) (*T, erro
 		return nil, translate(err)
 	}
 	if len(out) == 0 {
-		return nil, ks.NotFound()
+		return nil, am.NotFound()
 	}
 	row := out[0]
 	if err := v.load(withs, []*T{row}); err != nil {
@@ -60,7 +60,7 @@ func (v *View[T]) Get(ctx context.Context, id ks.ID, withs ...With[T]) (*T, erro
 }
 
 // ByIDs fetches many rows in one query, which is what relation loaders use (§8.2).
-func (v *View[T]) ByIDs(ctx context.Context, ids []ks.ID, withs ...With[T]) ([]*T, error) {
+func (v *View[T]) ByIDs(ctx context.Context, ids []am.ID, withs ...With[T]) ([]*T, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -190,14 +190,14 @@ func (b *Query[T]) Page(ctx context.Context, cursor string, size int) (*PageOf[T
 }
 
 // First returns at most one row; the limit is implicit, so an unbounded read is not
-// expressible (KS-DATA-001).
+// expressible (AM-DATA-001).
 func (b *Query[T]) First(ctx context.Context) (*T, error) {
 	page, err := b.Page(ctx, "", 1)
 	if err != nil {
 		return nil, err
 	}
 	if len(page.Rows) == 0 {
-		return nil, ks.NotFound()
+		return nil, am.NotFound()
 	}
 	return page.Rows[0], nil
 }
@@ -326,7 +326,7 @@ func (b *Query[T]) cursorKeys(terms []orderTerm, last *T) []cursorValue {
 		v := cursorValue{Val: vals[t.SQL]}
 		if strings.HasSuffix(t.SQL, "."+b.v.t.IDColumn) {
 			if id, ok := vals["id"]; ok {
-				v.ID = ks.ID(id)
+				v.ID = am.ID(id)
 			}
 		}
 		out = append(out, v)
@@ -481,7 +481,7 @@ func translate(err error) error {
 	if err == nil {
 		return nil
 	}
-	var known *ks.Error
+	var known *am.Error
 	if errors.As(err, &known) {
 		return known
 	}
@@ -489,18 +489,18 @@ func translate(err error) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505":
-			return ks.Conflict()
+			return am.Conflict()
 		case "23514":
-			return ks.Invariant("check constraint")
+			return am.Invariant("check constraint")
 		case "23503":
-			return ks.Invalid("reference", "the referenced row does not exist")
+			return am.Invalid("reference", "the referenced row does not exist")
 		case "40001":
-			return ks.NewError("serialization_failure", 500, "the transaction conflicted; retry")
+			return am.NewError("serialization_failure", 500, "the transaction conflicted; retry")
 		case "57014":
-			return ks.Timeout("statement")
+			return am.Timeout("statement")
 		}
 	}
-	return ks.InternalError(err)
+	return am.InternalError(err)
 }
 
 // unqualified strips the table alias from a projection list. An INSERT ... SELECT's

@@ -1,12 +1,12 @@
-# Keystone: Go framework for AI-built backends — technical specification
+# Ambit: Go framework for AI-built backends — technical specification
 
 Oct 27, 2026 · @Abhilash
 
 ## 1. Overview and goals
 
-Keystone is an open-source Go framework where AI agents write the backend code, humans review a short spec and a machine-computed behavior diff, and the framework guarantees security, data integrity and performance underneath. Keystone is a working name.
+Ambit is an open-source Go framework where AI agents write the backend code, humans review a short spec and a machine-computed behavior diff, and the framework guarantees security, data integrity and performance underneath. Ambit is a working name.
 
-The core bet: as AI writes most code, the bottleneck moves from writing to trusting. Keystone makes the common classes of backend bugs impossible by construction, so review effort goes only to what genuinely changed.
+The core bet: as AI writes most code, the bottleneck moves from writing to trusting. Ambit makes the common classes of backend bugs impossible by construction, so review effort goes only to what genuinely changed.
 
 ### 1.1 Goals and targets
 
@@ -21,13 +21,13 @@ Every target below is a design goal to validate with benchmarks, not a measured 
 | Performance | Minimal framework overhead | p99 overhead under 1 ms per request, excluding database and effect time |
 | Performance | No reflection on the hot path | All routing, decoding, encoding and scanning is generated code |
 | Performance | Small footprint | Idle memory under 50 MB; cold start under 1 s |
-| Agent velocity | Fast feedback | Incremental `ks check` under 2 s on a 100k-line app |
-| Agent velocity | Context that fits | `ks context <module>` output under 8k tokens for a typical module |
+| Agent velocity | Fast feedback | Incremental `am check` under 2 s on a 100k-line app |
+| Agent velocity | Context that fits | `am context <module>` output under 8k tokens for a typical module |
 | Review | Small review surface | Every high-risk change appears in the behavior diff, computed without an LLM |
 
 ### 1.2 Non-goals
 
-- Not a frontend framework. Keystone generates a typed TypeScript client; teams use any UI stack.
+- Not a frontend framework. Ambit generates a typed TypeScript client; teams use any UI stack.
 - Not multi-database. Postgres only, version 15 or later.
 - Not microservices. One deployable binary with strong internal module boundaries.
 - Not an agent runtime or LLM orchestration library. Apps may call LLMs through declared effects like any other API.
@@ -65,7 +65,7 @@ Ten principles govern every design decision; when two conflict, the lower number
 
 ## 3. Architecture
 
-Keystone has two halves: a build-time toolchain that compiles the spec into an app model and derives everything from it, and a runtime library that enforces the spec's guarantees in production.
+Ambit has two halves: a build-time toolchain that compiles the spec into an app model and derives everything from it, and a runtime library that enforces the spec's guarantees in production.
 
 &#91;embedded content: architecture · build time and runtime\]
 
@@ -75,25 +75,25 @@ Humans own the spec, agents own the action code, and everything else is derived 
 
 | Component | Package or command | Responsibility |
 | --- | --- | --- |
-| Spec library | `keystone.dev/spec` | Builder functions used in spec files. Pure declarations, no runtime behavior. |
-| Spec compiler | `ks gen` | Executes spec packages, validates them, emits `app.model.json`. |
-| Code generator | `ks gen` | Generates Go types, scoped DB access, routing, codecs, validators, contexts and clients from the app model. |
-| Checker | `ks check` | Runs the Go compiler plus Keystone analyzers over all code; emits structured diagnostics. |
-| Migration engine | `ks migrate` | Diffs app models against the live schema, classifies changes, plans and applies migrations. |
-| Behavior differ | `ks diff` | Compares app models and code between two git revisions; produces a risk-ranked report. |
-| Runtime | `keystone.dev/runtime` | HTTP server, auth, request pipeline, transactions, policy enforcement, outbox, jobs, telemetry. |
-| Test harness | `ks test` | Ephemeral Postgres, fixtures, effect fakes, generated policy and invariant tests. |
-| Dev server | `ks dev` | Hot reload, introspection API for agents, trace viewer, seed data. |
-| Agent tooling | `ks context`, `ks explain` | Compact module context, rule explanations, generated `AGENTS.md`. |
+| Spec library | `github.com/abhilashiig/ambit/spec` | Builder functions used in spec files. Pure declarations, no runtime behavior. |
+| Spec compiler | `am gen` | Executes spec packages, validates them, emits `app.model.json`. |
+| Code generator | `am gen` | Generates Go types, scoped DB access, routing, codecs, validators, contexts and clients from the app model. |
+| Checker | `am check` | Runs the Go compiler plus Ambit analyzers over all code; emits structured diagnostics. |
+| Migration engine | `am migrate` | Diffs app models against the live schema, classifies changes, plans and applies migrations. |
+| Behavior differ | `am diff` | Compares app models and code between two git revisions; produces a risk-ranked report. |
+| Runtime | `github.com/abhilashiig/ambit/runtime` | HTTP server, auth, request pipeline, transactions, policy enforcement, outbox, jobs, telemetry. |
+| Test harness | `am test` | Ephemeral Postgres, fixtures, effect fakes, generated policy and invariant tests. |
+| Dev server | `am dev` | Hot reload, introspection API for agents, trace viewer, seed data. |
+| Agent tooling | `am context`, `am explain` | Compact module context, rule explanations, generated `AGENTS.md`. |
 
 ### 3.2 Build pipeline
 
-1. `ks gen` builds a temporary program that imports every spec package and serializes the declared app to `app.model.json`.
+1. `am gen` builds a temporary program that imports every spec package and serializes the declared app to `app.model.json`.
 2. The compiler validates the model: references resolve, rules compile to SQL, roles exist, no cycles in module calls.
 3. The generator writes `gen/` packages per module and the root `cmd/` entrypoint. Output is deterministic and byte-stable.
-4. `ks check` runs `go build`, `go vet` and Keystone analyzers. Results return as one diagnostic list.
-5. `ks migrate plan` diffs the model against the database and writes a migration plan when the schema changed.
-6. `ks diff` compares the committed model and code against a base revision for review.
+4. `am check` runs `go build`, `go vet` and Ambit analyzers. Results return as one diagnostic list.
+5. `am migrate plan` diffs the model against the database and writes a migration plan when the schema changed.
+6. `am diff` compares the committed model and code against a base revision for review.
 
 ### 3.3 Request lifecycle
 
@@ -115,7 +115,7 @@ An app is a set of feature modules, each a self-contained folder holding its spe
 
 ```
 myapp/
-  ks.yaml                    app configuration
+  am.yaml                    app configuration
   go.mod
   app.model.json             compiled app model (generated, committed)
   AGENTS.md                  agent instructions (generated)
@@ -143,7 +143,7 @@ myapp/
 - A module owns its resources. Only that module's actions may write them.
 - Other modules may reference a resource in their spec with `Ref`, and read it only through a declared `Reads(...)`.
 - Cross-module behavior goes through declared calls: `Calls(customers.GetCustomer)` adds `c.Calls.GetCustomer` to the context. Calls run in the same transaction, as the same actor, with the callee's access rules applied.
-- Go imports between modules are limited to the other module's `gen` package types. Importing another module's `actions` package fails the check (KS-CODE-002).
+- Go imports between modules are limited to the other module's `gen` package types. Importing another module's `actions` package fails the check (AM-CODE-002).
 - Module call graphs must be acyclic. The compiler reports cycles with the full path.
 
 ### 4.2 App-level spec
@@ -152,14 +152,14 @@ myapp/
 
 ## 5. Spec language
 
-The spec is restricted, declarative Go written with builder functions from `keystone.dev/spec`, conventionally imported as `s`. Spec files contain only package-level `var` declarations whose values are spec builder calls, literals and references to other spec values. The checker rejects anything else (KS-SPEC-001).
+The spec is restricted, declarative Go written with builder functions from `github.com/abhilashiig/ambit/spec`, conventionally imported as `s`. Spec files contain only package-level `var` declarations whose values are spec builder calls, literals and references to other spec values. The checker rejects anything else (AM-SPEC-001).
 
 ### 5.1 App-level declarations
 
 ```go
 package app
 
-import s "keystone.dev/spec"
+import s "github.com/abhilashiig/ambit/spec"
 
 var Org = s.TenantResource("Org",
 	s.Fields(s.Text("name").MaxLen(200)),
@@ -188,14 +188,14 @@ Every resource gets `id` (UUIDv7), `created_at`, `updated_at` and `version` (for
 | --- | --- | --- | --- |
 | `Text` | `string` | `text` | `MaxLen`, `MinLen`, `Pattern`, `Trim` |
 | `Int` | `int64` | `bigint` | `Min`, `Max` |
-| `Decimal` | `ks.Decimal` | `numeric(p, s)` | `Precision`, `Scale`, `Min`, `Max` |
-| `Money` | `ks.Money` | `bigint` minor units + `text` currency | `Min`, `Max`, `Currency` (fixed) |
+| `Decimal` | `am.Decimal` | `numeric(p, s)` | `Precision`, `Scale`, `Min`, `Max` |
+| `Money` | `am.Money` | `bigint` minor units + `text` currency | `Min`, `Max`, `Currency` (fixed) |
 | `Bool` | `bool` | `boolean` | `Default` |
 | `Timestamp` | `time.Time` | `timestamptz` | `DefaultNow` |
-| `Date` | `ks.Date` | `date` | — |
+| `Date` | `am.Date` | `date` | — |
 | `Enum` | generated string type | `text` + `CHECK` | `Default` |
-| `Email` | `ks.Email` | `text`, lowercased | — |
-| `URL` | `ks.URL` | `text`, validated | `Schemes` |
+| `Email` | `am.Email` | `text`, lowercased | — |
+| `URL` | `am.URL` | `text`, validated | `Schemes` |
 | `JSON` | a declared Go struct | `jsonb` | `Schema` (must be a generated type) |
 | `Bytes` | `[]byte` | `bytea` | `MaxSize` |
 | `Encrypted` | wraps another field | `bytea`, envelope-encrypted | key from config |
@@ -284,7 +284,7 @@ Effects are deferred by default: recorded in the outbox and run after commit. `I
 package billing
 
 import (
-	s "keystone.dev/spec"
+	s "github.com/abhilashiig/ambit/spec"
 	"myapp/app"
 	"myapp/app/customers"
 )
@@ -352,7 +352,7 @@ The app model is the single source of truth: a canonical JSON document describin
 
 - **Canonical.** Keys are sorted, arrays have a defined order, and whitespace is fixed, so equal apps produce byte-identical files.
 - **Committed.** `app.model.json` is checked into git. The behavior diff compares two committed models without building old code.
-- **Verified.** `ks check` rebuilds the model from the spec and fails if it differs from the committed file (KS-CODE-001).
+- **Verified.** `am check` rebuilds the model from the spec and fails if it differs from the committed file (AM-CODE-001).
 - **Versioned.** A top-level `schemaVersion` allows the format to evolve with automated upgrades.
 - **Language-neutral.** Nothing in the model is Go-specific, so other backends or clients can be generated from it later.
 
@@ -411,7 +411,7 @@ The generator turns the app model into plain, readable Go, and each action's gen
 
 | Output | Per | Contents |
 | --- | --- | --- |
-| Resource types | resource | Struct, typed ID, enum types and constants, `Patch` type with `ks.Opt[T]` fields |
+| Resource types | resource | Struct, typed ID, enum types and constants, `Patch` type with `am.Opt[T]` fields |
 | Column descriptors | resource | Typed predicates and orderings for queries, such as `gen.Invoices.Status.Eq(...)` |
 | Scoped DB views | action | Only the declared resources, only the operations the spec permits |
 | Context struct | action | Embedded `context.Context`, actor, DB view, declared effects, declared calls, logger, clock |
@@ -424,7 +424,7 @@ The generator turns the app model into plain, readable Go, and each action's gen
 | SQL | resource | Table DDL, constraints, indexes, row-level security policies |
 | Clients | app | TypeScript client and OpenAPI 3.1 document |
 
-Generated files start with `// Code generated by ks. DO NOT EDIT.` and carry a content hash. Editing one fails the check (KS-CODE-001). Output is gofmt-formatted and deterministic, so regeneration produces no diff unless the model changed.
+Generated files start with `// Code generated by am. DO NOT EDIT.` and carry a content hash. Editing one fails the check (AM-CODE-001). Output is gofmt-formatted and deterministic, so regeneration produces no diff unless the model changed.
 
 ### 7.2 The action contract
 
@@ -434,11 +434,11 @@ Each action is one exported function in its module's `actions` package with a fi
 // gen/send_invoice.gen.go — generated
 type SendInvoiceCtx struct {
 	context.Context
-	Actor ks.Actor
+	Actor am.Actor
 	DB    SendInvoiceDB
-	Email ks.EmailEffect // present because Effects(s.Email()) was declared
+	Email am.EmailEffect // present because Effects(s.Email()) was declared
 	Log   *slog.Logger
-	Clock ks.Clock
+	Clock am.Clock
 }
 
 type SendInvoiceDB struct {
@@ -458,13 +458,13 @@ func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, 
 		return nil, gen.ErrNotDraft()
 	}
 	updated, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{
-		Status: ks.Set(gen.InvoiceStatusSent),
-		SentAt: ks.Set(c.Clock.Now()),
+		Status: am.Set(gen.InvoiceStatusSent),
+		SentAt: am.Set(c.Clock.Now()),
 	})
 	if err != nil {
 		return nil, err // forbidden, conflict on stale version, or invariant violation
 	}
-	c.Email.Send(ks.Email{To: inv.Customer.Email, Template: "invoice_sent", Data: updated})
+	c.Email.Send(am.Email{To: inv.Customer.Email, Template: "invoice_sent", Data: updated})
 	return updated, nil
 }
 ```
@@ -474,8 +474,8 @@ func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, 
 | Error | Constructor | HTTP status |
 | --- | --- | --- |
 | Declared action error | `gen.ErrNotDraft()` | 422 |
-| Not found or not visible | `ks.NotFound()` | 404 |
-| Validation | `ks.Invalid(field, message)` | 400 |
+| Not found or not visible | `am.NotFound()` | 404 |
+| Validation | `am.Invalid(field, message)` | 400 |
 | Forbidden | returned by the runtime | 403 |
 | Stale version | returned by the runtime | 409 |
 | Invariant violation | returned by the runtime | 422 |
@@ -483,7 +483,7 @@ func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, 
 
 ### 7.4 Import rules for action code
 
-Action packages may import their own module's `gen`, other modules' `gen` types, `keystone.dev/ks`, a pure standard-library allowlist (`strings`, `strconv`, `errors`, `fmt`, `slices`, `maps`, `sort`, `math`, `unicode`, `regexp`, `time` types) and third-party packages listed under `allowedImports` in `ks.yaml`. Everything that reaches the outside world is banned: `database/sql`, pgx, `net`, `net/http`, `os`, `os/exec`, `syscall`, `unsafe`, `reflect` and `plugin` (KS-SEC-001). Calling `time.Now` is banned in favor of `c.Clock` so tests control time (KS-CODE-004), and `go` statements are banned in favor of `Enqueue` (KS-PERF-003).
+Action packages may import their own module's `gen`, other modules' `gen` types, `github.com/abhilashiig/ambit/am`, a pure standard-library allowlist (`strings`, `strconv`, `errors`, `fmt`, `slices`, `maps`, `sort`, `math`, `unicode`, `regexp`, `time` types) and third-party packages listed under `allowedImports` in `am.yaml`. Everything that reaches the outside world is banned: `database/sql`, pgx, `net`, `net/http`, `os`, `os/exec`, `syscall`, `unsafe`, `reflect` and `plugin` (AM-SEC-001). Calling `time.Now` is banned in favor of `c.Clock` so tests control time (AM-CODE-004), and `go` statements are banned in favor of `Enqueue` (AM-PERF-003).
 
 ## 8. Data layer
 
@@ -511,11 +511,11 @@ page, err := c.DB.Invoices.Query().
 | `Update(id, version, patch)` | `Update`, `UpdateAfter`, `FieldWrite` + invariants | Optimistic concurrency via `version` |
 | `Delete(id, version)` | `Delete` | Generated only when the rule is not `Never()` |
 
-There is no unbounded `All()`. A query must end in `Page`, `First`, `Get` or a declared `Each` batch iterator for jobs (KS-DATA-001).
+There is no unbounded `All()`. A query must end in `Page`, `First`, `Get` or a declared `Each` batch iterator for jobs (AM-DATA-001).
 
 ### 8.2 Loading related data
 
-Relations load only through `.With(...)`, which issues one batched query per relation regardless of row count. Lazy loading does not exist, which removes N+1 queries as a category. The checker also flags any scoped DB call inside a loop (KS-DATA-002).
+Relations load only through `.With(...)`, which issues one batched query per relation regardless of row count. Lazy loading does not exist, which removes N+1 queries as a category. The checker also flags any scoped DB call inside a loop (AM-DATA-002).
 
 ### 8.3 Transactions
 
@@ -534,15 +534,15 @@ The generator also emits Postgres row-level security policies for tenant isolati
 
 ### 8.6 Raw SQL
 
-Raw SQL is available only inside `ks.Unsafe(c, "reason", func(tx ks.RawTx) error {...})`. Unsafe transactions still carry the tenant settings for RLS, still count against the query budget and always appear in the behavior diff (KS-SEC-003).
+Raw SQL is available only inside `am.Unsafe(c, "reason", func(tx am.RawTx) error {...})`. Unsafe transactions still carry the tenant settings for RLS, still count against the query budget and always appear in the behavior diff (AM-SEC-003).
 
 ## 9. Security model
 
-Keystone's security promise is that the vulnerabilities AI-written backends most often contain cannot be expressed in Keystone action code without an `unsafe` block that reviewers see.
+Ambit's security promise is that the vulnerabilities AI-written backends most often contain cannot be expressed in Ambit action code without an `unsafe` block that reviewers see.
 
 ### 9.1 Threats and controls
 
-| Threat | Typical AI-written bug | Keystone control | Enforced by |
+| Threat | Typical AI-written bug | Ambit control | Enforced by |
 | --- | --- | --- | --- |
 | Broken object-level access (IDOR) | Fetching a record by ID without an ownership check | `Read` rules compiled into every query; invisible rows return `not_found` | Query layer + RLS |
 | Missing function-level authorization | An endpoint with no permission check | `Requires` or `Public` mandatory on every action | Compiler |
@@ -552,7 +552,7 @@ Keystone's security promise is that the vulnerabilities AI-written backends most
 | Server-side request forgery | Fetching a user-supplied URL | `HTTP` effect host allowlist; private and link-local ranges blocked after DNS resolution | Runtime |
 | Secrets in code or logs | Hard-coded keys, logging full objects | Secrets only through generated config; `Sensitive()` fields redacted everywhere | Checker + runtime |
 | Excessive data exposure | Returning whole records with private fields | Field-level read rules applied at projection | Query layer |
-| Abuse and enumeration | No rate limits on public endpoints | Public mutations must declare `RateLimit` | Checker (KS-SEC-005) |
+| Abuse and enumeration | No rate limits on public endpoints | Public mutations must declare `RateLimit` | Checker (AM-SEC-005) |
 | Race conditions | Read-modify-write without locking | Optimistic concurrency on every update; `Serializable()` available | Runtime |
 | Unsafe side effects | Sending email for a rolled-back change | Deferred effects via the transactional outbox | Runtime |
 
@@ -570,7 +570,7 @@ Defaults that apply to every route: a 1 MB body limit, strict JSON decoding that
 
 ### 9.4 Secrets and encryption
 
-Secrets are declared in `ks.yaml` by name and resolved from environment variables or a configured secret manager at startup. Action code never sees raw secrets; effect providers receive them through their configuration. `Encrypted()` fields use envelope encryption with a key-encryption key from config, and support key rotation through `ks keys rotate`.
+Secrets are declared in `am.yaml` by name and resolved from environment variables or a configured secret manager at startup. Action code never sees raw secrets; effect providers receive them through their configuration. `Encrypted()` fields use envelope encryption with a key-encryption key from config, and support key rotation through `am keys rotate`.
 
 ### 9.5 Audit log
 
@@ -578,7 +578,7 @@ Every mutation writes an audit record in the same transaction: actor, tenant, ac
 
 ### 9.6 Supply chain
 
-New Go module dependencies appear in the behavior diff as high-risk. `ks check` runs `govulncheck` and fails on known vulnerabilities reachable from app code. The framework itself keeps its dependency set small: pgx, OpenTelemetry and the Go standard library.
+New Go module dependencies appear in the behavior diff as high-risk. `am check` runs `govulncheck` and fails on known vulnerabilities reachable from app code. The framework itself keeps its dependency set small: pgx, OpenTelemetry and the Go standard library.
 
 ## 10. Effects, outbox and jobs
 
@@ -588,12 +588,12 @@ Side effects and background work run on Postgres alone, with at-least-once deliv
 
 1. An action calls an effect such as `c.Email.Send(...)`. The call validates its arguments and inserts an outbox row in the action's transaction. Nothing leaves the process yet.
 2. If the action fails or the transaction rolls back, the outbox row disappears with it.
-3. On commit, the runtime issues `NOTIFY ks_outbox`. Dispatchers in every instance listen, and also poll every second as a fallback.
+3. On commit, the runtime issues `NOTIFY am_outbox`. Dispatchers in every instance listen, and also poll every second as a fallback.
 4. A dispatcher claims rows with `SELECT ... FOR UPDATE SKIP LOCKED` and executes them through the effect's provider.
 5. Each execution carries an idempotency key derived from the action invocation ID and the effect's sequence number. Providers pass it to the external API where supported.
 6. Failures retry with exponential backoff and jitter, by default up to 8 attempts over about 24 hours. Rows that exhaust retries move to a dead-letter state.
 
-`ks outbox list`, `ks outbox inspect <id>` and `ks outbox replay <id>` operate on pending and dead-lettered effects. Outbox lag, attempts and dead-letter counts are exported as metrics.
+`am outbox list`, `am outbox inspect <id>` and `am outbox replay <id>` operate on pending and dead-lettered effects. Outbox lag, attempts and dead-letter counts are exported as metrics.
 
 ### 10.2 Immediate effects
 
@@ -601,24 +601,24 @@ An effect declared `Immediate()` executes during the action and returns its resu
 
 ### 10.3 Effect providers
 
-Providers implement a small interface and are configured in `ks.yaml`. Keystone ships providers for SMTP, a generic HTTP client, S3-compatible storage and signed webhooks; community providers cover specific email, SMS and payment vendors.
+Providers implement a small interface and are configured in `am.yaml`. Ambit ships providers for SMTP, a generic HTTP client, S3-compatible storage and signed webhooks; community providers cover specific email, SMS and payment vendors.
 
 ```go
 type Provider interface {
 	Name() string
-	Execute(ctx context.Context, e ks.EffectCall) (ks.EffectResult, error)
+	Execute(ctx context.Context, e am.EffectCall) (am.EffectResult, error)
 	Retryable(err error) bool
 }
 ```
 
 ### 10.4 Jobs
 
-- Jobs are rows in a `ks_jobs` table, claimed with `FOR UPDATE SKIP LOCKED`, so any number of worker instances can run safely.
+- Jobs are rows in a `am_jobs` table, claimed with `FOR UPDATE SKIP LOCKED`, so any number of worker instances can run safely.
 - A job runs in its own transaction with its declared `Reads`, `Writes` and `Effects`, exactly like a mutation.
 - `RunAs(Enqueuer)` runs the job as a snapshot of the actor who enqueued it; `RunAs(System)` runs it as the tenant's system actor.
 - `Concurrency(Key("customer_id"), 1)` serializes jobs sharing a key value.
 - Priorities run from 0 to 9, and a job can be delayed with `Enqueue(job).After(d)`.
-- Retries follow the job's `Retry` policy; exhausted jobs move to dead-letter and can be replayed with `ks jobs replay`.
+- Retries follow the job's `Retry` policy; exhausted jobs move to dead-letter and can be replayed with `am jobs replay`.
 
 ### 10.5 Schedules
 
@@ -630,7 +630,7 @@ The same binary runs as `--role=web`, `--role=worker` or `--role=all` (the defau
 
 ## 11. Performance design
 
-Keystone gets its speed from moving work to build time: everything the spec determines is generated as straight-line Go, so the hot path has no reflection, no dynamic routing and no runtime query planning in the framework.
+Ambit gets its speed from moving work to build time: everything the spec determines is generated as straight-line Go, so the hot path has no reflection, no dynamic routing and no runtime query planning in the framework.
 
 ### 11.1 Hot-path choices
 
@@ -659,10 +659,10 @@ Query actions may declare `Cache(TTL(d), InvalidatedBy(resources...))`. The cach
 
 ### 11.4 Performance feedback for agents
 
-- **Query capture.** During `ks test`, the runtime records every query shape each action issues.
-- **Plan analysis.** `ks perf` runs `EXPLAIN` on captured shapes against a seeded database and flags sequential scans on tables above a size threshold, with the missing index as a suggested spec change (KS-PERF-002).
-- **Budgets.** Actions exceeding their query or row budget fail tests (KS-PERF-001).
-- **Benchmarks.** `ks bench` load-tests declared actions with generated inputs and reports latency percentiles and allocations per request; CI can fail on regressions beyond a threshold.
+- **Query capture.** During `am test`, the runtime records every query shape each action issues.
+- **Plan analysis.** `am perf` runs `EXPLAIN` on captured shapes against a seeded database and flags sequential scans on tables above a size threshold, with the missing index as a suggested spec change (AM-PERF-002).
+- **Budgets.** Actions exceeding their query or row budget fail tests (AM-PERF-001).
+- **Benchmarks.** `am bench` load-tests declared actions with generated inputs and reports latency percentiles and allocations per request; CI can fail on regressions beyond a threshold.
 - **Profiling.** `pprof` endpoints are available on the admin port, behind admin authentication.
 
 ## 12. API layer and generated clients
@@ -675,7 +675,7 @@ Every query and mutation is exposed automatically as a typed JSON RPC endpoint, 
 | --- | --- | --- |
 | Query | `POST /api/<module>/<Action>`, or `GET` with query parameters when declared `Get()` | Input JSON |
 | Mutation | `POST /api/<module>/<Action>` | Input JSON; `Idempotency-Key` header when `Idempotent()` |
-| Health | `GET /_ks/health/live`, `GET /_ks/health/ready` | — |
+| Health | `GET /_am/health/live`, `GET /_am/health/ready` | — |
 | Metrics | `GET /metrics` on the admin port | — |
 
 Paths are stable identifiers derived from module and action names. Renaming an action is a breaking change and the behavior diff reports it as one.
@@ -720,11 +720,11 @@ Migrations are generated from the difference between app models, classified by r
 
 ### 13.1 Workflow
 
-1. The agent changes the spec and runs `ks gen`.
-2. `ks migrate plan` diffs the new model against the last applied model and writes a numbered SQL file plus a plan file with each step's classification.
-3. `ks migrate verify` applies the plan to a fresh database and, when configured, to a snapshot of production data, then runs invariant checks.
-4. `ks migrate apply` runs at deploy time with `lock_timeout` (default 2 s) and `statement_timeout` set, retrying lock failures with backoff.
-5. Applied migration files are immutable. Editing one fails the check (KS-MIG-002).
+1. The agent changes the spec and runs `am gen`.
+2. `am migrate plan` diffs the new model against the last applied model and writes a numbered SQL file plus a plan file with each step's classification.
+3. `am migrate verify` applies the plan to a fresh database and, when configured, to a snapshot of production data, then runs invariant checks.
+4. `am migrate apply` runs at deploy time with `lock_timeout` (default 2 s) and `statement_timeout` set, retrying lock failures with backoff.
+5. Applied migration files are immutable. Editing one fails the check (AM-MIG-002).
 
 ### 13.2 Change classification
 
@@ -742,35 +742,35 @@ Migrations are generated from the difference between app models, classified by r
 | Change field type | Needs plan | Expand and contract: new column, dual write, backfill, switch, remove |
 | Remove field or resource | Destructive | Two phases: `Deprecated()` first, removal in a later release with `--allow-destructive` |
 
-Needs-backfill and needs-plan changes rank medium-risk in the behavior diff; destructive changes rank high. Applying a destructive step without an explicit flag fails (KS-MIG-001).
+Needs-backfill and needs-plan changes rank medium-risk in the behavior diff; destructive changes rank high. Applying a destructive step without an explicit flag fails (AM-MIG-001).
 
 ### 13.3 Backfills
 
-Backfills run as resumable jobs in batches of 1,000 rows by default, keyed by primary key, with progress recorded in `ks_migrations`. A deploy can proceed while a backfill runs, because the generated code reads both old and new shapes during the expand phase.
+Backfills run as resumable jobs in batches of 1,000 rows by default, keyed by primary key, with progress recorded in `am_migrations`. A deploy can proceed while a backfill runs, because the generated code reads both old and new shapes during the expand phase.
 
 ## 14. Checker and rule catalog
 
-`ks check` is the agent's single feedback command: it runs the Go compiler, `go vet`, `govulncheck` and Keystone's analyzers, and returns one list of diagnostics, each with a rule ID, a location and a concrete fix.
+`am check` is the agent's single feedback command: it runs the Go compiler, `go vet`, `govulncheck` and Ambit's analyzers, and returns one list of diagnostics, each with a rule ID, a location and a concrete fix.
 
 ### 14.1 Behavior
 
 - Analyzers are built on Go's standard `golang.org/x/tools/go/analysis` framework and run in one pass with the compiler's type information.
 - Checks are incremental: only packages whose inputs changed are re-analyzed, keyed by content hash.
 - Errors fail the check. Warnings are reported but pass, unless `--strict` is set, which CI should use.
-- A rule can be suppressed on one line with `//ks:allow KS-XXX-000 reason`. Suppressions require a reason and appear in the behavior diff.
+- A rule can be suppressed on one line with `//am:allow AM-XXX-000 reason`. Suppressions require a reason and appear in the behavior diff.
 
 ### 14.2 Diagnostic format
 
 ```json
 {
-  "rule": "KS-DATA-002",
+  "rule": "AM-DATA-002",
   "severity": "error",
   "file": "app/billing/actions/send_reminders.go",
   "line": 18,
   "column": 3,
   "message": "Scoped DB call inside a loop issues one query per iteration.",
   "fix": "Load customers with .With(gen.InvoiceWithCustomer) on the outer query, then read inv.Customer inside the loop.",
-  "docs": "ks explain KS-DATA-002"
+  "docs": "am explain AM-DATA-002"
 }
 ```
 
@@ -778,36 +778,36 @@ Backfills run as resumable jobs in batches of 1,000 rows by default, keyed by pr
 
 | ID | Severity | Rule |
 | --- | --- | --- |
-| KS-SPEC-001 | error | Spec file contains non-declarative code: functions, control flow or non-spec imports |
-| KS-SPEC-002 | error | Spec references an unknown role, resource, field or action |
-| KS-SPEC-003 | error | Rule or invariant cannot be compiled to SQL |
-| KS-SPEC-004 | error | Query or mutation declares neither `Requires` nor `Public` |
-| KS-SEC-001 | error | Action package imports a banned package |
-| KS-SEC-002 | error | Environment variables or secrets accessed outside generated config |
-| KS-SEC-003 | error | `unsafe` block has no reason |
-| KS-SEC-004 | error | A `Sensitive()` field is passed to a logger or error message |
-| KS-SEC-005 | error | Public mutation has no rate limit |
-| KS-SEC-006 | warning | HTTP effect URL built from input; host checked only at runtime |
-| KS-DATA-001 | error | Query has no terminal bound: `Page`, `First`, `Get` or `Each` |
-| KS-DATA-002 | error | Scoped DB call inside a loop |
-| KS-DATA-003 | error | Error returned by a DB or effect call is ignored |
-| KS-CODE-001 | error | Generated file edited, or committed app model differs from the spec |
-| KS-CODE-002 | error | Import of another module's internal packages |
-| KS-CODE-003 | warning | `switch` over a generated enum is not exhaustive |
-| KS-CODE-004 | error | Wall-clock time used instead of `c.Clock` |
-| KS-PERF-001 | error | Query or row budget exceeded during tests |
-| KS-PERF-002 | warning | Captured query plans a sequential scan on a large table |
-| KS-PERF-003 | error | `go` statement in action code |
-| KS-MIG-001 | error | Destructive migration step without explicit approval |
-| KS-MIG-002 | error | Applied migration file was modified |
-| KS-TEST-001 | warning | Action has no test |
-| KS-DEP-001 | error | Known vulnerability reachable from app code |
+| AM-SPEC-001 | error | Spec file contains non-declarative code: functions, control flow or non-spec imports |
+| AM-SPEC-002 | error | Spec references an unknown role, resource, field or action |
+| AM-SPEC-003 | error | Rule or invariant cannot be compiled to SQL |
+| AM-SPEC-004 | error | Query or mutation declares neither `Requires` nor `Public` |
+| AM-SEC-001 | error | Action package imports a banned package |
+| AM-SEC-002 | error | Environment variables or secrets accessed outside generated config |
+| AM-SEC-003 | error | `unsafe` block has no reason |
+| AM-SEC-004 | error | A `Sensitive()` field is passed to a logger or error message |
+| AM-SEC-005 | error | Public mutation has no rate limit |
+| AM-SEC-006 | warning | HTTP effect URL built from input; host checked only at runtime |
+| AM-DATA-001 | error | Query has no terminal bound: `Page`, `First`, `Get` or `Each` |
+| AM-DATA-002 | error | Scoped DB call inside a loop |
+| AM-DATA-003 | error | Error returned by a DB or effect call is ignored |
+| AM-CODE-001 | error | Generated file edited, or committed app model differs from the spec |
+| AM-CODE-002 | error | Import of another module's internal packages |
+| AM-CODE-003 | warning | `switch` over a generated enum is not exhaustive |
+| AM-CODE-004 | error | Wall-clock time used instead of `c.Clock` |
+| AM-PERF-001 | error | Query or row budget exceeded during tests |
+| AM-PERF-002 | warning | Captured query plans a sequential scan on a large table |
+| AM-PERF-003 | error | `go` statement in action code |
+| AM-MIG-001 | error | Destructive migration step without explicit approval |
+| AM-MIG-002 | error | Applied migration file was modified |
+| AM-TEST-001 | warning | Action has no test |
+| AM-DEP-001 | error | Known vulnerability reachable from app code |
 
-`ks explain <ID>` prints the rule's rationale, a failing example, the corrected version and links to the relevant spec section. The rule set is versioned with the framework, and new rules arrive as warnings for one minor release before becoming errors.
+`am explain <ID>` prints the rule's rationale, a failing example, the corrected version and links to the relevant spec section. The rule set is versioned with the framework, and new rules arrive as warnings for one minor release before becoming errors.
 
 ## 15. Behavior diff
 
-`ks diff` is the human review interface: it compares the app model and code facts between two git revisions and reports, ranked by risk, what the app can now do that it could not before. It is computed by static comparison, never by an LLM.
+`am diff` is the human review interface: it compares the app model and code facts between two git revisions and reports, ranked by risk, what the app can now do that it could not before. It is computed by static comparison, never by an LLM.
 
 ### 15.1 What is compared
 
@@ -817,7 +817,7 @@ Backfills run as resumable jobs in batches of 1,000 rows by default, keyed by pr
 | Actions | New action that writes data | Inputs or outputs changed | New query action |
 | Effects | New effect or new HTTP host; effect made `Immediate()` | Retry policy changed | Effect removed |
 | Data model | Destructive migration | Needs-backfill or needs-plan migration; invariant removed | Field or resource added; invariant added |
-| Code | New `unsafe` block; new `//ks:allow` suppression | — | — |
+| Code | New `unsafe` block; new `//am:allow` suppression | — | — |
 | Dependencies | New Go module or major version | Minor version bump | Patch bump |
 | API | Breaking change | Deprecation | Compatible addition |
 | Limits | Rate limit removed or raised more than 10x; query budget raised | Timeout raised | Limit tightened |
@@ -829,7 +829,7 @@ Access rules are compared as expression trees. A rule counts as widened when the
 ### 15.3 Output
 
 ```
-ks diff --base main
+am diff --base main
 
 HIGH  access    billing.Invoice.update  widened: accountant may now update invoices with status "sent" or "paid" (was "draft", "sent")
 HIGH  effect    billing.MarkPaid        new HTTP host: api.payments.example.com
@@ -843,11 +843,11 @@ Formats are terminal text, Markdown for pull request comments and JSON for tooli
 
 ## 16. Testing
 
-`ks test` combines tests the framework generates from the spec with tests the agent writes, all against a real Postgres database, with effects captured by fakes instead of sent.
+`am test` combines tests the framework generates from the spec with tests the agent writes, all against a real Postgres database, with effects captured by fakes instead of sent.
 
 ### 16.1 Test environment
 
-- `ks test` starts a disposable Postgres (an embedded binary or a container, configurable) and creates a template database with the current schema once per run.
+- `am test` starts a disposable Postgres (an embedded binary or a container, configurable) and creates a template database with the current schema once per run.
 - Each test gets its own database cloned from the template, so tests run in parallel without interfering.
 - Effects are replaced with recording fakes; the HTTP effect fails any request without a declared stub.
 - `c.Clock` is a controllable fake clock, so time-dependent logic is deterministic.
@@ -868,10 +868,10 @@ Generated tests live in `gen/` and regenerate with the spec, so they can never d
 
 ```go
 func TestSendInvoice(t *testing.T) {
-	env := kstest.New(t)
+	env := amtest.New(t)
 	org := env.Tenant()
 	acct := env.Actor(org, app.Accountant)
-	inv := env.Create(gen.Invoice{Tenant: org, Status: gen.InvoiceStatusDraft, Amount: ks.MoneyOf(5000, "USD")})
+	inv := env.Create(gen.Invoice{Tenant: org, Status: gen.InvoiceStatusDraft, Amount: am.MoneyOf(5000, "USD")})
 
 	out, err := env.Call(acct, actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: inv.ID})
 
@@ -886,53 +886,53 @@ func TestSendInvoice(t *testing.T) {
 
 ### 16.4 Property tests
 
-`kstest.Fuzz(actions.X)` generates random valid inputs and random actors, runs the action repeatedly, and asserts after every run that all invariants hold and that no actor observed a row its `Read` rule excludes.
+`amtest.Fuzz(actions.X)` generates random valid inputs and random actors, runs the action repeatedly, and asserts after every run that all invariants hold and that no actor observed a row its `Read` rule excludes.
 
 ## 17. Agent interface and developer tooling
 
-Keystone treats AI agents as its primary users: every command has machine-readable output, context comes in compact bundles sized for a model's window, and one fixed loop takes a feature from spec to reviewed change.
+Ambit treats AI agents as its primary users: every command has machine-readable output, context comes in compact bundles sized for a model's window, and one fixed loop takes a feature from spec to reviewed change.
 
 ### 17.1 The standard loop
 
-1. **Read context.** `ks context billing` returns the module's spec, generated signatures, declared errors and relevant conventions.
+1. **Read context.** `am context billing` returns the module's spec, generated signatures, declared errors and relevant conventions.
 2. **Change the spec.** Add or edit resources, rules and actions in `spec.go`.
-3. **Generate.** `ks gen` regenerates code and stubs any new action with a function returning `ks.NotImplemented()`.
+3. **Generate.** `am gen` regenerates code and stubs any new action with a function returning `am.NotImplemented()`.
 4. **Implement.** Write the action bodies in `actions/`.
-5. **Check.** `ks check --json` until it reports no errors.
-6. **Test.** `ks test --json` until generated and written tests pass.
-7. **Review.** `ks diff --base main` produces the report the human approves.
+5. **Check.** `am check --json` until it reports no errors.
+6. **Test.** `am test --json` until generated and written tests pass.
+7. **Review.** `am diff --base main` produces the report the human approves.
 
 Steps 4 to 6 repeat until clean. The generated `AGENTS.md` describes this loop, so agents follow it without custom prompting.
 
 ### 17.2 Context bundles
 
-`ks context <module>` prints a compact, deterministic bundle: the module's spec, the generated context, input and output types for each action, the names and signatures of referenced types from other modules, and the conventions that apply. `ks context --action billing.SendInvoice` narrows it to one action. Bundles never include generated implementation code, only signatures, to keep them small.
+`am context <module>` prints a compact, deterministic bundle: the module's spec, the generated context, input and output types for each action, the names and signatures of referenced types from other modules, and the conventions that apply. `am context --action billing.SendInvoice` narrows it to one action. Bundles never include generated implementation code, only signatures, to keep them small.
 
 ### 17.3 Generated AGENTS.md
 
-Regenerated by `ks gen`, it contains the standard loop, the project's modules with one-line descriptions, the commands, the import rules, the rule catalog summary and links to `ks explain`. Teams add project-specific notes in a marked section that regeneration preserves.
+Regenerated by `am gen`, it contains the standard loop, the project's modules with one-line descriptions, the commands, the import rules, the rule catalog summary and links to `am explain`. Teams add project-specific notes in a marked section that regeneration preserves.
 
 ### 17.4 Dev server
 
-`ks dev` runs the app with hot reload on file change, seeds data from `seed/` files, and serves an introspection API agents can call to verify behavior at runtime:
+`am dev` runs the app with hot reload on file change, seeds data from `seed/` files, and serves an introspection API agents can call to verify behavior at runtime:
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /_ks/actions` | Every action with its input schema and required roles |
-| `POST /_ks/call` | Runs an action as a chosen seeded actor and returns output plus trace ID |
-| `GET /_ks/traces/<id>` | The full trace: queries with plans, effects, timings, policy decisions |
-| `GET /_ks/logs?since=` | Structured logs since a cursor |
-| `POST /_ks/reset` | Resets the database to the seed state |
+| `GET /_am/actions` | Every action with its input schema and required roles |
+| `POST /_am/call` | Runs an action as a chosen seeded actor and returns output plus trace ID |
+| `GET /_am/traces/<id>` | The full trace: queries with plans, effects, timings, policy decisions |
+| `GET /_am/logs?since=` | Structured logs since a cursor |
+| `POST /_am/reset` | Resets the database to the seed state |
 
-The same capabilities are exposed as a Model Context Protocol server through `ks dev --mcp`, so agent tools can call them as native tools. The introspection API exists only in development builds.
+The same capabilities are exposed as a Model Context Protocol server through `am dev --mcp`, so agent tools can call them as native tools. The introspection API exists only in development builds.
 
 ### 17.5 Docs for models
 
-`ks docs --llm` writes the complete framework reference as one plain-text file under 40k tokens, versioned with the installed framework. Agents load it when the context bundle is not enough, which reduces invented APIs from older training data.
+`am docs --llm` writes the complete framework reference as one plain-text file under 40k tokens, versioned with the installed framework. Agents load it when the context bundle is not enough, which reduces invented APIs from older training data.
 
 ## 18. Observability and operations
 
-A Keystone app ships as one statically linked binary with built-in OpenTelemetry tracing, structured logs, Prometheus metrics, health checks and embedded migrations.
+A Ambit app ships as one statically linked binary with built-in OpenTelemetry tracing, structured logs, Prometheus metrics, health checks and embedded migrations.
 
 ### 18.1 Telemetry
 
@@ -950,7 +950,7 @@ database:
   maxConns: 32
 secrets:
   smtpPassword: ${SMTP_PASSWORD}
-  encryptionKey: ${KS_ENCRYPTION_KEY}
+  encryptionKey: ${AM_ENCRYPTION_KEY}
 effects:
   email:
     provider: smtp
@@ -970,10 +970,10 @@ Configuration is validated at startup against a generated schema; a missing secr
 
 ### 18.3 Deployment
 
-- **Build.** `ks build` produces one binary with migrations, email templates and static assets embedded.
+- **Build.** `am build` produces one binary with migrations, email templates and static assets embedded.
 - **Migrate.** `myapp migrate apply` runs as a release step before new instances start. Instances refuse to start against a schema older than their model.
 - **Run.** Instances are stateless and scale horizontally. Leader-only work such as schedules uses Postgres advisory locks.
-- **Health.** `/_ks/health/live` reports the process is up; `/_ks/health/ready` also checks the database and the migration version.
+- **Health.** `/_am/health/live` reports the process is up; `/_am/health/ready` also checks the database and the migration version.
 - **Admin port.** Metrics, `pprof` and the admin API listen on a separate port that should not be public.
 
 A generated `Dockerfile` builds a minimal distroless image.
@@ -984,32 +984,32 @@ Every command accepts `--json` for machine-readable output and exits non-zero on
 
 | Command | Purpose |
 | --- | --- |
-| `ks init <name>` | Create a new app with an example module, config and CI workflow |
-| `ks new module <name>` | Add a module folder with an empty spec |
-| `ks new action <module>.<Action>` | Add an action declaration and an implementation stub |
-| `ks gen` | Compile the spec, write `app.model.json`, regenerate code, clients and `AGENTS.md` |
-| `ks check` | Compile and analyze; `--strict` treats warnings as errors |
-| `ks test` | Run generated and written tests against disposable Postgres |
-| `ks diff --base <rev>` | Risk-ranked behavior diff; `--format text, markdown or json` |
-| `ks dev` | Run with hot reload, seed data and introspection; `--mcp` for agent tools |
-| `ks context <module>` | Print a compact context bundle; `--action` narrows it |
-| `ks explain <rule>` | Explain a checker rule with examples |
-| `ks migrate plan, verify, apply, status` | Plan, verify, apply and inspect migrations |
-| `ks perf` | Analyze captured query plans for missing indexes |
-| `ks bench <action>` | Load-test an action and report latency and allocations |
-| `ks outbox list, inspect, replay` | Operate on pending and dead-lettered effects |
-| `ks jobs list, inspect, replay` | Operate on jobs |
-| `ks keys rotate` | Rotate encryption keys for `Encrypted()` fields |
-| `ks client ts --out <dir>` | Write the TypeScript client to another location |
-| `ks docs --llm` | Write the single-file framework reference for models |
-| `ks build` | Produce the production binary |
-| `ks upgrade` | Upgrade the framework version and apply automated code changes |
+| `am init <name>` | Create a new app with an example module, config and CI workflow |
+| `am new module <name>` | Add a module folder with an empty spec |
+| `am new action <module>.<Action>` | Add an action declaration and an implementation stub |
+| `am gen` | Compile the spec, write `app.model.json`, regenerate code, clients and `AGENTS.md` |
+| `am check` | Compile and analyze; `--strict` treats warnings as errors |
+| `am test` | Run generated and written tests against disposable Postgres |
+| `am diff --base <rev>` | Risk-ranked behavior diff; `--format text, markdown or json` |
+| `am dev` | Run with hot reload, seed data and introspection; `--mcp` for agent tools |
+| `am context <module>` | Print a compact context bundle; `--action` narrows it |
+| `am explain <rule>` | Explain a checker rule with examples |
+| `am migrate plan, verify, apply, status` | Plan, verify, apply and inspect migrations |
+| `am perf` | Analyze captured query plans for missing indexes |
+| `am bench <action>` | Load-test an action and report latency and allocations |
+| `am outbox list, inspect, replay` | Operate on pending and dead-lettered effects |
+| `am jobs list, inspect, replay` | Operate on jobs |
+| `am keys rotate` | Rotate encryption keys for `Encrypted()` fields |
+| `am client ts --out <dir>` | Write the TypeScript client to another location |
+| `am docs --llm` | Write the single-file framework reference for models |
+| `am build` | Produce the production binary |
+| `am upgrade` | Upgrade the framework version and apply automated code changes |
 
 ## 20. Prior art and differentiation
 
-Each piece of Keystone exists somewhere; what is new is combining them around AI as the primary author and a machine-computed behavior diff as the review surface.
+Each piece of Ambit exists somewhere; what is new is combining them around AI as the primary author and a machine-computed behavior diff as the review surface.
 
-| Project | Language | What it shares with Keystone | What Keystone adds |
+| Project | Language | What it shares with Ambit | What Ambit adds |
 | --- | --- | --- | --- |
 | ent | Go | Schema as Go code, code generation, privacy policies | Policies compiled into SQL with an RLS backstop, effects and capabilities, behavior diff, migration safety classes |
 | sqlc | Go | Type-safe generated query code | Actor-scoped queries, access rules, a full application runtime |
@@ -1022,7 +1022,7 @@ This comparison reflects general knowledge rather than a fresh review of each pr
 
 ## 21. Roadmap and MVP scope
 
-Keystone ships in three releases, each released only when its gate is met; v0.1 is the MVP that proves the core guarantees work end to end.
+Ambit ships in three releases, each released only when its gate is met; v0.1 is the MVP that proves the core guarantees work end to end.
 
 &#91;embedded content: roadmap · 3 releases, 3 gates\]
 
@@ -1030,12 +1030,12 @@ Phases are sequenced by gates, not dates. The launch benchmark from section 22 r
 
 ## 22. Launch benchmark plan
 
-Keystone launches with an open, reproducible benchmark showing how AI-built backends compare across frameworks on security, correctness, speed of building and runtime performance.
+Ambit launches with an open, reproducible benchmark showing how AI-built backends compare across frameworks on security, correctness, speed of building and runtime performance.
 
 ### 22.1 Method
 
 1. Write three reference app specifications in plain English, each with acceptance tests: a multi-tenant invoicing SaaS, a two-sided marketplace with payments, and an internal approvals tool.
-2. Pick comparison stacks: Rails, Django, NestJS, Go with chi and sqlc, and Keystone.
+2. Pick comparison stacks: Rails, Django, NestJS, Go with chi and sqlc, and Ambit.
 3. For each app and stack, have the same coding agent build the app from the specification 10 times, with identical prompts apart from stack-specific setup.
 4. Run each result through the measurements below.
 5. Publish the harness, prompts, generated code and raw results so anyone can rerun or challenge them.
@@ -1058,12 +1058,12 @@ Each stack gets an idiomatic setup prepared by someone experienced in it, the sa
 
 ## 23. Open questions
 
-- [ ] **Name.** "Keystone" is a placeholder; check trademark, domain and GitHub availability before announcing.
-- [ ] **Spec readability.** Is Go builder syntax readable enough for human review, or should spec diffs always be shown through `ks diff` only?
+- [ ] **Name.** "Ambit" is a placeholder; check trademark, domain and GitHub availability before announcing.
+- [ ] **Spec readability.** Is Go builder syntax readable enough for human review, or should spec diffs always be shown through `am diff` only?
 - [ ] **Cross-row invariants.** Should v1 support aggregate rules such as "sum of payments never exceeds invoice amount", and at what cost to write performance?
 - [ ] **File uploads.** Direct-to-storage signed uploads as a built-in, or left to the `Storage` effect?
 - [ ] **Real-time.** Server-sent event subscriptions to query results, and how they interact with access rules and caching.
 - [ ] **Multi-region.** Out of scope for v1, but which design choices would block it later?
 - [ ] **Licensing.** Apache 2.0 or MIT for the framework; whether any hosted tooling is commercial.
 - [ ] **Template data typing.** Email and webhook payloads currently accept any value; should templates declare typed data in the spec?
-- [ ] **Escape-hatch policy.** Should teams be able to forbid `unsafe` entirely in some modules through `ks.yaml`?
+- [ ] **Escape-hatch policy.** Should teams be able to forbid `unsafe` entirely in some modules through `am.yaml`?

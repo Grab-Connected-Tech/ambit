@@ -14,11 +14,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"keystone.dev/keystone/compile"
+	"github.com/abhilashiig/ambit/compile"
 )
 
-// cmdPerf explains the query shapes ks test captured against a seeded database and flags
-// sequential scans on tables above a size (KS-PERF-002, §11.4), naming the filtered
+// cmdPerf explains the query shapes am test captured against a seeded database and flags
+// sequential scans on tables above a size (AM-PERF-002, §11.4), naming the filtered
 // columns as the index to declare.
 func cmdPerf(args []string) error {
 	var minRows *int64
@@ -28,13 +28,13 @@ func cmdPerf(args []string) error {
 	if err != nil {
 		return err
 	}
-	url, err := databaseURL("KS_DATABASE_URL")
+	url, err := databaseURL("AM_DATABASE_URL")
 	if err != nil {
 		return err
 	}
-	shapes, err := readShapes(filepath.Join(".ks", "queries.jsonl"))
+	shapes, err := readShapes(filepath.Join(".am", "queries.jsonl"))
 	if err != nil {
-		return fmt.Errorf("%w (run ks test first: it captures the query shapes)", err)
+		return fmt.Errorf("%w (run am test first: it captures the query shapes)", err)
 	}
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, url)
@@ -44,7 +44,7 @@ func cmdPerf(args []string) error {
 	defer conn.Close(ctx)
 	d, skipped := explainShapes(ctx, conn, shapes, *minRows)
 	if skipped > 0 && !asJSON {
-		fmt.Fprintf(os.Stderr, "ks perf: %d shapes could not be explained with their captured arguments\n", skipped)
+		fmt.Fprintf(os.Stderr, "am perf: %d shapes could not be explained with their captured arguments\n", skipped)
 	}
 	return report(d, asJSON, false)
 }
@@ -93,7 +93,7 @@ func explainShapes(ctx context.Context, conn *pgx.Conn, shapes []shape, minRows 
 		var plan []byte
 		err := pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
 			// The plan an operator sees: every tenant's rows, no session predicate.
-			if _, err := tx.Exec(ctx, "SELECT set_config('ks.cross_tenant','on',true), set_config('ks.actor_system','on',true)"); err != nil {
+			if _, err := tx.Exec(ctx, "SELECT set_config('am.cross_tenant','on',true), set_config('am.actor_system','on',true)"); err != nil {
 				return err
 			}
 			return tx.QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+s.SQL, params...).Scan(&plan)
@@ -124,9 +124,9 @@ func explainShapes(ctx context.Context, conn *pgx.Conn, shapes []shape, minRows 
 			if len(cols) > 0 {
 				fix = fmt.Sprintf("add s.Index(%s) to the resource on table %s", quoteList(cols), n.Relation)
 			}
-			d = append(d, compile.Diag{Rule: "KS-PERF-002", Severity: compile.SevWarning, Decl: s.Action,
+			d = append(d, compile.Diag{Rule: "AM-PERF-002", Severity: compile.SevWarning, Decl: s.Action,
 				Message: fmt.Sprintf("plans a sequential scan on %s (%.0f rows): %s", n.Relation, rows, oneLine(n.Filter)),
-				Fix:     fix, Docs: "ks explain KS-PERF-002"})
+				Fix:     fix, Docs: "am explain AM-PERF-002"})
 		}
 	}
 	return d, skipped
@@ -141,7 +141,7 @@ type planNode struct {
 
 func (n planNode) seqScans() []planNode {
 	var out []planNode
-	if n.Type == "Seq Scan" && !strings.HasPrefix(n.Relation, "ks_") {
+	if n.Type == "Seq Scan" && !strings.HasPrefix(n.Relation, "am_") {
 		out = append(out, n)
 	}
 	for _, k := range n.Plans {

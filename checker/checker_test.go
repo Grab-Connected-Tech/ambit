@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"keystone.dev/keystone/compile"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/compile"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // app is the model the analyzers reason about: one module, one resource with a
@@ -22,7 +22,7 @@ func testApp() *model.App {
 		App:           model.AppInfo{Name: "myapp", Tenant: "Org"},
 		Roles:         []string{"admin", "member"},
 		Tenant:        &model.Tenant{Name: "Org", Table: "org", Fields: model.BuiltInFields(false)},
-		Membership:    &model.Tenant{Name: "Membership", Table: "ks_membership"},
+		Membership:    &model.Tenant{Name: "Membership", Table: "am_membership"},
 		Modules: []model.Module{{
 			Name: "billing",
 			Resources: []model.Resource{{
@@ -99,7 +99,7 @@ func show(d []compile.Diag) string {
 const goodAction = `package actions
 
 import (
-	"keystone.dev/keystone/ks"
+	"github.com/abhilashiig/ambit/am"
 	"myapp/app/billing/gen"
 )
 
@@ -111,7 +111,7 @@ func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, 
 	if inv.Status != gen.InvoiceStatusDraft {
 		return nil, gen.ErrNotDraft()
 	}
-	out, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{Status: ks.Set(gen.InvoiceStatusSent)})
+	out, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{Status: am.Set(gen.InvoiceStatusSent)})
 	if err != nil {
 		return nil, err
 	}
@@ -129,13 +129,13 @@ const goodTest = `package actions_test
 import (
 	"testing"
 
-	"keystone.dev/keystone/kstest"
+	"github.com/abhilashiig/ambit/amtest"
 	"myapp/app/billing/actions"
 	"myapp/app/billing/gen"
 )
 
 func TestSendInvoice(t *testing.T) {
-	env := kstest.New(t)
+	env := amtest.New(t)
 	out, err := env.Call(env.Admin(), actions.SendInvoice, gen.SendInvoiceInput{})
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestSendInvoice(t *testing.T) {
 }
 
 func TestListInvoices(t *testing.T) {
-	env := kstest.New(t)
+	env := amtest.New(t)
 	_, _ = env.Call(env.Member(), actions.ListInvoices, gen.ListInvoicesInput{})
 }
 `
@@ -153,7 +153,7 @@ func specFiles(extra map[string]string) map[string]string {
 	base := map[string]string{
 		"app/app.go": `package app
 
-import s "keystone.dev/keystone/spec"
+import s "github.com/abhilashiig/ambit/spec"
 
 var Org = s.TenantResource("Org", s.Fields(s.Text("name").MaxLen(200)))
 var Admin = s.Role("admin")
@@ -162,7 +162,7 @@ var Member = s.Role("member")
 		"app/billing/spec.go": `package billing
 
 import (
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 	"myapp/app"
 )
 
@@ -223,12 +223,12 @@ var _ = reflect.TypeOf
 `,
 	})
 	d := check(t, files)
-	for _, r := range []string{"KS-SEC-001"} {
+	for _, r := range []string{"AM-SEC-001"} {
 		has(t, d, r)
 	}
 	n := 0
 	for _, x := range d {
-		if x.Rule == "KS-SEC-001" {
+		if x.Rule == "AM-SEC-001" {
 			n++
 		}
 	}
@@ -248,7 +248,7 @@ import (
 `,
 	})
 	d := check(t, files)
-	got := has(t, d, "KS-SEC-001")
+	got := has(t, d, "AM-SEC-001")
 	if !strings.Contains(got.Message, "rusty/hazard") {
 		t.Fatalf("the message must name the import: %s", got.Message)
 	}
@@ -266,7 +266,7 @@ func TestCrossModuleImportIsRefused(t *testing.T) {
 import _ "myapp/app/customers/actions"
 `,
 	})
-	has(t, check(t, files), "KS-CODE-002")
+	has(t, check(t, files), "AM-CODE-002")
 }
 
 func TestEnvReadOutsideConfig(t *testing.T) {
@@ -287,7 +287,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 `,
 	})
 	d := check(t, files)
-	has(t, d, "KS-SEC-002")
+	has(t, d, "AM-SEC-002")
 }
 
 func TestUnsafeNeedsAReason(t *testing.T) {
@@ -295,23 +295,23 @@ func TestUnsafeNeedsAReason(t *testing.T) {
 		"app/billing/actions/blank.go": `package actions
 
 func Blank(c *gen.SendInvoiceCtx) error {
-	err := ks.Unsafe(c, "", func(tx ks.RawTx) error { return nil })
+	err := am.Unsafe(c, "", func(tx am.RawTx) error { return nil })
 	return err
 }
 `,
 	})
-	has(t, check(t, files), "KS-SEC-003")
+	has(t, check(t, files), "AM-SEC-003")
 
 	files = specFiles(map[string]string{
 		"app/billing/actions/blank.go": `package actions
 
 func Blank(c *gen.SendInvoiceCtx, why string) error {
-	return ks.Unsafe(c, why, func(tx ks.RawTx) error { return nil })
+	return am.Unsafe(c, why, func(tx am.RawTx) error { return nil })
 }
 `,
 	})
 	d := check(t, files)
-	got := has(t, d, "KS-SEC-003")
+	got := has(t, d, "AM-SEC-003")
 	if !strings.Contains(got.Message, "constant string") {
 		t.Fatalf("a computed reason must be called out: %s", got.Message)
 	}
@@ -321,7 +321,7 @@ func Blank(c *gen.SendInvoiceCtx, why string) error {
 		"app/billing/actions/blank.go": `package actions
 
 func Blank(c *gen.SendInvoiceCtx) error {
-	return ks.Unsafe(c, "bulk import of legacy rows", func(tx ks.RawTx) error { return nil })
+	return am.Unsafe(c, "bulk import of legacy rows", func(tx am.RawTx) error { return nil })
 }
 `,
 	})
@@ -330,7 +330,7 @@ func Blank(c *gen.SendInvoiceCtx) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lacks(t, res.Diags, "KS-SEC-003")
+	lacks(t, res.Diags, "AM-SEC-003")
 	if len(res.Facts.Unsafe) != 1 || !strings.Contains(res.Facts.Unsafe[0].Reason, "legacy") {
 		t.Fatalf("the unsafe block must be recorded as a fact: %+v", res.Facts.Unsafe)
 	}
@@ -355,7 +355,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 `,
 	})
 	d := check(t, files)
-	got := has(t, d, "KS-SEC-004")
+	got := has(t, d, "AM-SEC-004")
 	if !strings.Contains(got.Message, "billing.Invoice.notes") {
 		t.Fatalf("the message must name the field: %s", got.Message)
 	}
@@ -371,7 +371,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 }
 `,
 	})
-	has(t, check(t, files), "KS-DATA-001")
+	has(t, check(t, files), "AM-DATA-001")
 }
 
 func TestScopedCallInALoop(t *testing.T) {
@@ -393,7 +393,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 }
 `
 	d := check(t, specFiles(map[string]string{"app/billing/actions/list_invoices.go": inLoop}))
-	got := has(t, d, "KS-DATA-002")
+	got := has(t, d, "AM-DATA-002")
 	if !strings.Contains(got.Fix, "With(") {
 		t.Fatalf("the fix must name the batched alternative: %s", got.Fix)
 	}
@@ -407,7 +407,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 		}
 		_ = cust`, `		cust := inv.Customer`, 1)
 	d2 := check(t, specFiles(map[string]string{"app/billing/actions/list_invoices.go": fixed}))
-	lacks(t, d2, "KS-DATA-002")
+	lacks(t, d2, "AM-DATA-002")
 }
 
 func TestIgnoredError(t *testing.T) {
@@ -424,7 +424,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 }
 `,
 	})
-	has(t, check(t, files), "KS-DATA-003")
+	has(t, check(t, files), "AM-DATA-003")
 }
 
 func TestWallClockTime(t *testing.T) {
@@ -448,7 +448,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 	})
 	n := 0
 	for _, x := range check(t, files) {
-		if x.Rule == "KS-CODE-004" {
+		if x.Rule == "AM-CODE-004" {
 			n++
 		}
 	}
@@ -472,7 +472,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 }
 `,
 	})
-	got := has(t, check(t, files), "KS-PERF-003")
+	got := has(t, check(t, files), "AM-PERF-003")
 	if !strings.Contains(got.Fix, "Enqueue") {
 		t.Fatalf("the fix must point at Enqueue: %s", got.Fix)
 	}
@@ -485,7 +485,7 @@ func TestSpecFileMustStayDeclarative(t *testing.T) {
 import (
 	"os"
 
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 	"myapp/app"
 )
 
@@ -506,12 +506,12 @@ var SendInvoice = s.Mutation("SendInvoice", s.Requires(app.Admin))
 `,
 	})
 	d := check(t, files)
-	has(t, d, "KS-SPEC-001")
+	has(t, d, "AM-SPEC-001")
 }
 
 func TestMissingImplementation(t *testing.T) {
 	d := check(t, specFiles(map[string]string{"app/billing/actions/send_invoice.go": ""}))
-	got := has(t, d, "KS-CODE-005")
+	got := has(t, d, "AM-CODE-005")
 	if !strings.Contains(got.Message, "SendInvoice") {
 		t.Fatalf("the message must name the action: %s", got.Message)
 	}
@@ -519,7 +519,7 @@ func TestMissingImplementation(t *testing.T) {
 
 func TestActionWithoutTestWarns(t *testing.T) {
 	d := check(t, specFiles(map[string]string{"app/billing/actions/send_invoice_test.go": ""}))
-	got := has(t, d, "KS-TEST-001")
+	got := has(t, d, "AM-TEST-001")
 	if got.Severity != compile.SevWarning {
 		t.Fatalf("a missing test is a warning: %s", got.Severity)
 	}
@@ -542,7 +542,7 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 }
 `,
 	})
-	got := has(t, check(t, files), "KS-CODE-003")
+	got := has(t, check(t, files), "AM-CODE-003")
 	if !strings.Contains(got.Message, "1 of 4") {
 		t.Fatalf("the message must count the values: %s", got.Message)
 	}
@@ -551,14 +551,14 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 func TestGeneratedFileEditIsCaught(t *testing.T) {
 	// Build a generated file, hash it the way the generator would, then edit it.
 	body := "package gen\n\nfunc Hello() string { return \"hi\" }\n"
-	marker := "// Code generated by ks. DO NOT EDIT.\n// ks:hash " + contentHash(body) + "\n\n"
+	marker := "// Code generated by am. DO NOT EDIT.\n// am:hash " + contentHash(body) + "\n\n"
 	clean := marker + body
 	files := specFiles(map[string]string{"app/billing/gen/invoice.gen.go": clean})
-	lacks(t, check(t, files), "KS-CODE-001")
+	lacks(t, check(t, files), "AM-CODE-001")
 
 	edited := strings.Replace(clean, `"hi"`, `"hello"`, 1)
 	files = specFiles(map[string]string{"app/billing/gen/invoice.gen.go": edited})
-	got := has(t, check(t, files), "KS-CODE-001")
+	got := has(t, check(t, files), "AM-CODE-001")
 	if !strings.Contains(got.Message, "edited") {
 		t.Fatalf("message: %s", got.Message)
 	}
@@ -575,7 +575,7 @@ func TestSuppressionNeedsAReasonAndIsRecorded(t *testing.T) {
 		"app/billing/actions/send_invoice.go": `package actions
 
 func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, error) {
-	//ks:allow KS-DATA-002
+	//am:allow AM-DATA-002
 	for _, id := range in.IDs {
 		_, err := c.DB.Invoices.Get(c, id, nil)
 		if err != nil {
@@ -590,18 +590,18 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 }
 `,
 	})
-	has(t, check(t, bare), "KS-SEC-003")
+	has(t, check(t, bare), "AM-SEC-003")
 
 	explained := strings.Replace(bare["app/billing/actions/send_invoice.go"],
-		"//ks:allow KS-DATA-002", "//ks:allow KS-DATA-002 the ids list is capped at 10 by input validation", 1)
+		"//am:allow AM-DATA-002", "//am:allow AM-DATA-002 the ids list is capped at 10 by input validation", 1)
 	files := specFiles(map[string]string{"app/billing/actions/send_invoice.go": explained})
 	root := tree(t, files)
 	res, err := Run(Config{Root: root, ModulePath: "myapp", App: testApp()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	lacks(t, res.Diags, "KS-DATA-002")
-	lacks(t, res.Diags, "KS-SEC-003")
+	lacks(t, res.Diags, "AM-DATA-002")
+	lacks(t, res.Diags, "AM-SEC-003")
 	if len(res.Facts.Allows) != 1 || res.Facts.Allows[0].Reason == "" {
 		t.Fatalf("a suppression must be recorded as a fact: %+v", res.Facts.Allows)
 	}
@@ -653,19 +653,19 @@ func TestExplainCoversEveryReportedRule(t *testing.T) {
 		reported[r.ID] = true
 	}
 	for _, rule := range []string{
-		"KS-SPEC-001", "KS-SPEC-002", "KS-SPEC-003", "KS-SPEC-004", "KS-SEC-001", "KS-SEC-002",
-		"KS-SEC-003", "KS-SEC-004", "KS-SEC-005", "KS-DATA-001", "KS-DATA-002", "KS-DATA-003",
-		"KS-CODE-001", "KS-CODE-002", "KS-CODE-003", "KS-CODE-004", "KS-PERF-003", "KS-MIG-001",
-		"KS-TEST-001",
+		"AM-SPEC-001", "AM-SPEC-002", "AM-SPEC-003", "AM-SPEC-004", "AM-SEC-001", "AM-SEC-002",
+		"AM-SEC-003", "AM-SEC-004", "AM-SEC-005", "AM-DATA-001", "AM-DATA-002", "AM-DATA-003",
+		"AM-CODE-001", "AM-CODE-002", "AM-CODE-003", "AM-CODE-004", "AM-PERF-003", "AM-MIG-001",
+		"AM-TEST-001",
 	} {
 		if !reported[rule] {
 			t.Errorf("rule %s is in §14.3 but not in the catalog", rule)
 		}
 	}
-	if out := Explain("KS-DATA-002"); !strings.Contains(out, "With(") {
+	if out := Explain("AM-DATA-002"); !strings.Contains(out, "With(") {
 		t.Fatalf("explain must show the corrected version:\n%s", out)
 	}
-	if out := Explain("KS-NOPE-999"); !strings.Contains(out, "no rule") {
+	if out := Explain("AM-NOPE-999"); !strings.Contains(out, "no rule") {
 		t.Fatal("an unknown rule id must say so and show the index")
 	}
 }

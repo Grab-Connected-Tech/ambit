@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // Rule is anything usable as a predicate: an expression or a role value (§5.4).

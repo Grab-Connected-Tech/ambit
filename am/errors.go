@@ -1,4 +1,4 @@
-package ks
+package am
 
 import (
 	"context"
@@ -124,7 +124,7 @@ func BudgetExceeded(what string, limit int) *Error {
 	}
 }
 
-// NotImplemented is returned by action stubs that ks gen wrote but nobody filled in.
+// NotImplemented is returned by action stubs that am gen wrote but nobody filled in.
 func NotImplemented() *Error {
 	return &Error{Code: CodeNotImplemented, Status: http.StatusNotImplemented, Message: "Action not implemented."}
 }

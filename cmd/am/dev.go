@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
-// cmdDev runs the app with KS_DEV=1 (which turns on /_ks introspection), reseeds it, and
+// cmdDev runs the app with AM_DEV=1 (which turns on /_am introspection), reseeds it, and
 // regenerates, rebuilds and restarts whenever a source file changes (§17.4).
 func cmdDev(args []string) error {
 	var addr *string
@@ -41,7 +41,7 @@ func cmdDev(args []string) error {
 			stop() // the client hung up
 		}()
 	}
-	bin := filepath.Join(os.TempDir(), fmt.Sprintf("ks-dev-%d", os.Getpid()))
+	bin := filepath.Join(os.TempDir(), fmt.Sprintf("am-dev-%d", os.Getpid()))
 	defer os.Remove(bin)
 	for {
 		stamp := sourceStamp()
@@ -68,7 +68,7 @@ func cmdDev(args []string) error {
 			}
 		}
 		tick.Stop()
-		fmt.Fprintln(os.Stderr, "ks dev: change detected, restarting")
+		fmt.Fprintln(os.Stderr, "am dev: change detected, restarting")
 		devStop(proc, exited)
 	}
 }
@@ -77,17 +77,17 @@ func cmdDev(args []string) error {
 // step failed, and the error has been printed.
 func devStart(ctx context.Context, bin, addr string) *exec.Cmd {
 	if err := cmdGen(nil); err != nil {
-		fmt.Fprintln(os.Stderr, "ks dev: gen:", err)
+		fmt.Fprintln(os.Stderr, "am dev: gen:", err)
 		return nil
 	}
-	if os.Getenv("KS_DATABASE_URL") != "" {
+	if os.Getenv("AM_DATABASE_URL") != "" {
 		if all, _ := migrations(); len(all) > 0 {
-			if err := migrateApply(ctx, os.Getenv("KS_DATABASE_URL"), map[string]bool{}, false); err != nil {
-				fmt.Fprintln(os.Stderr, "ks dev: migrate:", err)
+			if err := migrateApply(ctx, os.Getenv("AM_DATABASE_URL"), map[string]bool{}, false); err != nil {
+				fmt.Fprintln(os.Stderr, "am dev: migrate:", err)
 				return nil
 			}
 		} else {
-			fmt.Fprintln(os.Stderr, "ks dev: no migrations yet; run ks migrate plan && ks migrate apply")
+			fmt.Fprintln(os.Stderr, "am dev: no migrations yet; run am migrate plan && am migrate apply")
 		}
 	}
 	build := exec.Command("go", "build", "-o", bin, "./cmd/server")
@@ -96,31 +96,31 @@ func devStart(ctx context.Context, bin, addr string) *exec.Cmd {
 		return nil
 	}
 	proc := exec.Command(bin)
-	proc.Env = append(os.Environ(), "KS_DEV=1", "KS_ADDR="+addr)
-	if os.Getenv("KS_ENCRYPTION_KEY") == "" {
+	proc.Env = append(os.Environ(), "AM_DEV=1", "AM_ADDR="+addr)
+	if os.Getenv("AM_ENCRYPTION_KEY") == "" {
 		key, err := devKey()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "ks dev:", err)
+			fmt.Fprintln(os.Stderr, "am dev:", err)
 			return nil
 		}
-		proc.Env = append(proc.Env, "KS_ENCRYPTION_KEY="+key)
+		proc.Env = append(proc.Env, "AM_ENCRYPTION_KEY="+key)
 	}
 	proc.Stdout, proc.Stderr = os.Stdout, os.Stderr
 	if err := proc.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, "ks dev:", err)
+		fmt.Fprintln(os.Stderr, "am dev:", err)
 		return nil
 	}
 	base := "http://localhost" + addr[strings.LastIndex(addr, ":"):]
 	for i := 0; i < 50; i++ {
 		if r, err := http.Get(base + "/healthz"); err == nil {
 			r.Body.Close()
-			if r, err := http.Post(base+"/_ks/reset", "application/json", nil); err == nil {
+			if r, err := http.Post(base+"/_am/reset", "application/json", nil); err == nil {
 				r.Body.Close()
 				if r.StatusCode != http.StatusOK {
-					fmt.Fprintln(os.Stderr, "ks dev: seeding failed; see the server log")
+					fmt.Fprintln(os.Stderr, "am dev: seeding failed; see the server log")
 				}
 			}
-			fmt.Fprintf(os.Stderr, "ks dev: serving on %s (introspection at %s/_ks/actions)\n", addr, base)
+			fmt.Fprintf(os.Stderr, "am dev: serving on %s (introspection at %s/_am/actions)\n", addr, base)
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -171,25 +171,25 @@ func sourceStamp() string {
 	return fmt.Sprintf("%d/%d", n, latest.UnixNano())
 }
 
-// devKey is the development encryption key, kept in .ks/dev.key so data written in one
-// session still opens in the next. It is never used outside ks dev.
+// devKey is the development encryption key, kept in .am/dev.key so data written in one
+// session still opens in the next. It is never used outside am dev.
 func devKey() (string, error) {
-	path := filepath.Join(".ks", "dev.key")
+	path := filepath.Join(".am", "dev.key")
 	if raw, err := os.ReadFile(path); err == nil {
 		return strings.TrimSpace(string(raw)), nil
 	}
 	key := runtime.NewKey()
-	if err := ksDir(); err != nil {
+	if err := amDir(); err != nil {
 		return "", err
 	}
 	return key, os.WriteFile(path, []byte(key+"\n"), 0o600)
 }
 
-// ksDir makes .ks/, the local state ks keeps (a dev key, captured queries), and keeps it
+// amDir makes .am/, the local state am keeps (a dev key, captured queries), and keeps it
 // out of version control: both can hold secrets or data.
-func ksDir() error {
-	if err := os.MkdirAll(".ks", 0o700); err != nil {
+func amDir() error {
+	if err := os.MkdirAll(".am", 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(".ks", ".gitignore"), []byte("*\n"), 0o600)
+	return os.WriteFile(filepath.Join(".am", ".gitignore"), []byte("*\n"), 0o600)
 }

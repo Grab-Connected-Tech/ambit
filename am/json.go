@@ -1,4 +1,4 @@
-package ks
+package am
 
 import (
 	"encoding/base64"
@@ -206,7 +206,7 @@ func (w *W) Blob(b []byte) { w.Str(base64.StdEncoding.EncodeToString(b)) }
 // Raw writes pre-encoded JSON, validating that it parses.
 func (w *W) Raw(raw []byte) error {
 	if !isValidJSON(raw) {
-		return fmt.Errorf("ks: raw JSON value is not valid")
+		return fmt.Errorf("am: raw JSON value is not valid")
 	}
 	w.B = append(w.B, raw...)
 	return nil
@@ -231,7 +231,6 @@ func max(a, b int) int {
 	}
 	return b
 }
-
 
 // AppendJSONString appends s as a quoted JSON string, escaping minimally.
 const hexLower = "0123456789abcdef"
@@ -329,7 +328,7 @@ func Parse(b []byte) (*Val, error) {
 	}
 	p.ws()
 	if p.i != len(p.s) {
-		return nil, fmt.Errorf("ks: unexpected trailing data at offset %d", p.i)
+		return nil, fmt.Errorf("am: unexpected trailing data at offset %d", p.i)
 	}
 	return v, nil
 }
@@ -341,7 +340,7 @@ func ParseObject(b []byte) (*Val, error) {
 		return nil, err
 	}
 	if v.Kind != KindObj {
-		return nil, fmt.Errorf("ks: expected a JSON object")
+		return nil, fmt.Errorf("am: expected a JSON object")
 	}
 	return v, nil
 }
@@ -390,13 +389,13 @@ func (v *Val) IsNull() bool { return v == nil || v.Kind == KindNull }
 // Str returns a string value.
 func (v *Val) Str() (string, error) {
 	if v == nil {
-		return "", fmt.Errorf("ks: value is null")
+		return "", fmt.Errorf("am: value is null")
 	}
 	if v.Kind != KindStr {
-		return "", fmt.Errorf("ks: expected a string, got %s", v.kindName())
+		return "", fmt.Errorf("am: expected a string, got %s", v.kindName())
 	}
 	if !utf8.ValidString(v.S) {
-		return "", fmt.Errorf("ks: string contains invalid UTF-8")
+		return "", fmt.Errorf("am: string contains invalid UTF-8")
 	}
 	return v.S, nil
 }
@@ -404,7 +403,7 @@ func (v *Val) Str() (string, error) {
 // Int returns an integer value, rejecting fractions and overflow.
 func (v *Val) Int() (int64, error) {
 	if v == nil || v.Kind != KindNum {
-		return 0, fmt.Errorf("ks: expected a number")
+		return 0, fmt.Errorf("am: expected a number")
 	}
 	n, err := strconv.ParseInt(v.S, 10, 64)
 	if err == nil {
@@ -412,7 +411,7 @@ func (v *Val) Int() (int64, error) {
 	}
 	f, ferr := strconv.ParseFloat(v.S, 64)
 	if ferr != nil || f != math.Trunc(f) || math.Abs(f) > 1e15 {
-		return 0, fmt.Errorf("ks: %q is not an integer", v.S)
+		return 0, fmt.Errorf("am: %q is not an integer", v.S)
 	}
 	return int64(f), nil
 }
@@ -420,7 +419,7 @@ func (v *Val) Int() (int64, error) {
 // Float returns a numeric value as a float.
 func (v *Val) Float() (float64, error) {
 	if v == nil || v.Kind != KindNum {
-		return 0, fmt.Errorf("ks: expected a number")
+		return 0, fmt.Errorf("am: expected a number")
 	}
 	return strconv.ParseFloat(v.S, 64)
 }
@@ -428,7 +427,7 @@ func (v *Val) Float() (float64, error) {
 // Bool returns a boolean value.
 func (v *Val) Bool() (bool, error) {
 	if v == nil || v.Kind != KindBool {
-		return false, fmt.Errorf("ks: expected a boolean")
+		return false, fmt.Errorf("am: expected a boolean")
 	}
 	return v.B, nil
 }
@@ -436,7 +435,7 @@ func (v *Val) Bool() (bool, error) {
 // Decimal returns an exact numeric value.
 func (v *Val) Decimal() (Decimal, error) {
 	if v == nil || (v.Kind != KindNum && v.Kind != KindStr) {
-		return Decimal{}, fmt.Errorf("ks: expected a decimal")
+		return Decimal{}, fmt.Errorf("am: expected a decimal")
 	}
 	return ParseDecimal(v.S)
 }
@@ -449,7 +448,7 @@ func (v *Val) Time() (time.Time, error) {
 	}
 	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("ks: invalid timestamp %q", s)
+		return time.Time{}, fmt.Errorf("am: invalid timestamp %q", s)
 	}
 	return t.UTC(), nil
 }
@@ -462,7 +461,7 @@ func (v *Val) ID() (ID, error) {
 	}
 	id := ID(s)
 	if !id.IsValid() {
-		return NilID, fmt.Errorf("ks: %q is not a uuid", s)
+		return NilID, fmt.Errorf("am: %q is not a uuid", s)
 	}
 	return id, nil
 }
@@ -487,7 +486,7 @@ func (v *Val) kindName() string {
 // This is what makes mass assignment unrepresentable (§9.1).
 func (v *Val) RejectUnknown(known ...string) error {
 	if v == nil || v.Kind != KindObj {
-		return fmt.Errorf("ks: expected a JSON object")
+		return fmt.Errorf("am: expected a JSON object")
 	}
 	set := make(map[string]bool, len(known))
 	for _, k := range known {
@@ -525,11 +524,11 @@ func (p *parser) ws() {
 
 func (p *parser) value(depth int) (*Val, error) {
 	if depth > maxDepth {
-		return nil, fmt.Errorf("ks: JSON nested too deeply")
+		return nil, fmt.Errorf("am: JSON nested too deeply")
 	}
 	p.ws()
 	if p.i >= len(p.s) {
-		return nil, fmt.Errorf("ks: unexpected end of JSON")
+		return nil, fmt.Errorf("am: unexpected end of JSON")
 	}
 	switch c := p.s[p.i]; {
 	case c == '{':
@@ -554,7 +553,7 @@ func (p *parser) value(depth int) (*Val, error) {
 	case c == '-' || (c >= '0' && c <= '9'):
 		return p.number()
 	}
-	return nil, fmt.Errorf("ks: unexpected character %q at offset %d", p.s[p.i], p.i)
+	return nil, fmt.Errorf("am: unexpected character %q at offset %d", p.s[p.i], p.i)
 }
 
 func (p *parser) object(depth int) (*Val, error) {
@@ -568,18 +567,18 @@ func (p *parser) object(depth int) (*Val, error) {
 	for {
 		p.ws()
 		if p.i >= len(p.s) || p.s[p.i] != '"' {
-			return nil, fmt.Errorf("ks: expected a string key at offset %d", p.i)
+			return nil, fmt.Errorf("am: expected a string key at offset %d", p.i)
 		}
 		k, err := p.str()
 		if err != nil {
 			return nil, err
 		}
 		if _, dup := obj.obj[k]; dup {
-			return nil, fmt.Errorf("ks: duplicate key %q", k)
+			return nil, fmt.Errorf("am: duplicate key %q", k)
 		}
 		p.ws()
 		if p.i >= len(p.s) || p.s[p.i] != ':' {
-			return nil, fmt.Errorf("ks: expected ':' after key %q", k)
+			return nil, fmt.Errorf("am: expected ':' after key %q", k)
 		}
 		p.i++
 		v, err := p.value(depth + 1)
@@ -590,7 +589,7 @@ func (p *parser) object(depth int) (*Val, error) {
 		obj.keyOrder = append(obj.keyOrder, k)
 		p.ws()
 		if p.i >= len(p.s) {
-			return nil, fmt.Errorf("ks: unterminated object")
+			return nil, fmt.Errorf("am: unterminated object")
 		}
 		switch p.s[p.i] {
 		case ',':
@@ -600,7 +599,7 @@ func (p *parser) object(depth int) (*Val, error) {
 			p.i++
 			return obj, nil
 		}
-		return nil, fmt.Errorf("ks: expected ',' or '}' at offset %d", p.i)
+		return nil, fmt.Errorf("am: expected ',' or '}' at offset %d", p.i)
 	}
 }
 
@@ -620,7 +619,7 @@ func (p *parser) array(depth int) (*Val, error) {
 		arr.Arr = append(arr.Arr, v)
 		p.ws()
 		if p.i >= len(p.s) {
-			return nil, fmt.Errorf("ks: unterminated array")
+			return nil, fmt.Errorf("am: unterminated array")
 		}
 		switch p.s[p.i] {
 		case ',':
@@ -630,7 +629,7 @@ func (p *parser) array(depth int) (*Val, error) {
 			p.i++
 			return arr, nil
 		}
-		return nil, fmt.Errorf("ks: expected ',' or ']' at offset %d", p.i)
+		return nil, fmt.Errorf("am: expected ',' or ']' at offset %d", p.i)
 	}
 }
 
@@ -661,13 +660,13 @@ func (p *parser) str() (string, error) {
 		p.i++
 	}
 	if p.i >= len(p.s) {
-		return "", fmt.Errorf("ks: unterminated string")
+		return "", fmt.Errorf("am: unterminated string")
 	}
 	raw := p.s[start:p.i]
 	p.i++ // consume closing quote
 	if !strings.ContainsRune(string(raw), '\\') {
 		if !utf8.Valid(raw) {
-			return "", fmt.Errorf("ks: string contains invalid UTF-8")
+			return "", fmt.Errorf("am: string contains invalid UTF-8")
 		}
 		return string(raw), nil
 	}
@@ -679,7 +678,7 @@ func (p *parser) str() (string, error) {
 			continue
 		}
 		if i+1 >= len(raw) {
-			return "", fmt.Errorf("ks: bad escape")
+			return "", fmt.Errorf("am: bad escape")
 		}
 		switch raw[i+1] {
 		case '"':
@@ -708,11 +707,11 @@ func (p *parser) str() (string, error) {
 			i += 2
 		case 'u':
 			if i+5 >= len(raw) {
-				return "", fmt.Errorf("ks: bad \\u escape")
+				return "", fmt.Errorf("am: bad \\u escape")
 			}
 			cp, err := strconv.ParseUint(string(raw[i+2:i+6]), 16, 16)
 			if err != nil {
-				return "", fmt.Errorf("ks: bad \\u escape: %w", err)
+				return "", fmt.Errorf("am: bad \\u escape: %w", err)
 			}
 			r := rune(cp)
 			if utf16Surrogate(r) && i+11 < len(raw) && raw[i+6] == '\\' && raw[i+7] == 'u' {
@@ -727,12 +726,12 @@ func (p *parser) str() (string, error) {
 			i += 6
 			b.WriteRune(r)
 		default:
-			return "", fmt.Errorf("ks: bad escape \\%c", raw[i+1])
+			return "", fmt.Errorf("am: bad escape \\%c", raw[i+1])
 		}
 	}
 	out := b.String()
 	if !utf8.ValidString(out) {
-		return "", fmt.Errorf("ks: string contains invalid UTF-8")
+		return "", fmt.Errorf("am: string contains invalid UTF-8")
 	}
 	return out, nil
 }

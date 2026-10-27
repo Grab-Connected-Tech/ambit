@@ -3,7 +3,7 @@ package spec
 import (
 	"time"
 
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // Effect is a declared side effect (§5.8). Effects are deferred by default: the
@@ -143,7 +143,7 @@ func Bucket(name string) StorageOption {
 }
 
 // Enqueue starts a job after the current transaction commits (§5.8). It is the
-// replacement for a bare go statement (KS-PERF-003).
+// replacement for a bare go statement (AM-PERF-003).
 func Enqueue(job *ActionDecl) *Effect {
 	e := &Effect{typ: model.EffectEnqueue, mode: "deferred", job: job}
 	if job == nil {

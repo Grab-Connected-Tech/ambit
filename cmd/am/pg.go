@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// disposablePostgres starts a throwaway Postgres for ks test when no database is
+// disposablePostgres starts a throwaway Postgres for am test when no database is
 // configured (§16.1): a local server binary in a temporary data directory, or else a
 // container. It returns the URL and a function that stops and removes it.
 func disposablePostgres() (string, func(), error) {
@@ -20,7 +20,7 @@ func disposablePostgres() (string, func(), error) {
 	if _, err := exec.LookPath("docker"); err == nil && exec.Command("docker", "info").Run() == nil {
 		return containerPostgres()
 	}
-	return "", nil, fmt.Errorf("no database: set KS_TEST_DB_URL, or install Postgres server binaries or Docker")
+	return "", nil, fmt.Errorf("no database: set AM_TEST_DB_URL, or install Postgres server binaries or Docker")
 }
 
 // serverBinDir finds a directory holding pg_ctl, initdb and the postgres server itself
@@ -59,7 +59,7 @@ func freePort() (int, error) {
 }
 
 func localPostgres(bin string) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "ks-pg-")
+	dir, err := os.MkdirTemp("", "am-pg-")
 	if err != nil {
 		return "", nil, err
 	}
@@ -92,14 +92,14 @@ func containerPostgres() (string, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
-	out, err := exec.Command("docker", "run", "-d", "--rm", "-e", "POSTGRES_PASSWORD=ks", "-p", fmt.Sprintf("127.0.0.1:%d:5432", port),
+	out, err := exec.Command("docker", "run", "-d", "--rm", "-e", "POSTGRES_PASSWORD=am", "-p", fmt.Sprintf("127.0.0.1:%d:5432", port),
 		"postgres:16", "-c", "fsync=off").Output()
 	if err != nil {
 		return "", nil, fmt.Errorf("docker run postgres: %w", err)
 	}
 	id := string(out[:12])
 	stop := func() { _ = exec.Command("docker", "rm", "-f", id).Run() }
-	url := fmt.Sprintf("postgres://postgres:ks@127.0.0.1:%d/postgres?sslmode=disable", port)
+	url := fmt.Sprintf("postgres://postgres:am@127.0.0.1:%d/postgres?sslmode=disable", port)
 	for i := 0; i < 60; i++ {
 		if exec.Command("docker", "exec", id, "pg_isready", "-U", "postgres").Run() == nil {
 			return url, stop, nil

@@ -15,17 +15,17 @@ import (
 	"sync"
 	"time"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/model"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/model"
 )
 
 // EffectCall is one recorded side effect. Deferred calls become outbox rows inside
 // the action's transaction, so an effect for a rolled-back change cannot exist (§9.1).
 type EffectCall struct {
-	ID             ks.ID            `json:"id"`
-	Tenant         ks.ID            `json:"tenantId"`
+	ID             am.ID            `json:"id"`
+	Tenant         am.ID            `json:"tenantId"`
 	Action         string           `json:"action"`
-	Invocation     ks.ID            `json:"invocationId"`
+	Invocation     am.ID            `json:"invocationId"`
 	Seq            int              `json:"seq"`
 	Type           model.EffectKind `json:"type"`
 	Mode           string           `json:"mode"`
@@ -77,7 +77,7 @@ func (p *Providers) Get(kind model.EffectKind) (Provider, bool) {
 
 // DerivedIdempotencyKey is the invocation plus sequence, which makes every recorded
 // effect replay-safe without the author remembering to name a key (§10.1 step 5).
-func DerivedIdempotencyKey(invocation ks.ID, seq int) string {
+func DerivedIdempotencyKey(invocation am.ID, seq int) string {
 	h := sha256.New()
 	h.Write([]byte(string(invocation)))
 	h.Write([]byte{byte(seq), byte(seq >> 8)})
@@ -89,13 +89,13 @@ func DerivedIdempotencyKey(invocation ks.ID, seq int) string {
 // generated context struct has no field for it; this check is the second layer.
 func (d *DB) RecordEffect(ctx context.Context, call EffectCall) error {
 	if call.Type == "" {
-		return ks.InternalError(errors.New("runtime: effect with no type"))
+		return am.InternalError(errors.New("runtime: effect with no type"))
 	}
 	if call.IdempotencyKey == "" {
 		call.IdempotencyKey = DerivedIdempotencyKey(call.Invocation, call.Seq)
 	}
 	if call.ID == "" {
-		call.ID = ks.NewID()
+		call.ID = am.NewID()
 	}
 	if call.Tenant == "" {
 		call.Tenant = d.actor.Tenant
@@ -139,14 +139,14 @@ func (h EffectHandle) Send(ctx context.Context, payload []byte, host ...string) 
 
 func (d *DB) callProvider(ctx context.Context, call EffectCall) (EffectResult, error) {
 	if d.app == nil {
-		return EffectResult{}, ks.InternalError(errors.New("runtime: no app model for effect dispatch"))
+		return EffectResult{}, am.InternalError(errors.New("runtime: no app model for effect dispatch"))
 	}
 	if d.providers == nil {
-		return EffectResult{}, ks.InternalError(errors.New("runtime: no effect providers"))
+		return EffectResult{}, am.InternalError(errors.New("runtime: no effect providers"))
 	}
 	p, ok := d.providers.Get(call.Type)
 	if !ok {
-		return EffectResult{}, ks.InternalError(fmt.Errorf("runtime: no provider configured for %s effects", call.Type))
+		return EffectResult{}, am.InternalError(fmt.Errorf("runtime: no provider configured for %s effects", call.Type))
 	}
 	if err := declaresEffect(d.actionApp(), call); err != nil {
 		return EffectResult{}, err
@@ -181,14 +181,14 @@ func declaresEffect(a *model.App, call EffectCall) error {
 	}
 	_, act := a.FindAction(call.Action)
 	if act == nil {
-		return ks.InternalError(fmt.Errorf("runtime: the effect host %q is not a declared action of this app", call.Action))
+		return am.InternalError(fmt.Errorf("runtime: the effect host %q is not a declared action of this app", call.Action))
 	}
 	for _, e := range act.Effects {
 		if e.Type == call.Type && e.Mode == "immediate" {
 			return nil
 		}
 	}
-	return ks.Forbidden(fmt.Sprintf("the action %q declares no %s effect run immediately, and an undeclared effect is a capability the action was never granted (§7.4)", call.Action, call.Type))
+	return am.Forbidden(fmt.Sprintf("the action %q declares no %s effect run immediately, and an undeclared effect is a capability the action was never granted (§7.4)", call.Action, call.Type))
 }
 func splitAction(ref string) (string, string) {
 	if i := strings.IndexByte(ref, '.'); i > 0 {
@@ -222,7 +222,7 @@ type Outbox struct {
 // about a day (§10.1 step 6).
 func (a *App) NewOutbox() *Outbox {
 	return &Outbox{D: a, Instance: instanceID(), Batch: 16, MaxAtt: 8, PollEvery: time.Second,
-		Notify: "ks_outbox", Base: 5 * time.Second, Cap: 6 * time.Hour}
+		Notify: "am_outbox", Base: 5 * time.Second, Cap: 6 * time.Hour}
 }
 
 // Insert records deferred effects for a committed action. It runs inside the action's
@@ -233,7 +233,7 @@ func (o *Outbox) Insert(ctx context.Context, d *DB) error {
 	}
 	for _, e := range d.EffectsQueued {
 		if _, err := d.exec(ctx,
-			`INSERT INTO ks_outbox (id, tenant_id, action, invocation_id, seq, type, mode, template, topic, bucket, hosts, idempotency_key, payload, state, run_after, created_at)
+			`INSERT INTO am_outbox (id, tenant_id, action, invocation_id, seq, type, mode, template, topic, bucket, hosts, idempotency_key, payload, state, run_after, created_at)
 	         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, COALESCE($15, now()), now())`,
 			e.ID.Bytes(), e.Tenant.OrNil(), e.Action, e.Invocation.OrNil(), e.Seq, string(e.Type), e.Mode,
 			nullString(e.Template), nullString(e.Topic), nullString(e.Bucket), e.Hosts,
@@ -267,9 +267,9 @@ func (o *Outbox) Dispatch(ctx context.Context, batch int) (int, error) {
 		return 0, err
 	}
 	rows, err := tx.Query(ctx,
-		`UPDATE ks_outbox SET state='running', claimed_by=$1, claimed_at=now(), attempts=attempts+1
+		`UPDATE am_outbox SET state='running', claimed_by=$1, claimed_at=now(), attempts=attempts+1
 		   WHERE id IN (
-		     SELECT id FROM ks_outbox
+		     SELECT id FROM am_outbox
 		      WHERE state='pending' AND run_after <= now()
 		      ORDER BY run_after
 		      FOR UPDATE SKIP LOCKED
@@ -287,10 +287,10 @@ func (o *Outbox) Dispatch(ctx context.Context, batch int) (int, error) {
 	var got []pending
 	for rows.Next() {
 		var (
-			id                                         ks.ID
-			tenant                                     ks.ID
+			id                                         am.ID
+			tenant                                     am.ID
 			action, typ, mode, template, topic, bucket string
-			invocation                                 ks.ID
+			invocation                                 am.ID
 			seq, attempts                              int
 			hosts                                      []string
 			key                                        string
@@ -324,7 +324,7 @@ func (o *Outbox) Dispatch(ctx context.Context, batch int) (int, error) {
 		switch {
 		case err == nil:
 			done++
-			if _, err := conn.Exec(ctx, `UPDATE ks_outbox SET state='done', completed_at=now() WHERE id=$1`, p.call.ID); err != nil {
+			if _, err := conn.Exec(ctx, `UPDATE am_outbox SET state='done', completed_at=now() WHERE id=$1`, p.call.ID); err != nil {
 				return done, translate(err)
 			}
 		case o.retryable(p.call, err):
@@ -332,26 +332,26 @@ func (o *Outbox) Dispatch(ctx context.Context, batch int) (int, error) {
 			if p.attn >= o.MaxAtt {
 				delay = 0
 				if _, err := conn.Exec(ctx,
-					`UPDATE ks_outbox SET state='dead_letter', last_error=$2, dead_lettered_at=now() WHERE id=$1`,
+					`UPDATE am_outbox SET state='dead_letter', last_error=$2, dead_lettered_at=now() WHERE id=$1`,
 					p.call.ID, truncate(err.Error(), 900)); err != nil {
 					return done, translate(err)
 				}
-				o.D.metric("ks_outbox_dead_letter", 1)
+				o.D.metric("am_outbox_dead_letter", 1)
 				continue
 			}
 			if _, err := conn.Exec(ctx,
-				`UPDATE ks_outbox SET state='pending', last_error=$2, run_after=now()+$3::interval WHERE id=$1`,
+				`UPDATE am_outbox SET state='pending', last_error=$2, run_after=now()+$3::interval WHERE id=$1`,
 				p.call.ID, truncate(err.Error(), 900), intervalText(delay)); err != nil {
 				return done, translate(err)
 			}
-			o.D.metric("ks_outbox_retry", 1)
+			o.D.metric("am_outbox_retry", 1)
 		default:
 			if _, err := conn.Exec(ctx,
-				`UPDATE ks_outbox SET state='dead_letter', last_error=$2, dead_lettered_at=now() WHERE id=$1`,
+				`UPDATE am_outbox SET state='dead_letter', last_error=$2, dead_lettered_at=now() WHERE id=$1`,
 				p.call.ID, truncate(err.Error(), 900)); err != nil {
 				return done, translate(err)
 			}
-			o.D.metric("ks_outbox_dead_letter", 1)
+			o.D.metric("am_outbox_dead_letter", 1)
 		}
 	}
 	return done, nil
@@ -404,7 +404,7 @@ func (o *Outbox) Run(ctx context.Context) {
 
 // Notify asks every instance to look at the outbox now instead of at the next poll.
 func (a *App) Notify(ctx context.Context, conn Conn) error {
-	_, err := conn.Exec(ctx, "SELECT pg_notify($1, '')", "ks_outbox")
+	_, err := conn.Exec(ctx, "SELECT pg_notify($1, '')", "am_outbox")
 	return err
 }
 
@@ -415,7 +415,7 @@ func (a *App) Listen(ctx context.Context) {
 		if err != nil {
 			return
 		}
-		_, err = conn.Exec(ctx, "LISTEN ks_outbox")
+		_, err = conn.Exec(ctx, "LISTEN am_outbox")
 		if err != nil {
 			conn.Release()
 			time.Sleep(time.Second)
@@ -664,7 +664,7 @@ func (a *App) compensate(ctx context.Context, d *DB) {
 		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		if err := a.enqueueOutside(bg, job); err != nil {
 			a.Log.Error("compensation not queued", "job", job.Action, "invocation", job.Invocation, "err", err)
-			a.metric("ks_compensation_lost", 1)
+			a.metric("am_compensation_lost", 1)
 		}
 		cancel()
 	}

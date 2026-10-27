@@ -1,6 +1,6 @@
 {
   "app": "app",
-  "modelHash": "6f11a9db8f5216ad535f57fbf218776b43a4e171976a07280386823201692ccc",
+  "modelHash": "ed8f1e6d301bac574ba2aa8e40663d0ace24dbd4c1841209432f76f3b25a6b30",
   "generated": "v0.1",
   "deps": [
     {
@@ -120,14 +120,14 @@
     },
     {
       "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tks.Set(gen.InvoiceStatusPaid),\n\tPaidAt:\tks.Set(c.Clock.Now()),\n}.Assignments())",
+      "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tam.Set(gen.InvoiceStatusPaid),\n\tPaidAt:\tam.Set(c.Clock.Now()),\n}.Assignments())",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
       "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tks.Set(gen.InvoiceStatusSent),\n\tSentAt:\tks.Set(c.Clock.Now()),\n}.Assignments())",
+      "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tam.Set(gen.InvoiceStatusSent),\n\tSentAt:\tam.Set(c.Clock.Now()),\n}.Assignments())",
       "table": "",
       "rows": 0,
       "count": 1

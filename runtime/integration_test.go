@@ -19,17 +19,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/migrate"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/migrate"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 // This file is the acceptance test for the framework's central claims: every promise
 // in §8 and §9.1 gets exercised against a real Postgres 15, not a mock.
 //
-// It runs against KS_DATABASE_URL, or against the local cluster, or against a temporary
+// It runs against AM_DATABASE_URL, or against the local cluster, or against a temporary
 // initdb cluster when neither is reachable. The schema is the one migrate.DDL generates.
 
 var (
@@ -52,7 +52,7 @@ func pool(t *testing.T) *pgxpool.Pool {
 func connect(t *testing.T) (*pgxpool.Pool, error) {
 	t.Helper()
 	ctx := context.Background()
-	if u := os.Getenv("KS_TEST_DB_URL"); u != "" {
+	if u := os.Getenv("AM_TEST_DB_URL"); u != "" {
 		cfg, err := pgxpool.ParseConfig(u)
 		if err != nil {
 			return nil, err
@@ -101,7 +101,7 @@ func connect(t *testing.T) (*pgxpool.Pool, error) {
 	return nil, errNoPostgres
 }
 
-var errNoPostgres = errors.New("no reachable postgres; set KS_TEST_DB_URL")
+var errNoPostgres = errors.New("no reachable postgres; set AM_TEST_DB_URL")
 
 // localCluster starts a throwaway initdb cluster when no server is listening, so the
 // guarantees in this file are never "skipped" on a clean machine (§16.1).
@@ -117,12 +117,12 @@ func newLocalCluster() *cluster {
 	if initdb == "" || pg_ctl == "" {
 		return nil
 	}
-	dir, err := os.MkdirTemp("", "ksitdb")
+	dir, err := os.MkdirTemp("", "amitdb")
 	if err != nil {
 		return nil
 	}
 	port := 55432
-	out, err := exec.Command(initdb, "-D", dir, "-A", "trust", "-U", "ks", "--no-sync", "-o", "-F").CombinedOutput()
+	out, err := exec.Command(initdb, "-D", dir, "-A", "trust", "-U", "am", "--no-sync", "-o", "-F").CombinedOutput()
 	if err != nil {
 		os.RemoveAll(dir)
 		if len(out) > 200 {
@@ -149,7 +149,7 @@ func newLocalCluster() *cluster {
 }
 
 func (c *cluster) dsn() string {
-	return fmt.Sprintf("postgres://ks@127.0.0.1:%d/postgres?sslmode=disable", c.port)
+	return fmt.Sprintf("postgres://am@127.0.0.1:%d/postgres?sslmode=disable", c.port)
 }
 
 func (c *cluster) stop() {
@@ -236,7 +236,7 @@ func fixtureApp() *model.App {
 		App:           model.AppInfo{Name: "fixture", Tenant: "Org"},
 		Roles:         []string{"admin", "member", "accountant"},
 		Tenant:        &model.Tenant{Name: "Org", Table: "org", Fields: org.Fields},
-		Membership:    &model.Tenant{Name: "Membership", Table: "ks_membership"},
+		Membership:    &model.Tenant{Name: "Membership", Table: "am_membership"},
 		Identity:      model.Identity{Sessions: &model.Sessions{TTL: "336h0m0s", IdleTimeout: "168h0m0s", Rotate: true}},
 		Defaults:      model.Defaults{QueryBudget: 20, RowBudget: 10000, ActionTimeout: "10s", StmtTimeout: "5s", MaxPageSize: 50, BodyLimitBytes: 1 << 20, MaxInFlight: 32},
 		Modules: []model.Module{
@@ -258,12 +258,12 @@ func intp(i int) *int { return &i }
 // ---- fixture rows: what the generator would emit, written by hand here ----
 
 type invoiceRow struct {
-	ID           ks.ID
-	TenantID     ks.ID
+	ID           am.ID
+	TenantID     am.ID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-	Version      ks.Version
-	CustomerID   ks.ID
+	Version      am.Version
+	CustomerID   am.ID
 	AmountMinor  int64
 	AmountCur    string
 	Status       string
@@ -273,11 +273,11 @@ type invoiceRow struct {
 }
 
 type customerRow struct {
-	ID        ks.ID
-	TenantID  ks.ID
+	ID        am.ID
+	TenantID  am.ID
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Version   ks.Version
+	Version   am.Version
 	Name      string
 	Email     string
 }
@@ -334,7 +334,7 @@ func buildTables(t *testing.T) {
 				i++
 				x.UpdatedAt = r.Time(i)
 				i++
-				x.Version = ks.Version(r.Int(i))
+				x.Version = am.Version(r.Int(i))
 				i++
 				if !r.Null(i) {
 					x.CustomerID = r.ID(i)
@@ -363,7 +363,7 @@ func buildTables(t *testing.T) {
 				})
 				return b
 			},
-			IDOf:      func(x *invoiceRow) ks.ID { return x.ID },
+			IDOf:      func(x *invoiceRow) am.ID { return x.ID },
 			VersionOf: func(x *invoiceRow) int64 { return int64(x.Version) },
 			Cursor: func(x *invoiceRow) map[string]string {
 				return map[string]string{"t.created_at": x.CreatedAt.Format(time.RFC3339Nano), "t.id": string(x.ID)}
@@ -428,7 +428,7 @@ func buildTables(t *testing.T) {
 				i++
 				x.UpdatedAt = r.Time(i)
 				i++
-				x.Version = ks.Version(r.Int(i))
+				x.Version = am.Version(r.Int(i))
 				i++
 				x.Name = r.Str(i)
 				i++
@@ -439,7 +439,7 @@ func buildTables(t *testing.T) {
 				b, _ := json.Marshal(map[string]any{"id": string(x.ID), "name": x.Name, "email": x.Email})
 				return b
 			},
-			IDOf:      func(x *customerRow) ks.ID { return x.ID },
+			IDOf:      func(x *customerRow) am.ID { return x.ID },
 			VersionOf: func(x *customerRow) int64 { return int64(x.Version) },
 			Cursor: func(x *customerRow) map[string]string {
 				return map[string]string{"t.created_at": x.CreatedAt.Format(time.RFC3339Nano), "t.id": string(x.ID)}
@@ -468,11 +468,11 @@ type harness struct {
 	t       *testing.T
 	app     *runtime.App
 	pool    *pgxpool.Pool
-	tenants map[string]ks.ID
-	seeders map[ks.ID]ks.Actor
-	admin   ks.Actor
-	member  ks.Actor
-	other   ks.Actor
+	tenants map[string]am.ID
+	seeders map[am.ID]am.Actor
+	admin   am.Actor
+	member  am.Actor
+	other   am.Actor
 }
 
 func setup(t *testing.T) *harness {
@@ -480,7 +480,7 @@ func setup(t *testing.T) *harness {
 	buildTables(t)
 	base := pool(t)
 	ctx := context.Background()
-	name := "ks_it_" + strings.ToLower(fmt.Sprintf("%d", time.Now().UnixNano()))
+	name := "am_it_" + strings.ToLower(fmt.Sprintf("%d", time.Now().UnixNano()))
 	if _, err := base.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatalf("create db: %v", err)
 	}
@@ -510,7 +510,7 @@ func setup(t *testing.T) *harness {
 	// A request holds one connection for its transaction, and the framework tables are
 	// touched from a second, short one, so the pool is sized for both.
 	cfg.MaxConns = 12
-	// Apply the schema as the owner, the way ks migrate apply runs at deploy time, then
+	// Apply the schema as the owner, the way am migrate apply runs at deploy time, then
 	// start the app as the non-owner role that production would use (§18.3).
 	admin := *cfg
 	admin.DatabaseURL = ownerURL
@@ -529,7 +529,7 @@ func setup(t *testing.T) *harness {
 			t.Fatalf("apply schema: %v\nin: %s", err, firstLine(stmt))
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO ks_migrations (version, name, checksum, model_hash) VALUES ('0001','init','x',$1)`, appModel.Hash()); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO am_migrations (version, name, checksum, model_hash) VALUES ('0001','init','x',$1)`, appModel.Hash()); err != nil {
 		_ = tx.Rollback(ctx)
 		boot.Close()
 		t.Fatal(detail(err))
@@ -546,7 +546,7 @@ func setup(t *testing.T) *harness {
 	}
 	t.Cleanup(app.Close)
 
-	h := &harness{t: t, app: app, pool: app.Pool, tenants: map[string]ks.ID{}}
+	h := &harness{t: t, app: app, pool: app.Pool, tenants: map[string]am.ID{}}
 	for _, orgName := range []string{"Acme", "Globex"} {
 		id := h.insertOrg(ctx, orgName)
 		h.tenants[orgName] = id
@@ -620,7 +620,7 @@ func grantStmts(a *model.App) []string {
 		"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO PUBLIC",
 		"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO PUBLIC",
 		// Audit is append-only even for the app role.
-		"REVOKE UPDATE, DELETE, TRUNCATE ON ks_audit FROM PUBLIC",
+		"REVOKE UPDATE, DELETE, TRUNCATE ON am_audit FROM PUBLIC",
 	}
 	return out
 }
@@ -635,14 +635,14 @@ func firstLine(s string) string {
 	return s
 }
 
-func (h *harness) insertOrg(ctx context.Context, name string) ks.ID {
+func (h *harness) insertOrg(ctx context.Context, name string) am.ID {
 	h.t.Helper()
-	var id ks.ID = ks.NewID()
+	var id am.ID = am.NewID()
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, "SELECT set_config('ks.cross_tenant','on',true), set_config('ks.actor_system','on',true)"); err != nil {
+	if _, err := tx.Exec(ctx, "SELECT set_config('am.cross_tenant','on',true), set_config('am.actor_system','on',true)"); err != nil {
 		_ = tx.Rollback(ctx)
 		h.t.Fatal(err)
 	}
@@ -661,19 +661,19 @@ func (h *harness) insertOrg(ctx context.Context, name string) ks.ID {
 	return id
 }
 
-// actor builds an actor with one role and grants it in ks_membership, because that
+// actor builds an actor with one role and grants it in am_membership, because that
 // table is what a compiled role rule tests against: an in-memory role list would let a
 // test pass with a grant the database knows nothing about (§5.1).
 // seed writes with the tenant scope set, which is how a bootstrap or seed path grants
 // the first membership: an actor cannot already hold a role in a tenant they have not
 // been added to yet (§5.1).
-func (h *harness) seed(tenant ks.ID, sql string, args ...any) {
+func (h *harness) seed(tenant am.ID, sql string, args ...any) {
 	ctx := context.Background()
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, "SELECT set_config('ks.tenant_id', $1, true), set_config('ks.cross_tenant', 'on', true), set_config('ks.actor_system','on',true)", uuidOrEmpty(tenant)); err != nil {
+	if _, err := tx.Exec(ctx, "SELECT set_config('am.tenant_id', $1, true), set_config('am.cross_tenant', 'on', true), set_config('am.actor_system','on',true)", uuidOrEmpty(tenant)); err != nil {
 		_ = tx.Rollback(ctx)
 		h.t.Fatal(err)
 	}
@@ -687,38 +687,38 @@ func (h *harness) seed(tenant ks.ID, sql string, args ...any) {
 }
 
 // grantAll records every declared role for an actor, in the actor's tenant.
-func (h *harness) grantAll(a ks.Actor) {
+func (h *harness) grantAll(a am.Actor) {
 	for _, role := range h.app.Model.Roles {
-		h.seed(a.Tenant, `INSERT INTO ks_membership (id, tenant_id, actor_id, role, created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`,
-			ks.NewID(), a.Tenant, a.ID, role)
+		h.seed(a.Tenant, `INSERT INTO am_membership (id, tenant_id, actor_id, role, created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`,
+			am.NewID(), a.Tenant, a.ID, role)
 	}
 }
 
-func uuidOrEmpty(id ks.ID) string {
+func uuidOrEmpty(id am.ID) string {
 	if id.IsNil() {
 		return ""
 	}
 	return string(id)
 }
 
-func (h *harness) actor(tenant ks.ID, roles ...string) ks.Actor {
-	a := ks.Actor{Kind: ks.ActorUser, ID: ks.NewID(), Tenant: tenant, Roles: roles, Authed: true}
+func (h *harness) actor(tenant am.ID, roles ...string) am.Actor {
+	a := am.Actor{Kind: am.ActorUser, ID: am.NewID(), Tenant: tenant, Roles: roles, Authed: true}
 	for _, role := range roles {
-		h.seed(tenant, `INSERT INTO ks_membership (id, tenant_id, actor_id, role, created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`,
-			ks.NewID(), tenant, a.ID, role)
+		h.seed(tenant, `INSERT INTO am_membership (id, tenant_id, actor_id, role, created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT DO NOTHING`,
+			am.NewID(), tenant, a.ID, role)
 	}
 	return a
 }
 
 // revoke removes a grant, which must take effect on the next request (§15.2).
-func (h *harness) revoke(actor ks.Actor) {
-	h.seed(actor.Tenant, `DELETE FROM ks_membership WHERE actor_id=$1`, actor.ID)
+func (h *harness) revoke(actor am.Actor) {
+	h.seed(actor.Tenant, `DELETE FROM am_membership WHERE actor_id=$1`, actor.ID)
 }
 
 // call runs one scoped operation inside a fresh transaction, the way the pipeline does.
-func (h *harness) call(actor ks.Actor, fn func(ctx context.Context, d *runtime.DB) error) error {
+func (h *harness) call(actor am.Actor, fn func(ctx context.Context, d *runtime.DB) error) error {
 	ctx := context.Background()
-	scope := runtime.Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == ks.ActorSystem}
+	scope := runtime.Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == am.ActorSystem}
 	tx, err := h.app.BeginTx(ctx, scope, 5*time.Second, false)
 	if err != nil {
 		return err
@@ -726,7 +726,7 @@ func (h *harness) call(actor ks.Actor, fn func(ctx context.Context, d *runtime.D
 	d := h.app.NewDB(tx, actor, runtime.WithApp(h.app), runtime.WithAction("test.Call"), runtime.WithBudget(100, 100000, false))
 	if err := fn(ctx, d); err != nil {
 		h.app.Rollback(ctx, tx)
-		if os.Getenv("KS_DEBUG_SQL") != "" {
+		if os.Getenv("AM_DEBUG_SQL") != "" {
 			for _, st := range d.Stmts() {
 				h.t.Logf("SQL: %s -- %v", st.SQL, st.Args)
 			}
@@ -744,7 +744,7 @@ func (h *harness) look(sql string, args ...any) *txRows {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, "SELECT set_config('ks.cross_tenant','on',true), set_config('ks.actor_system','on',true)"); err != nil {
+	if _, err := tx.Exec(ctx, "SELECT set_config('am.cross_tenant','on',true), set_config('am.actor_system','on',true)"); err != nil {
 		_ = tx.Rollback(ctx)
 		h.t.Fatal(err)
 	}
@@ -790,7 +790,7 @@ func (h *harness) stateAttempts(sql string, args ...any) (string, int64, []strin
 // auditLast returns the most recent audit record's action and changed fields.
 func (h *harness) auditLast() (string, string, []string) {
 	h.t.Helper()
-	rows := h.look(`SELECT coalesce(actor_kind,''), coalesce(action,''), coalesce(changed_fields,'{}') FROM ks_audit ORDER BY id DESC LIMIT 1`)
+	rows := h.look(`SELECT coalesce(actor_kind,''), coalesce(action,''), coalesce(changed_fields,'{}') FROM am_audit ORDER BY id DESC LIMIT 1`)
 	defer rows.Close()
 	var kind, action string
 	var changed []string
@@ -805,7 +805,7 @@ func (h *harness) auditLast() (string, string, []string) {
 // auditAfter returns the raw after-image of the newest audit record.
 func (h *harness) auditAfter() []byte {
 	h.t.Helper()
-	rows := h.look(`SELECT coalesce(value_after,'{}'::jsonb) FROM ks_audit ORDER BY id DESC LIMIT 1`)
+	rows := h.look(`SELECT coalesce(value_after,'{}'::jsonb) FROM am_audit ORDER BY id DESC LIMIT 1`)
 	defer rows.Close()
 	var raw []byte
 	for rows.Next() {
@@ -848,19 +848,19 @@ func (h *harness) raw(setup string, fn func(tx pgx.Tx) error) error {
 // helpers create fixture data rather than exercise a permission decision. It is a
 // distinct identity: reusing the caller's id would grant them roles the test is about
 // to check they do not have.
-func seeder(actor ks.Actor, h *harness) ks.Actor {
+func seeder(actor am.Actor, h *harness) am.Actor {
 	if a, ok := h.seeders[actor.Tenant]; ok {
 		return a
 	}
 	a := h.actor(actor.Tenant, h.app.Model.Roles...)
 	if h.seeders == nil {
-		h.seeders = map[ks.ID]ks.Actor{}
+		h.seeders = map[am.ID]am.Actor{}
 	}
 	h.seeders[actor.Tenant] = a
 	return a
 }
 
-func (h *harness) newCustomer(actor ks.Actor, name string) *customerRow {
+func (h *harness) newCustomer(actor am.Actor, name string) *customerRow {
 	h.t.Helper()
 	var out *customerRow
 	err := h.call(seeder(actor, h), func(ctx context.Context, d *runtime.DB) error {
@@ -877,7 +877,7 @@ func (h *harness) newCustomer(actor ks.Actor, name string) *customerRow {
 	return out
 }
 
-func (h *harness) newInvoice(actor ks.Actor, cust *customerRow, minor int64, status string) *invoiceRow {
+func (h *harness) newInvoice(actor am.Actor, cust *customerRow, minor int64, status string) *invoiceRow {
 	h.t.Helper()
 	var out *invoiceRow
 	err := h.call(seeder(actor, h), func(ctx context.Context, d *runtime.DB) error {
@@ -902,7 +902,7 @@ func detail(err error) string {
 	if err == nil {
 		return "<nil>"
 	}
-	e := ks.AsError(err)
+	e := am.AsError(err)
 	if e.Internal != nil {
 		return fmt.Sprintf("%s (%s): %v", e.Code, e.Message, e.Internal)
 	}
@@ -913,7 +913,7 @@ func code(err error) string {
 	if err == nil {
 		return ""
 	}
-	return ks.AsError(err).Code
+	return am.AsError(err).Code
 }
 
 // ---- the guarantees ----
@@ -927,7 +927,7 @@ func TestTenantIsolationInQueryLayer(t *testing.T) {
 		_, err := runtime.Scoped(d, custTable).Get(ctx, otherCust.ID)
 		return err
 	})
-	if code(err) != ks.CodeNotFound {
+	if code(err) != am.CodeNotFound {
 		t.Fatalf("a foreign tenant row must read as not_found, got %v", detail(err))
 	}
 	got, err2 := func() (*customerRow, error) {
@@ -953,7 +953,7 @@ func TestRowLevelSecurityBackstop(t *testing.T) {
 	h := setup(t)
 	h.newCustomer(h.other, "GlobexCo")
 	var count int64
-	err := h.raw("SET LOCAL ks.tenant_id = '"+string(ks.NewID())+"'; SET LOCAL ks.cross_tenant = 'off';", func(tx pgx.Tx) error {
+	err := h.raw("SET LOCAL am.tenant_id = '"+string(am.NewID())+"'; SET LOCAL am.cross_tenant = 'off';", func(tx pgx.Tx) error {
 		rows, err := tx.Query(context.Background(), "SELECT count(*) FROM customer")
 		if err != nil {
 			return err
@@ -976,7 +976,7 @@ func TestCrossTenantOptInIsExplicit(t *testing.T) {
 	h := setup(t)
 	h.newCustomer(h.other, "GlobexCo")
 	var total int64
-	err := h.raw("SET LOCAL ks.tenant_id = ''; SET LOCAL ks.cross_tenant = 'on';", func(tx pgx.Tx) error {
+	err := h.raw("SET LOCAL am.tenant_id = ''; SET LOCAL am.cross_tenant = 'on';", func(tx pgx.Tx) error {
 		return tx.QueryRow(context.Background(), "SELECT count(*) FROM customer").Scan(&total)
 	})
 	if err != nil {
@@ -992,12 +992,12 @@ func TestReadRuleIsCompiledIntoEveryQuery(t *testing.T) {
 	cust := h.newCustomer(h.member, "AcmeCo")
 	// The member's actor id is not in any customer's owner column, and the fixture's
 	// Read rule is a role test; an anonymous caller must see nothing at all.
-	anon := ks.Actor{Kind: ks.ActorAnonymous}
+	anon := am.Actor{Kind: am.ActorAnonymous}
 	err := h.call(anon, func(ctx context.Context, d *runtime.DB) error {
 		_, err := runtime.Scoped(d, custTable).Get(ctx, cust.ID)
 		return err
 	})
-	if code(err) != ks.CodeNotFound {
+	if code(err) != am.CodeNotFound {
 		t.Fatalf("an actor without the role must not see the row, got %v", err)
 	}
 }
@@ -1012,7 +1012,7 @@ func TestCreateRuleRefusesTheWrite(t *testing.T) {
 		})
 		return err
 	})
-	if code(err) != ks.CodeForbidden {
+	if code(err) != am.CodeForbidden {
 		t.Fatalf("Create(admin) must refuse a member, got %v", err)
 	}
 	var n int64
@@ -1036,7 +1036,7 @@ func TestCheckInvariantIsEnforcedByDatabase(t *testing.T) {
 		})
 		return err
 	})
-	if code(err) != ks.CodeInvariant && code(err) != ks.CodeInvalid {
+	if code(err) != am.CodeInvariant && code(err) != am.CodeInvalid {
 		t.Fatalf("a negative amount must be refused, got %v", err)
 	}
 }
@@ -1045,8 +1045,8 @@ func TestDeferredInvariantCrossingARef(t *testing.T) {
 	h := setup(t)
 	// Forge an invoice whose customer belongs to another tenant by writing the pair in
 	// one transaction with cross-tenant on, then confirm a normal write path refuses it.
-	var foreignID ks.ID
-	if err := h.raw("SET LOCAL ks.cross_tenant = 'on';", func(tx pgx.Tx) error {
+	var foreignID am.ID
+	if err := h.raw("SET LOCAL am.cross_tenant = 'on';", func(tx pgx.Tx) error {
 		rows, err := tx.Query(context.Background(), "SELECT id FROM customer WHERE tenant_id = $1", h.other.Tenant)
 		if err != nil {
 			return err
@@ -1090,7 +1090,7 @@ func TestOptimisticConcurrency(t *testing.T) {
 		})
 		return err
 	})
-	if code(err) != ks.CodeConflict {
+	if code(err) != am.CodeConflict {
 		t.Fatalf("a stale version must return conflict, got %v", err)
 	}
 	// And a fresh version updates in one round trip.
@@ -1125,7 +1125,7 @@ func TestUpdateRuleAndFieldWriteRule(t *testing.T) {
 		})
 		return err
 	})
-	if code(err) != ks.CodeForbidden {
+	if code(err) != am.CodeForbidden {
 		t.Fatalf("a non-admin must not write a FieldWrite-restricted column, got %v", err)
 	}
 
@@ -1136,7 +1136,7 @@ func TestUpdateRuleAndFieldWriteRule(t *testing.T) {
 		})
 		return err
 	})
-	if code(err) != ks.CodeForbidden {
+	if code(err) != am.CodeForbidden {
 		t.Fatalf("UpdateAfter must refuse a void transition, got %v", err)
 	}
 }
@@ -1183,7 +1183,7 @@ func TestDeleteIsRefusedWhenTheRuleSaysNever(t *testing.T) {
 	err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
 		return runtime.Scoped(d, invTable).Delete(ctx, inv.ID, inv.Version)
 	})
-	if code(err) != ks.CodeForbidden {
+	if code(err) != am.CodeForbidden {
 		t.Fatalf("Delete(Never()) must refuse, got %v", err)
 	}
 }
@@ -1248,7 +1248,7 @@ func TestBatchedRelationLoadIsOneQuery(t *testing.T) {
 		h.newInvoice(h.admin, cust, int64(1000+i), "draft")
 	}
 	loader := runtime.With[invoiceRow]{Name: "customer", Load: func(v *runtime.View[invoiceRow], rows []*invoiceRow) error {
-		ids := make([]ks.ID, 0, len(rows))
+		ids := make([]am.ID, 0, len(rows))
 		for _, r := range rows {
 			ids = append(ids, r.CustomerID)
 		}
@@ -1256,7 +1256,7 @@ func TestBatchedRelationLoadIsOneQuery(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		byID := map[ks.ID]*customerRow{}
+		byID := map[am.ID]*customerRow{}
 		for _, c := range got {
 			byID[c.ID] = c
 		}
@@ -1305,7 +1305,7 @@ func TestBudgetIsCounted(t *testing.T) {
 		}
 		return nil
 	})
-	if code(err) != ks.CodeBudget {
+	if code(err) != am.CodeBudget {
 		t.Fatalf("the query budget must fail the action in tests, got %v", err)
 	}
 }
@@ -1335,10 +1335,10 @@ func TestAuditRowIsWrittenInTheSameTransaction(t *testing.T) {
 		t.Fatal("the audit record must name the action")
 	}
 	// The audit table refuses edits even to the owner (§9.5).
-	if _, err := h.pool.Exec(context.Background(), `UPDATE ks_audit SET action='x' WHERE id=(SELECT max(id) FROM ks_audit)`); err == nil {
+	if _, err := h.pool.Exec(context.Background(), `UPDATE am_audit SET action='x' WHERE id=(SELECT max(id) FROM am_audit)`); err == nil {
 		t.Fatal("audit records must be append-only")
 	}
-	if _, err := h.pool.Exec(context.Background(), `DELETE FROM ks_audit`); err == nil {
+	if _, err := h.pool.Exec(context.Background(), `DELETE FROM am_audit`); err == nil {
 		t.Fatal("audit must refuse delete")
 	}
 }
@@ -1364,18 +1364,18 @@ func TestDeferredEffectDoesNotEscapeARollback(t *testing.T) {
 	if !errors.Is(err, boom) {
 		t.Fatalf("the action error must surface: %v", err)
 	}
-	n := h.count(`SELECT count(*) FROM ks_outbox WHERE action='billing.SendInvoice'`)
+	n := h.count(`SELECT count(*) FROM am_outbox WHERE action='billing.SendInvoice'`)
 	if n != 0 {
 		t.Fatalf("a rolled-back transaction must leave no effect behind, found %d", n)
 	}
 
 	// On commit, the row exists and is pending with a derived idempotency key (§10.1).
 	if err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
-		return d.RecordEffect(ctx, runtime.EffectCall{Type: model.EffectEmail, Action: "billing.SendInvoice", Invocation: ks.NewID(), Seq: 1, Payload: []byte(`{}`)})
+		return d.RecordEffect(ctx, runtime.EffectCall{Type: model.EffectEmail, Action: "billing.SendInvoice", Invocation: am.NewID(), Seq: 1, Payload: []byte(`{}`)})
 	}); err != nil {
 		t.Fatal(detail(err))
 	}
-	rows := h.look(`SELECT idempotency_key, 0, ARRAY[state] FROM ks_outbox WHERE action='billing.SendInvoice' ORDER BY created_at DESC LIMIT 1`)
+	rows := h.look(`SELECT idempotency_key, 0, ARRAY[state] FROM am_outbox WHERE action='billing.SendInvoice' ORDER BY created_at DESC LIMIT 1`)
 	var key string
 	var zero int64
 	var stateList []string
@@ -1403,7 +1403,7 @@ func TestOutboxDispatcherClaimsOnceAndRetries(t *testing.T) {
 	}}
 	h.app.Providers.Register(model.EffectEmail, rec)
 	if err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
-		return d.RecordEffect(ctx, runtime.EffectCall{Type: model.EffectEmail, Action: "billing.SendInvoice", Invocation: ks.NewID(), Seq: 2, Payload: []byte(`{}`)})
+		return d.RecordEffect(ctx, runtime.EffectCall{Type: model.EffectEmail, Action: "billing.SendInvoice", Invocation: am.NewID(), Seq: 2, Payload: []byte(`{}`)})
 	}); err != nil {
 		t.Fatal(detail(err))
 	}
@@ -1414,7 +1414,7 @@ func TestOutboxDispatcherClaimsOnceAndRetries(t *testing.T) {
 	if _, err := outbox.Dispatch(context.Background(), 10); err != nil {
 		t.Fatalf("dispatch: %v", detail(err))
 	}
-	state, attempts, _ := h.stateAttempts(`SELECT coalesce(state,''), attempts::bigint, '{}'::text[] FROM ks_outbox WHERE action='billing.SendInvoice' ORDER BY created_at DESC LIMIT 1`)
+	state, attempts, _ := h.stateAttempts(`SELECT coalesce(state,''), attempts::bigint, '{}'::text[] FROM am_outbox WHERE action='billing.SendInvoice' ORDER BY created_at DESC LIMIT 1`)
 	var attemptsN = int(attempts)
 	if state != "pending" || attemptsN != 1 {
 		t.Fatalf("after one failed attempt: state=%s attempts=%d", state, attemptsN)
@@ -1425,7 +1425,7 @@ func TestOutboxDispatcherClaimsOnceAndRetries(t *testing.T) {
 	if len(rec.AttemptsOf(model.EffectEmail)) != 2 {
 		t.Fatalf("the provider should have been attempted twice: %d", len(rec.AttemptsOf(model.EffectEmail)))
 	}
-	state, _, _ = h.stateAttempts(`SELECT coalesce(state,''), 0, '{}'::text[] FROM ks_outbox WHERE action='billing.SendInvoice' ORDER BY created_at DESC LIMIT 1`)
+	state, _, _ = h.stateAttempts(`SELECT coalesce(state,''), 0, '{}'::text[] FROM am_outbox WHERE action='billing.SendInvoice' ORDER BY created_at DESC LIMIT 1`)
 	if state != "done" {
 		t.Fatalf("a successful retry must complete the row, state=%s", state)
 	}
@@ -1433,7 +1433,7 @@ func TestOutboxDispatcherClaimsOnceAndRetries(t *testing.T) {
 	// Two dispatchers at once must not execute the same row twice (§10.1 step 4).
 	for i := 0; i < 6; i++ {
 		if err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
-			return d.RecordEffect(ctx, runtime.EffectCall{Type: model.EffectEmail, Action: "billing.Fanout", Invocation: ks.NewID(), Seq: i, Payload: []byte(`{}`)})
+			return d.RecordEffect(ctx, runtime.EffectCall{Type: model.EffectEmail, Action: "billing.Fanout", Invocation: am.NewID(), Seq: i, Payload: []byte(`{}`)})
 		}); err != nil {
 			t.Fatal(detail(err))
 		}
@@ -1462,7 +1462,7 @@ func TestOutboxDispatcherClaimsOnceAndRetries(t *testing.T) {
 
 func TestJobsRunAsSystemAndRespectConcurrency(t *testing.T) {
 	h := setup(t)
-	var ran []ks.Actor
+	var ran []am.Actor
 	var mu sync.Mutex
 	h.app.Handlers["billing.SendReminders"] = &runtime.Handler{
 		Ref: "billing.SendReminders", Module: "billing", Name: "SendReminders", Kind: model.KindJob,
@@ -1494,11 +1494,11 @@ func TestJobsRunAsSystemAndRespectConcurrency(t *testing.T) {
 	if len(ran) != 1 {
 		t.Fatalf("the job did not run: %v", ran)
 	}
-	if ran[0].Kind != ks.ActorSystem {
+	if ran[0].Kind != am.ActorSystem {
 		t.Fatalf("RunAs(System) jobs run as the tenant's system actor, got %+v", ran[0])
 	}
 	var state string
-	state, _, _ = h.stateAttempts(`SELECT coalesce(state,''), 0, '{}'::text[] FROM ks_jobs WHERE action='billing.SendReminders'`)
+	state, _, _ = h.stateAttempts(`SELECT coalesce(state,''), 0, '{}'::text[] FROM am_jobs WHERE action='billing.SendReminders'`)
 	if state != "done" {
 		t.Fatalf("job state after success: %s", state)
 	}
@@ -1525,12 +1525,12 @@ func TestSchedulesFireOncePerSlot(t *testing.T) {
 	if _, err := s.Tick(context.Background(), now); err != nil {
 		t.Fatal(detail(err))
 	}
-	count64 := h.count(`SELECT count(*) FROM ks_jobs WHERE action='billing.SendReminders'`)
+	count64 := h.count(`SELECT count(*) FROM am_jobs WHERE action='billing.SendReminders'`)
 	count := int(count64)
 	if count != 1 {
 		t.Fatalf("the second tick of the same slot must not enqueue again, jobs=%d", count)
 	}
-	fired := int(h.count(`SELECT count(*) FROM ks_jobs WHERE action='billing.SendReminders'`))
+	fired := int(h.count(`SELECT count(*) FROM am_jobs WHERE action='billing.SendReminders'`))
 	if fired < 1 {
 		t.Fatal("schedules must enqueue jobs")
 	}
@@ -1573,10 +1573,10 @@ func TestIdempotencyReplaysAndRefusesMismatch(t *testing.T) {
 	if first != second {
 		t.Fatalf("a repeat call must return the stored result: %s != %s", first, second)
 	}
-	if _, err := call(`{"invoice_id":"2"}`, "k1"); code(err) != ks.CodeConflict {
+	if _, err := call(`{"invoice_id":"2"}`, "k1"); code(err) != am.CodeConflict {
 		t.Fatalf("a different body under the same key must conflict, got %v", err)
 	}
-	if _, err := call(`{}`, ""); code(err) != ks.CodeInvalid {
+	if _, err := call(`{}`, ""); code(err) != am.CodeInvalid {
 		t.Fatalf("an idempotent mutation without a key is invalid, got %v", err)
 	}
 }
@@ -1584,7 +1584,7 @@ func TestIdempotencyReplaysAndRefusesMismatch(t *testing.T) {
 func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 	h := setup(t)
 	actor := h.actor(h.tenants["Acme"], "member")
-	token, cookie, err := h.app.Login(context.Background(), actor, ks.NilID, "test", "127.0.0.1")
+	token, cookie, err := h.app.Login(context.Background(), actor, am.NilID, "test", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("login: %v", detail(err))
 	}
@@ -1634,7 +1634,7 @@ func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 	n := 0
 	var limitErrors int
 	h.app.SetMetricSink(func(name string, delta float64) {
-		if name == "ks_rate_limit_error" {
+		if name == "am_rate_limit_error" {
 			limitErrors++
 		}
 	})
@@ -1657,7 +1657,7 @@ func TestSessionAuthRotateAndRateLimit(t *testing.T) {
 	if limitErrors != 0 {
 		t.Fatalf("the rate limit store must work; it failed %d times and the check failed open", limitErrors)
 	}
-	if code(limited) != ks.CodeRateLimited {
+	if code(limited) != am.CodeRateLimited {
 		t.Fatalf("the limit must shed after 4 calls, got %v cause=%v (executed %d)", limited, errors.Unwrap(limited), n)
 	}
 	if n != 4 {
@@ -1698,7 +1698,7 @@ func TestImmediateEffectRunsThroughTheProvider(t *testing.T) {
 		t.Fatalf("provider calls: %+v", rec.Calls)
 	}
 	// It is still recorded, so the trace shows it ran (§18.1).
-	state, _, _ := h.stateAttempts(`SELECT coalesce(state,''), 0, '{}'::text[] FROM ks_outbox WHERE action='billing.MarkPaid' ORDER BY created_at DESC LIMIT 1`)
+	state, _, _ := h.stateAttempts(`SELECT coalesce(state,''), 0, '{}'::text[] FROM am_outbox WHERE action='billing.MarkPaid' ORDER BY created_at DESC LIMIT 1`)
 	if state != "done" {
 		t.Fatalf("an immediate effect is recorded as done, got %s", state)
 	}
@@ -1730,7 +1730,7 @@ func TestUnknownTableFailsLoudly(t *testing.T) {
 	h := setup(t)
 	err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
 		_, err := runtime.Scoped(d, &runtime.Table[invoiceRow]{Ref: "billing.Ghost", Table: "ghost_table", IDColumn: "id"}).
-			Get(ctx, ks.NewID())
+			Get(ctx, am.NewID())
 		return err
 	})
 	if err == nil {

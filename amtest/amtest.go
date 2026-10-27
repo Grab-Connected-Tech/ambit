@@ -1,14 +1,14 @@
-// Package kstest is the test harness ks test runs app tests with (§16). Each test gets
+// Package amtest is the test harness am test runs app tests with (§16). Each test gets
 // its own database cloned from a template that holds the current schema, a fake clock,
 // recording effect providers, and actions run through the full pipeline.
 //
-//	env := kstest.New(t, gen.Model)
+//	env := amtest.New(t, gen.Model)
 //	org := env.Tenant()
 //	acct := env.Actor(org, app.Accountant)
-//	inv := kstest.Create(env, gen.InvoiceTable, gen.Invoice{TenantID: org, Status: gen.InvoiceStatusDraft})
-//	out, err := kstest.Call(env, acct, gen.SendInvoiceHandler, billing.Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: inv.ID})
+//	inv := amtest.Create(env, gen.InvoiceTable, gen.Invoice{TenantID: org, Status: gen.InvoiceStatusDraft})
+//	out, err := amtest.Call(env, acct, gen.SendInvoiceHandler, billing.Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: inv.ID})
 //	env.AssertQueriesAtMost(3)
-package kstest
+package amtest
 
 import (
 	"context"
@@ -28,10 +28,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/migrate"
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/migrate"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 // Epoch is where every test's clock starts, so time-dependent logic is deterministic.
@@ -39,13 +39,13 @@ var Epoch = time.Date(2030, 1, 1, 9, 0, 0, 0, time.UTC)
 
 // appRole is the non-owner role tests connect as: a superuser bypasses row-level
 // security even under FORCE, and the backstop must hold against the app (§8.5).
-const appRole, appPassword = "ks_test_app", "ks_test_app"
+const appRole, appPassword = "am_test_app", "am_test_app"
 
 // Env is one test's isolated app.
 type Env struct {
 	T     testing.TB
 	App   *runtime.App
-	Clock *ks.FakeClock
+	Clock *am.FakeClock
 	Model *model.App
 
 	mu     sync.Mutex
@@ -56,28 +56,28 @@ type Env struct {
 }
 
 // New clones a fresh database for the test and starts the app on it. Without
-// KS_TEST_DB_URL the test is skipped, so a plain go test still passes offline.
+// AM_TEST_DB_URL the test is skipped, so a plain go test still passes offline.
 func New(t testing.TB, app *model.App) *Env {
 	t.Helper()
-	base := os.Getenv("KS_TEST_DB_URL")
+	base := os.Getenv("AM_TEST_DB_URL")
 	if base == "" {
-		t.Skip("KS_TEST_DB_URL is not set; ks test sets it")
+		t.Skip("AM_TEST_DB_URL is not set; am test sets it")
 	}
 	ctx := context.Background()
 	tmpl, err := template(ctx, base, app)
 	if err != nil {
-		t.Fatalf("kstest: template database: %v", err)
+		t.Fatalf("amtest: template database: %v", err)
 	}
-	name := "ks_t_" + strings.ReplaceAll(string(ks.NewID()), "-", "")
+	name := "am_t_" + strings.ReplaceAll(string(am.NewID()), "-", "")
 	admin, err := pgx.Connect(ctx, base)
 	if err != nil {
-		t.Fatalf("kstest: %v", err)
+		t.Fatalf("amtest: %v", err)
 	}
 	defer admin.Close(ctx)
 	if _, err := admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s", name, tmpl)); err != nil {
-		t.Fatalf("kstest: clone template: %v", err)
+		t.Fatalf("amtest: clone template: %v", err)
 	}
-	env := &Env{T: t, Clock: ks.NewFakeClock(Epoch), Model: app, stubs: map[string]runtime.EffectResult{}}
+	env := &Env{T: t, Clock: am.NewFakeClock(Epoch), Model: app, stubs: map[string]runtime.EffectResult{}}
 	ownerURL := withDB(base, name)
 	t.Cleanup(func() {
 		bg := context.Background()
@@ -87,7 +87,7 @@ func New(t testing.TB, app *model.App) *Env {
 		}
 	})
 	if env.owner, err = pgxpool.New(ctx, ownerURL); err != nil {
-		t.Fatalf("kstest: %v", err)
+		t.Fatalf("amtest: %v", err)
 	}
 	t.Cleanup(env.owner.Close)
 
@@ -113,7 +113,7 @@ func New(t testing.TB, app *model.App) *Env {
 	}
 	env.App, err = runtime.New(ctx, runtime.Options{Cfg: cfg, Model: app, Providers: providers})
 	if err != nil {
-		t.Fatalf("kstest: start app: %v", err)
+		t.Fatalf("amtest: start app: %v", err)
 	}
 	t.Cleanup(env.App.Close)
 	env.App.Clock = env.Clock
@@ -123,7 +123,7 @@ func New(t testing.TB, app *model.App) *Env {
 		env.traces = append(env.traces, tr)
 		env.mu.Unlock()
 	}
-	if path := os.Getenv("KS_CAPTURE_QUERIES"); path != "" {
+	if path := os.Getenv("AM_CAPTURE_QUERIES"); path != "" {
 		t.Cleanup(func() { env.capture(path) })
 	}
 	return env
@@ -138,7 +138,7 @@ var templates sync.Map // schema hash -> template name, per process
 func template(ctx context.Context, base string, app *model.App) (string, error) {
 	ddl := migrate.DDL(app)
 	sum := sha256.Sum256([]byte(strings.Join(ddl, "\n")))
-	name := "ks_tmpl_" + hex.EncodeToString(sum[:8])
+	name := "am_tmpl_" + hex.EncodeToString(sum[:8])
 	if _, ok := templates.Load(name); ok {
 		return name, nil
 	}
@@ -148,10 +148,10 @@ func template(ctx context.Context, base string, app *model.App) (string, error) 
 	}
 	defer admin.Close(ctx)
 	// Test binaries for different packages run at once; one of them builds the template.
-	if _, err := admin.Exec(ctx, "SELECT pg_advisory_lock(hashtext('ks_test_template'))"); err != nil {
+	if _, err := admin.Exec(ctx, "SELECT pg_advisory_lock(hashtext('am_test_template'))"); err != nil {
 		return "", err
 	}
-	defer admin.Exec(ctx, "SELECT pg_advisory_unlock(hashtext('ks_test_template'))")
+	defer admin.Exec(ctx, "SELECT pg_advisory_unlock(hashtext('am_test_template'))")
 	var exists bool
 	if err := admin.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname=$1)", name).Scan(&exists); err != nil {
 		return "", err
@@ -190,14 +190,14 @@ func buildTemplate(ctx context.Context, admin *pgx.Conn, base, name string, app 
 		"GRANT USAGE ON SCHEMA public TO "+appRole,
 		"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "+appRole,
 		"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "+appRole,
-		"REVOKE UPDATE, DELETE, TRUNCATE ON ks_audit FROM "+appRole,
+		"REVOKE UPDATE, DELETE, TRUNCATE ON am_audit FROM "+appRole,
 	)
 	for _, stmt := range stmts {
 		if _, err := c.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("%w\n  in: %s", err, strings.SplitN(strings.TrimSpace(stmt), "\n", 2)[0])
 		}
 	}
-	_, err = c.Exec(ctx, `INSERT INTO ks_migrations (version, name, checksum, model_hash) VALUES ('0000', 'kstest', '', $1)`, app.Hash())
+	_, err = c.Exec(ctx, `INSERT INTO am_migrations (version, name, checksum, model_hash) VALUES ('0000', 'amtest', '', $1)`, app.Hash())
 	return err
 }
 
@@ -224,23 +224,23 @@ func (e *Env) system(fn func(tx pgx.Tx) error) {
 	e.T.Helper()
 	ctx := context.Background()
 	err := pgx.BeginFunc(ctx, e.owner, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SELECT set_config('ks.cross_tenant','on',true), set_config('ks.actor_system','on',true)"); err != nil {
+		if _, err := tx.Exec(ctx, "SELECT set_config('am.cross_tenant','on',true), set_config('am.actor_system','on',true)"); err != nil {
 			return err
 		}
 		return fn(tx)
 	})
 	if err != nil {
-		e.T.Fatalf("kstest: fixture: %v", err)
+		e.T.Fatalf("amtest: fixture: %v", err)
 	}
 }
 
 // Tenant creates a tenant row with placeholder values for its required fields.
-func (e *Env) Tenant(fields ...map[string]any) ks.ID {
+func (e *Env) Tenant(fields ...map[string]any) am.ID {
 	e.T.Helper()
 	if e.Model.Tenant == nil {
-		e.T.Fatal("kstest: the app declares no tenant")
+		e.T.Fatal("amtest: the app declares no tenant")
 	}
-	id := ks.NewID()
+	id := am.NewID()
 	set := merge(fields)
 	if columnOf(e.Model.Tenant.Fields, "tenant_id") {
 		set["tenant_id"] = id // the tenant row is its own tenant
@@ -251,9 +251,9 @@ func (e *Env) Tenant(fields ...map[string]any) ks.ID {
 
 // Actor creates an account in the tenant holding the given roles: role names, or the
 // spec's role declarations (anything with a Name() string method).
-func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
+func (e *Env) Actor(tenant am.ID, roles ...any) am.Actor {
 	e.T.Helper()
-	a := ks.Actor{Kind: ks.ActorUser, ID: ks.NewID(), Tenant: tenant, Authed: true}
+	a := am.Actor{Kind: am.ActorUser, ID: am.NewID(), Tenant: tenant, Authed: true}
 	for _, r := range roles {
 		var name string
 		switch r := r.(type) {
@@ -262,7 +262,7 @@ func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
 		case interface{ Name() string }:
 			name = r.Name()
 		default:
-			e.T.Fatalf("kstest: a role is a string or a spec role, not %T", r)
+			e.T.Fatalf("amtest: a role is a string or a spec role, not %T", r)
 		}
 		if !contains(a.Roles, name) {
 			a.Roles = append(a.Roles, name)
@@ -278,8 +278,8 @@ func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
 	e.system(func(tx pgx.Tx) error {
 		for _, role := range a.Roles {
 			if _, err := tx.Exec(context.Background(),
-				`INSERT INTO ks_membership (id, tenant_id, actor_id, role) VALUES ($1, $2, $3, $4)`,
-				ks.NewID(), tenant, a.ID, role); err != nil {
+				`INSERT INTO am_membership (id, tenant_id, actor_id, role) VALUES ($1, $2, $3, $4)`,
+				am.NewID(), tenant, a.ID, role); err != nil {
 				return err
 			}
 		}
@@ -291,13 +291,13 @@ func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
 // insertIn writes one row: the given values, the framework columns, a fixture for every
 // required reference (in the same tenant), and a placeholder for every other required
 // field without a default.
-func (e *Env) insertIn(table string, fields []model.Field, id ks.ID, set map[string]any, tenant ks.ID) {
+func (e *Env) insertIn(table string, fields []model.Field, id am.ID, set map[string]any, tenant am.ID) {
 	e.T.Helper()
 	cols, args := e.rowValues(table, fields, id, set, tenant)
 	e.exec(table, cols, args)
 }
 
-func (e *Env) rowValues(table string, fields []model.Field, id ks.ID, set map[string]any, tenant ks.ID) ([]string, []any) {
+func (e *Env) rowValues(table string, fields []model.Field, id am.ID, set map[string]any, tenant am.ID) ([]string, []any) {
 	e.T.Helper()
 	cols := []string{"id"}
 	args := []any{id}
@@ -333,7 +333,7 @@ func (e *Env) rowValues(table string, fields []model.Field, id ks.ID, set map[st
 		}
 		v, ok := placeholder(f, e.Clock.Now())
 		if !ok {
-			e.T.Fatalf("kstest: %s is required and has no placeholder; pass it explicitly", f.Column)
+			e.T.Fatalf("amtest: %s is required and has no placeholder; pass it explicitly", f.Column)
 		}
 		cols, args = append(cols, f.Column), append(args, e.sealFixture(f.Type.Encrypted, table, f.Column, id, v))
 	}
@@ -342,7 +342,7 @@ func (e *Env) rowValues(table string, fields []model.Field, id ks.ID, set map[st
 
 // sealFixture encrypts a fixture value for an Encrypted() column exactly as the runtime
 // would, so actions read it back.
-func (e *Env) sealFixture(encrypted bool, table, column string, id ks.ID, v any) any {
+func (e *Env) sealFixture(encrypted bool, table, column string, id am.ID, v any) any {
 	if !encrypted || v == nil {
 		return v
 	}
@@ -352,7 +352,7 @@ func (e *Env) sealFixture(encrypted bool, table, column string, id ks.ID, v any)
 	}
 	sealed, err := e.App.Keys.Seal([]byte(s), table, column, string(id))
 	if err != nil {
-		e.T.Fatalf("kstest: seal %s.%s: %v", table, column, err)
+		e.T.Fatalf("amtest: seal %s.%s: %v", table, column, err)
 	}
 	return sealed
 }
@@ -386,7 +386,7 @@ func placeholder(f model.Field, now time.Time) (any, bool) {
 	case model.KindText:
 		return "test " + f.Name, true
 	case model.KindEmail:
-		return strings.ToLower(string(ks.NewID()))[24:] + "@example.test", true
+		return strings.ToLower(string(am.NewID()))[24:] + "@example.test", true
 	case model.KindURL:
 		return "https://example.test/", true
 	case model.KindInt, model.KindDecimal:
@@ -433,7 +433,7 @@ func Create[T any](e *Env, table *runtime.Table[T], row T) *T {
 	e.T.Helper()
 	v := reflect.ValueOf(&row).Elem()
 	if id := v.FieldByName("ID"); id.IsValid() && id.String() == "" {
-		id.SetString(string(ks.NewID()))
+		id.SetString(string(am.NewID()))
 	}
 	if ver := v.FieldByName("Version"); ver.IsValid() && ver.Int() == 0 {
 		ver.SetInt(1)
@@ -445,7 +445,7 @@ func Create[T any](e *Env, table *runtime.Table[T], row T) *T {
 	}
 	if table.Tenant {
 		if t := v.FieldByName("TenantID"); t.IsValid() && t.String() == "" {
-			e.T.Fatalf("kstest: %s is tenant scoped; set TenantID", table.Name)
+			e.T.Fatalf("amtest: %s is tenant scoped; set TenantID", table.Name)
 		}
 	}
 	var cols []string
@@ -460,7 +460,7 @@ func Create[T any](e *Env, table *runtime.Table[T], row T) *T {
 			continue
 		}
 		val, set := columnValue(f)
-		if m, ok := val.(ks.Money); ok {
+		if m, ok := val.(am.Money); ok {
 			// A money field is two adjacent columns: minor units, then currency.
 			if i+1 < len(table.Columns) && table.Columns[i+1].GoName == c.GoName {
 				cols, args = append(cols, c.Column, table.Columns[i+1].Column), append(args, m.Minor, m.Currency)
@@ -471,16 +471,16 @@ func Create[T any](e *Env, table *runtime.Table[T], row T) *T {
 		if !set {
 			continue // absent: the column's default applies
 		}
-		cols, args = append(cols, c.Column), append(args, e.sealFixture(c.Encrypted, table.Table, c.Column, ks.ID(v.FieldByName("ID").String()), val))
+		cols, args = append(cols, c.Column), append(args, e.sealFixture(c.Encrypted, table.Table, c.Column, am.ID(v.FieldByName("ID").String()), val))
 	}
 	e.exec(table.Table, cols, args)
-	e.invalidate(table.Ref, ks.ID(v.FieldByName("TenantID").String()))
+	e.invalidate(table.Ref, am.ID(v.FieldByName("TenantID").String()))
 	return &row
 }
 
 // invalidate bumps a resource's cache generation for a fixture written beside the
 // runtime, as a write through it would (§11.3).
-func (e *Env) invalidate(ref string, tenant ks.ID) {
+func (e *Env) invalidate(ref string, tenant am.ID) {
 	if tenant.IsNil() {
 		return
 	}
@@ -488,13 +488,13 @@ func (e *Env) invalidate(ref string, tenant ks.ID) {
 		ref = "app" + ref
 	}
 	e.system(func(tx pgx.Tx) error {
-		_, err := tx.Exec(context.Background(), `INSERT INTO ks_cache_generation (id, tenant_id, resource, generation) VALUES ($1, $2, $3, 1)
-			ON CONFLICT (tenant_id, resource) DO UPDATE SET generation = ks_cache_generation.generation + 1`, ks.NewID(), tenant, ref)
+		_, err := tx.Exec(context.Background(), `INSERT INTO am_cache_generation (id, tenant_id, resource, generation) VALUES ($1, $2, $3, 1)
+			ON CONFLICT (tenant_id, resource) DO UPDATE SET generation = am_cache_generation.generation + 1`, am.NewID(), tenant, ref)
 		return err
 	})
 }
 
-// columnValue reads a struct field as a parameter; set is false for an absent ks.Opt.
+// columnValue reads a struct field as a parameter; set is false for an absent am.Opt.
 func columnValue(f reflect.Value) (any, bool) {
 	if p := f.MethodByName("Present"); p.IsValid() && f.MethodByName("Ptr").IsValid() {
 		if !p.Call(nil)[0].Bool() {
@@ -504,7 +504,7 @@ func columnValue(f reflect.Value) (any, bool) {
 	}
 	switch f.Kind() {
 	case reflect.String:
-		if f.String() == "" && f.Type() == reflect.TypeOf(ks.ID("")) {
+		if f.String() == "" && f.Type() == reflect.TypeOf(am.ID("")) {
 			return nil, false
 		}
 		return f.String(), true // ids, enums and text all travel as text
@@ -517,20 +517,20 @@ func columnValue(f reflect.Value) (any, bool) {
 // Call runs an action through the full pipeline (authorization, validation,
 // transaction, invariants, output filtering) as the actor, exactly as a request would.
 // wrap is the generated adapter (gen.XHandler) and fn the implementation.
-func Call[C, In, Out any](e *Env, actor ks.Actor, wrap func(func(*C, In) (Out, error)) *runtime.Handler, fn func(*C, In) (Out, error), in In) (Out, error) {
+func Call[C, In, Out any](e *Env, actor am.Actor, wrap func(func(*C, In) (Out, error)) *runtime.Handler, fn func(*C, In) (Out, error), in In) (Out, error) {
 	e.T.Helper()
 	var out Out
 	body, err := json.Marshal(in)
 	if err != nil {
-		e.T.Fatalf("kstest: encode input: %v", err)
+		e.T.Fatalf("amtest: encode input: %v", err)
 	}
-	res, err := e.App.Run(context.Background(), wrap(fn), actor, &runtime.Call{Actor: actor, Body: body, Key: string(ks.NewID())}, nil)
+	res, err := e.App.Run(context.Background(), wrap(fn), actor, &runtime.Call{Actor: actor, Body: body, Key: string(am.NewID())}, nil)
 	if err != nil {
 		return out, err
 	}
 	if len(res.Body) > 0 {
 		if err := json.Unmarshal(res.Body, &out); err != nil {
-			e.T.Fatalf("kstest: decode output: %v", err)
+			e.T.Fatalf("amtest: decode output: %v", err)
 		}
 	}
 	return out, nil
@@ -550,7 +550,7 @@ func (e *Env) Traces() []runtime.Trace {
 	return append([]runtime.Trace(nil), e.traces...)
 }
 
-// Shape is one captured statement, which ks perf explains against a seeded database
+// Shape is one captured statement, which am perf explains against a seeded database
 // (§11.4). Arguments are rendered as text so they replay as parameters.
 type Shape struct {
 	Action string   `json:"action"`
@@ -608,7 +608,7 @@ func (e *Env) LastTrace() runtime.Trace {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if len(e.traces) == 0 {
-		e.T.Fatal("kstest: no action has run")
+		e.T.Fatal("amtest: no action has run")
 	}
 	return e.traces[len(e.traces)-1]
 }
@@ -635,7 +635,7 @@ func (e *Env) Effects() []runtime.EffectCall {
 		rows, err := tx.Query(context.Background(),
 			`SELECT id::text, coalesce(tenant_id::text, ''), action, seq, type, mode, coalesce(template, ''),
 			        coalesce(topic, ''), coalesce(bucket, ''), coalesce(hosts, '{}'), idempotency_key, payload
-			   FROM ks_outbox ORDER BY created_at, invocation_id, seq`)
+			   FROM am_outbox ORDER BY created_at, invocation_id, seq`)
 		if err != nil {
 			return err
 		}
@@ -686,7 +686,7 @@ type recorder struct {
 	kind model.EffectKind
 }
 
-func (r recorder) Name() string         { return "kstest-" + string(r.kind) }
+func (r recorder) Name() string         { return "amtest-" + string(r.kind) }
 func (r recorder) Retryable(error) bool { return false }
 func (r recorder) Execute(_ context.Context, c runtime.EffectCall) (runtime.EffectResult, error) {
 	r.env.mu.Lock()
@@ -698,7 +698,7 @@ func (r recorder) Execute(_ context.Context, c runtime.EffectCall) (runtime.Effe
 				return res, nil
 			}
 		}
-		return runtime.EffectResult{}, fmt.Errorf("kstest: HTTP effect to %v has no stub; declare one with env.StubHTTP", c.Hosts)
+		return runtime.EffectResult{}, fmt.Errorf("amtest: HTTP effect to %v has no stub; declare one with env.StubHTTP", c.Hosts)
 	}
 	r.env.sent = append(r.env.sent, c)
 	return runtime.EffectResult{}, nil

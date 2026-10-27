@@ -3,20 +3,20 @@ package customers
 import (
 	"testing"
 
-	"keystone.dev/keystone/example/myapp/app"
-	"keystone.dev/keystone/example/myapp/gen"
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/kstest"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/amtest"
+	"github.com/abhilashiig/ambit/example/myapp/app"
+	"github.com/abhilashiig/ambit/example/myapp/gen"
 )
 
 func TestCreateGetAndListCustomers(t *testing.T) {
-	env := kstest.New(t, gen.Model)
+	env := amtest.New(t, gen.Model)
 	org := env.Tenant()
 	acct := env.Actor(org, app.Accountant, app.Member)
 	member := env.Actor(org, app.Member)
 
-	created, err := kstest.Call(env, acct, gen.CreateCustomerHandler, Actions.CreateCustomer,
-		gen.CreateCustomerInput{Name: "Ada", Email: "ada@example.test", Owner: ks.Set(acct.ID)})
+	created, err := amtest.Call(env, acct, gen.CreateCustomerHandler, Actions.CreateCustomer,
+		gen.CreateCustomerInput{Name: "Ada", Email: "ada@example.test", Owner: am.Set(acct.ID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestCreateGetAndListCustomers(t *testing.T) {
 		t.Fatalf("tenant and owner come from the actor and the input: %+v", created)
 	}
 
-	got, err := kstest.Call(env, member, gen.GetCustomerHandler, Actions.GetCustomer, gen.GetCustomerInput{CustomerID: created.ID})
+	got, err := amtest.Call(env, member, gen.GetCustomerHandler, Actions.GetCustomer, gen.GetCustomerInput{CustomerID: created.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestCreateGetAndListCustomers(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 
-	page, err := kstest.Call(env, member, gen.ListCustomersHandler, Actions.ListCustomers, gen.ListCustomersInput{Q: ks.Set("Ad")})
+	page, err := amtest.Call(env, member, gen.ListCustomersHandler, Actions.ListCustomers, gen.ListCustomersInput{Q: am.Set("Ad")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,39 +43,39 @@ func TestCreateGetAndListCustomers(t *testing.T) {
 }
 
 func TestMembersCannotCreateCustomers(t *testing.T) {
-	env := kstest.New(t, gen.Model)
+	env := amtest.New(t, gen.Model)
 	org := env.Tenant()
 	member := env.Actor(org, app.Member)
-	_, err := kstest.Call(env, member, gen.CreateCustomerHandler, Actions.CreateCustomer,
+	_, err := amtest.Call(env, member, gen.CreateCustomerHandler, Actions.CreateCustomer,
 		gen.CreateCustomerInput{Name: "Eve", Email: "eve@example.test"})
-	if ks.AsError(err).Code != ks.CodeForbidden {
+	if am.AsError(err).Code != am.CodeForbidden {
 		t.Fatalf("got %v, want forbidden", err)
 	}
 }
 
 func TestInputIsValidatedBeforeTheAction(t *testing.T) {
-	env := kstest.New(t, gen.Model)
+	env := amtest.New(t, gen.Model)
 	acct := env.Actor(env.Tenant(), app.Accountant)
-	_, err := kstest.Call(env, acct, gen.CreateCustomerHandler, Actions.CreateCustomer,
+	_, err := amtest.Call(env, acct, gen.CreateCustomerHandler, Actions.CreateCustomer,
 		gen.CreateCustomerInput{Name: "Bob", Email: "not-an-email"})
-	if ks.AsError(err).Code != ks.CodeInvalid {
+	if am.AsError(err).Code != am.CodeInvalid {
 		t.Fatalf("got %v, want invalid", err)
 	}
 }
 
 func TestFuzzCustomerActions(t *testing.T) {
-	env := kstest.New(t, gen.Model)
-	kstest.Fuzz(env, gen.GetCustomerHandler, Actions.GetCustomer, 40)
-	kstest.Fuzz(env, gen.CreateCustomerHandler, Actions.CreateCustomer, 40)
-	kstest.Fuzz(env, gen.ListCustomersHandler, Actions.ListCustomers, 40)
+	env := amtest.New(t, gen.Model)
+	amtest.Fuzz(env, gen.GetCustomerHandler, Actions.GetCustomer, 40)
+	amtest.Fuzz(env, gen.CreateCustomerHandler, Actions.CreateCustomer, 40)
+	amtest.Fuzz(env, gen.ListCustomersHandler, Actions.ListCustomers, 40)
 }
 
 func TestListCustomersIsCachedAndInvalidatedByWrites(t *testing.T) {
-	env := kstest.New(t, gen.Model)
+	env := amtest.New(t, gen.Model)
 	org := env.Tenant()
 	acct := env.Actor(org, app.Accountant, app.Member)
-	list := func(a ks.Actor) int {
-		page, err := kstest.Call(env, a, gen.ListCustomersHandler, Actions.ListCustomers, gen.ListCustomersInput{})
+	list := func(a am.Actor) int {
+		page, err := amtest.Call(env, a, gen.ListCustomersHandler, Actions.ListCustomers, gen.ListCustomersInput{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestListCustomersIsCachedAndInvalidatedByWrites(t *testing.T) {
 	if len(env.Traces()) != executions {
 		t.Fatal("the second identical call is answered from the cache, without running the action")
 	}
-	if _, err := kstest.Call(env, acct, gen.CreateCustomerHandler, Actions.CreateCustomer,
+	if _, err := amtest.Call(env, acct, gen.CreateCustomerHandler, Actions.CreateCustomer,
 		gen.CreateCustomerInput{Name: "Ada", Email: "ada@example.test"}); err != nil {
 		t.Fatal(err)
 	}

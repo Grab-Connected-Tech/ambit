@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
-	s "keystone.dev/keystone/spec"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
+	s "github.com/abhilashiig/ambit/spec"
 
 	// The reference app's spec packages are the fixtures: importing them is
-	// exactly what the ks gen dump program does (§3.2).
-	"keystone.dev/keystone/example/myapp/app"
-	"keystone.dev/keystone/example/myapp/app/billing"
-	"keystone.dev/keystone/example/myapp/app/customers"
+	// exactly what the am gen dump program does (§3.2).
+	"github.com/abhilashiig/ambit/example/myapp/app"
+	"github.com/abhilashiig/ambit/example/myapp/app/billing"
+	"github.com/abhilashiig/ambit/example/myapp/app/customers"
 )
 
 func build(t *testing.T) *model.App {
@@ -38,7 +38,7 @@ func TestReferenceAppModelShape(t *testing.T) {
 	if len(a.Roles) != 3 || strings.Join(a.Roles, ",") != "accountant,admin,member" {
 		t.Fatalf("roles must be sorted and complete: %v", a.Roles)
 	}
-	if a.Membership == nil || a.Membership.Table != "ks_membership" {
+	if a.Membership == nil || a.Membership.Table != "am_membership" {
 		t.Fatal("the membership resource must be generated from role declarations (§5.1)")
 	}
 	if a.Account == nil || a.Account.Name != "User" {

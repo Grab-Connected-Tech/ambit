@@ -1,7 +1,7 @@
-// Package ks holds the public scalar types, actor model, clock and error vocabulary
-// of the Keystone framework. It is imported by every generated and hand-written
+// Package am holds the public scalar types, actor model, clock and error vocabulary
+// of the Ambit framework. It is imported by every generated and hand-written
 // action package, so it must stay free of runtime and database dependencies.
-package ks
+package am
 
 import (
 	"crypto/rand"
@@ -14,7 +14,7 @@ import (
 )
 
 // ID is the framework's identifier type: a lowercase UUIDv7 string.
-// Generated code declares typed aliases over it (type InvoiceID ks.ID).
+// Generated code declares typed aliases over it (type InvoiceID am.ID).
 type ID string
 
 // NilID is the zero identifier. It never matches a stored row.
@@ -42,7 +42,7 @@ func tsBytes(ts uint64) []byte {
 // IDFromBytes builds an ID from a 16-byte uuid.
 func IDFromBytes(b []byte) (ID, error) {
 	if len(b) != 16 {
-		return NilID, fmt.Errorf("ks: uuid must be 16 bytes, got %d", len(b))
+		return NilID, fmt.Errorf("am: uuid must be 16 bytes, got %d", len(b))
 	}
 	return ID(formatUUID(*(*[16]byte)(b))), nil
 }
@@ -129,7 +129,7 @@ func (o Opt[T]) Get() (T, bool) { return o.value, o.set }
 // MustGet returns the value or panics; generated validators prevent the absent case.
 func (o Opt[T]) MustGet() T {
 	if !o.set {
-		panic(errors.New("ks: Opt.Get on absent value"))
+		panic(errors.New("am: Opt.Get on absent value"))
 	}
 	return o.value
 }

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"keystone.dev/keystone/model"
-	"keystone.dev/keystone/policy"
+	"github.com/abhilashiig/ambit/model"
+	"github.com/abhilashiig/ambit/policy"
 )
 
 // fixture builds the smallest app that passes, so each test can break one promise.
@@ -16,7 +16,7 @@ func fixture() *model.App {
 		App:           model.AppInfo{Name: "fixture", Tenant: "Org"},
 		Roles:         []string{"admin", "member"},
 		Tenant:        &model.Tenant{Name: "Org", Table: "org", Fields: model.BuiltInFields(false)},
-		Membership:    &model.Tenant{Name: "Membership", Table: "ks_membership", Fields: membershipFields()},
+		Membership:    &model.Tenant{Name: "Membership", Table: "am_membership", Fields: membershipFields()},
 		Account:       &model.Tenant{Name: "User", Table: "user_account", Fields: append(model.BuiltInFields(true), model.Field{Name: "email", GoName: "Email", Column: "email", Type: model.Type{Kind: model.KindEmail}})},
 		Defaults:      model.Defaults{QueryBudget: 20, RowBudget: 10000, ActionTimeout: "10s", StmtTimeout: "5s", MaxPageSize: 100, BodyLimitBytes: 1 << 20},
 		Modules: []model.Module{{
@@ -34,7 +34,7 @@ func fixture() *model.App {
 			}, {
 				Name: "CreateThing", Kind: model.KindMutation, Requires: policy.Role("admin"),
 				Writes: []string{"alpha.Thing"},
-				Input: []model.Field{{Name: "title", GoName: "Title", Column: "title", Type: model.Type{Kind: model.KindText, MaxLen: intp(80)}}},
+				Input:  []model.Field{{Name: "title", GoName: "Title", Column: "title", Type: model.Type{Kind: model.KindText, MaxLen: intp(80)}}},
 				Output: model.Output{Resource: "alpha.Thing"},
 			}},
 		}, {
@@ -105,7 +105,7 @@ func TestEveryActionMustSayWhoMayCallIt(t *testing.T) {
 	a := fixture()
 	a.Modules[0].Actions[0].Requires = nil
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-004", "neither Requires nor Public")
+	mustHave(t, d, "AM-SPEC-004", "neither Requires nor Public")
 	if d.Errors() == 0 {
 		t.Fatal("an unguarded endpoint must fail the build")
 	}
@@ -116,7 +116,7 @@ func TestPublicMutationNeedsARateLimit(t *testing.T) {
 	a.Modules[0].Actions[1].Public = true
 	a.Modules[0].Actions[1].Requires = nil
 	d := Validate(a)
-	mustHave(t, d, "KS-SEC-005", "no rate limit")
+	mustHave(t, d, "AM-SEC-005", "no rate limit")
 	a.Modules[0].Actions[1].Limits.RateLimit = []model.RateLimit{{Scope: "ip", Limit: 5, Per: "1m0s"}}
 	if got := Validate(a); got.Errors() != 0 {
 		t.Fatalf("with a rate limit it must pass:\n%s", dump(got))
@@ -127,21 +127,21 @@ func TestModulesMayNotWriteEachOthersResources(t *testing.T) {
 	a := fixture()
 	a.Modules[1].Actions[0].Writes = []string{"alpha.Thing"}
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-005", "owned by module")
+	mustHave(t, d, "AM-SPEC-005", "owned by module")
 }
 
 func TestUnknownRoleReference(t *testing.T) {
 	a := fixture()
 	a.Modules[0].Actions[0].Requires = policy.Role("superuser")
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-002", `undeclared role "superuser"`)
+	mustHave(t, d, "AM-SPEC-002", `undeclared role "superuser"`)
 }
 
 func TestUnknownFieldInRuleFailsToCompile(t *testing.T) {
 	a := fixture()
 	a.Modules[0].Resources[0].Access.Read = policy.Cmp(policy.OpEq, policy.FieldRef("secret"), policy.Literal(policy.BoolLit(true)))
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-003", "cannot be compiled to SQL")
+	mustHave(t, d, "AM-SPEC-003", "cannot be compiled to SQL")
 }
 
 func TestActorRefsCannotBecomeCheckConstraints(t *testing.T) {
@@ -150,7 +150,7 @@ func TestActorRefsCannotBecomeCheckConstraints(t *testing.T) {
 		{Name: "owner_is_admin", Expr: policy.Normalize(policy.Role("admin")), Enforcement: "check"},
 	}
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-003", "cannot be compiled")
+	mustHave(t, d, "AM-SPEC-003", "cannot be compiled")
 }
 
 func TestRowLocalInvariantCompiles(t *testing.T) {
@@ -169,7 +169,7 @@ func TestCallCyclesAreReportedWithThePath(t *testing.T) {
 	d := Validate(a)
 	var found bool
 	for _, x := range d {
-		if x.Rule == "KS-SPEC-002" && strings.Contains(x.Message, "cyclic") {
+		if x.Rule == "AM-SPEC-002" && strings.Contains(x.Message, "cyclic") {
 			found = true
 			if !strings.Contains(x.Message, "alpha.CreateThing -> beta.Annotate -> alpha.CreateThing") {
 				t.Fatalf("cycle path must be shown in full: %s", x.Message)
@@ -186,14 +186,14 @@ func TestInputMayNotDeclareARuntimeOwnedField(t *testing.T) {
 	a.Modules[0].Actions[1].Input = append(a.Modules[0].Actions[1].Input,
 		model.Field{Name: "tenant_id", GoName: "TenantID", Column: "tenant_id", Type: model.Type{Kind: model.KindID}})
 	d := Validate(a)
-	mustHave(t, d, "KS-SEC-008", "the runtime sets")
+	mustHave(t, d, "AM-SEC-008", "the runtime sets")
 }
 
 func TestHTTPEffectNeedsAHostAllowlist(t *testing.T) {
 	a := fixture()
 	a.Modules[0].Actions[1].Effects = []model.Effect{{Type: model.EffectHTTP, Mode: "deferred"}}
 	d := Validate(a)
-	mustHave(t, d, "KS-SEC-006", "no host allowlist")
+	mustHave(t, d, "AM-SEC-006", "no host allowlist")
 }
 
 func TestSensitiveFieldWithoutAFieldRuleWarns(t *testing.T) {
@@ -202,9 +202,9 @@ func TestSensitiveFieldWithoutAFieldRuleWarns(t *testing.T) {
 	res.Fields = append(res.Fields, model.Field{Name: "pin", GoName: "Pin", Column: "pin", Sensitive: true,
 		Type: model.Type{Kind: model.KindText, MaxLen: intp(8)}})
 	d := Validate(a)
-	mustHave(t, d, "KS-SEC-007", "Sensitive field has no FieldRead rule")
+	mustHave(t, d, "AM-SEC-007", "Sensitive field has no FieldRead rule")
 	res.Access.FieldRead = []model.FieldRule{{Field: "pin", Expr: policy.Role("admin")}}
-	if d2 := Validate(a); hasRule(d2, "KS-SEC-007") {
+	if d2 := Validate(a); hasRule(d2, "AM-SEC-007") {
 		t.Fatalf("the warning must disappear once a rule exists:\n%s", dump(d2))
 	}
 }
@@ -225,28 +225,30 @@ func TestKindMisuseIsAnError(t *testing.T) {
 		rule string
 		want string
 	}{
-		{"query writes", func(a *model.App) { a.Modules[0].Actions[0].Writes = []string{"alpha.Thing"} }, "KS-SPEC-005", "a query declares Writes"},
-		{"query effects", func(a *model.App) { a.Modules[0].Actions[0].Effects = []model.Effect{{Type: model.EffectEmail, Mode: "deferred"}} }, "KS-SPEC-005", "a query declares Effects"},
+		{"query writes", func(a *model.App) { a.Modules[0].Actions[0].Writes = []string{"alpha.Thing"} }, "AM-SPEC-005", "a query declares Writes"},
+		{"query effects", func(a *model.App) {
+			a.Modules[0].Actions[0].Effects = []model.Effect{{Type: model.EffectEmail, Mode: "deferred"}}
+		}, "AM-SPEC-005", "a query declares Effects"},
 		{"job returns", func(a *model.App) {
 			a.Modules[1].Actions = append(a.Modules[1].Actions, model.Action{Name: "Sweep", Kind: model.KindJob, Output: model.Output{Resource: "beta.Note"}})
-		}, "KS-SPEC-005", "a job declares Returns"},
+		}, "AM-SPEC-005", "a job declares Returns"},
 		{"schedule runs a mutation", func(a *model.App) {
 			a.Modules[1].Actions = append(a.Modules[1].Actions, model.Action{Name: "Nightly", Kind: model.KindSchedule, Cron: "0 3 * * *", Runs: "beta.Annotate"})
-		}, "KS-SPEC-005", "not a job"},
+		}, "AM-SPEC-005", "not a job"},
 		{"schedule missing cron", func(a *model.App) {
 			a.Modules[1].Actions = append(a.Modules[1].Actions, model.Action{Name: "Nightly", Kind: model.KindSchedule, Runs: "alpha.ListThings"})
-		}, "KS-SPEC-005", "no cron"},
-		{"query calls a mutation", func(a *model.App) { a.Modules[0].Actions[0].Calls = []string{"alpha.CreateThing"} }, "KS-SPEC-005", "a query calls"},
-		{"cache on a mutation", func(a *model.App) { a.Modules[0].Actions[1].Cache = &model.Cache{TTL: "1m0s"} }, "KS-SPEC-005", "only queries may be cached"},
+		}, "AM-SPEC-005", "no cron"},
+		{"query calls a mutation", func(a *model.App) { a.Modules[0].Actions[0].Calls = []string{"alpha.CreateThing"} }, "AM-SPEC-005", "a query calls"},
+		{"cache on a mutation", func(a *model.App) { a.Modules[0].Actions[1].Cache = &model.Cache{TTL: "1m0s"} }, "AM-SPEC-005", "only queries may be cached"},
 		{"Requires with a row condition", func(a *model.App) {
 			a.Modules[0].Actions[0].Requires = policy.And(policy.Role("member"), policy.Cmp(policy.OpGt, policy.FieldRef("title"), policy.Literal(policy.IntLit(0))))
-		}, "KS-SPEC-003", "only reference roles"},
+		}, "AM-SPEC-003", "only reference roles"},
 		{"enum default outside values", func(a *model.App) {
 			a.Modules[0].Resources[0].Fields = append(a.Modules[0].Resources[0].Fields, model.Field{
 				Name: "kind", GoName: "Kind", Column: "kind",
 				Type:    model.Type{Kind: model.KindEnum, Values: []string{"a", "b"}},
 				Default: &model.Value{Kind: "string", Text: "z"}})
-		}, "KS-SPEC-002", "is not one of"},
+		}, "AM-SPEC-002", "is not one of"},
 	}
 	for _, tc := range cases {
 		a := fixture()
@@ -260,22 +262,22 @@ func TestReservedAndDuplicateErrorCodes(t *testing.T) {
 	a := fixture()
 	a.Modules[0].Actions[1].Errors = []model.ActionError{{Code: "not_found"}, {Code: "x"}, {Code: "x"}}
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-002", "reserved by the framework")
-	mustHave(t, d, "KS-SPEC-002", "declared twice")
+	mustHave(t, d, "AM-SPEC-002", "reserved by the framework")
+	mustHave(t, d, "AM-SPEC-002", "declared twice")
 }
 
 func TestCrossModuleReadReferencesResolve(t *testing.T) {
 	a := fixture()
 	a.Modules[0].Actions[0].Reads = []string{"gamma.Whatever"}
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-002", "not declared")
+	mustHave(t, d, "AM-SPEC-002", "not declared")
 }
 
 func TestTwoResourcesCannotShareATable(t *testing.T) {
 	a := fixture()
 	a.Modules[1].Resources[0].Table = "thing"
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-002", "shared by")
+	mustHave(t, d, "AM-SPEC-002", "shared by")
 }
 
 func TestTenantResourceRefConsistency(t *testing.T) {
@@ -286,7 +288,7 @@ func TestTenantResourceRefConsistency(t *testing.T) {
 		model.Field{Name: "thing", GoName: "Thing", Column: "thing_id", Type: model.Type{Kind: model.KindRef},
 			Ref: &model.Ref{Resource: "alpha.Thing", OnDelete: "restrict"}})
 	d := Validate(a)
-	mustHave(t, d, "KS-SPEC-005", "non-tenant resource points at the tenant-scoped")
+	mustHave(t, d, "AM-SPEC-005", "non-tenant resource points at the tenant-scoped")
 }
 
 func TestDiagnosticsAreDeterministic(t *testing.T) {
@@ -299,8 +301,8 @@ func TestDiagnosticsAreDeterministic(t *testing.T) {
 			t.Fatalf("diagnostic output changed on run %d", i)
 		}
 	}
-	if !strings.Contains(first, `"docs": "ks explain KS-SPEC-004"`) {
-		t.Fatalf("diagnostics must point at ks explain: %s", first)
+	if !strings.Contains(first, `"docs": "am explain AM-SPEC-004"`) {
+		t.Fatalf("diagnostics must point at am explain: %s", first)
 	}
 }
 
@@ -308,7 +310,7 @@ func TestParseRejectsForeignSchemaVersion(t *testing.T) {
 	a := fixture()
 	raw := strings.Replace(string(a.Bytes()), `"schemaVersion": 1`, `"schemaVersion": 7`, 1)
 	_, d := Parse([]byte(raw))
-	mustHave(t, d, "KS-CODE-001", "schemaVersion 7")
+	mustHave(t, d, "AM-CODE-001", "schemaVersion 7")
 }
 
 func TestParseRoundTripsTheFixture(t *testing.T) {

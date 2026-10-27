@@ -6,16 +6,16 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 // cmdKeys manages the keys of Encrypted() fields (§9.4):
 //
-//	ks keys new      print a fresh key for KS_ENCRYPTION_KEY
-//	ks keys rotate   re-seal every value under the primary key
+//	am keys new      print a fresh key for AM_ENCRYPTION_KEY
+//	am keys rotate   re-seal every value under the primary key
 //
-// To rotate: set KS_ENCRYPTION_KEY to the new key, move the old one into
-// KS_ENCRYPTION_KEYS_OLD, deploy, run ks keys rotate, then drop the old key.
+// To rotate: set AM_ENCRYPTION_KEY to the new key, move the old one into
+// AM_ENCRYPTION_KEYS_OLD, deploy, run am keys rotate, then drop the old key.
 func cmdKeys(args []string) error {
 	fs, asJSON, err := flags("keys", args, nil)
 	if err != nil {
@@ -26,7 +26,7 @@ func cmdKeys(args []string) error {
 		fmt.Println(runtime.NewKey())
 		return nil
 	case "rotate":
-		url, err := databaseURL("KS_DATABASE_URL")
+		url, err := databaseURL("AM_DATABASE_URL")
 		if err != nil {
 			return err
 		}
@@ -41,7 +41,7 @@ func cmdKeys(args []string) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("usage: ks keys new|rotate")
+	return fmt.Errorf("usage: am keys new|rotate")
 }
 
 func rotateKeys(ctx context.Context, url string) (int, error) {
@@ -57,14 +57,14 @@ func rotateKeys(ctx context.Context, url string) (int, error) {
 		return 0, err
 	}
 	if keys == nil {
-		return 0, fmt.Errorf("set KS_ENCRYPTION_KEY to the new key and KS_ENCRYPTION_KEYS_OLD to the old ones")
+		return 0, fmt.Errorf("set AM_ENCRYPTION_KEY to the new key and AM_ENCRYPTION_KEYS_OLD to the old ones")
 	}
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		return 0, err
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, "SELECT set_config('ks.cross_tenant', 'on', false)"); err != nil {
+	if _, err := conn.Exec(ctx, "SELECT set_config('am.cross_tenant', 'on', false)"); err != nil {
 		return 0, err
 	}
 	total := 0

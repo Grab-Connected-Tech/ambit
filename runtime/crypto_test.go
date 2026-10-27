@@ -8,7 +8,7 @@ import (
 
 func TestKeyringSealsPerRowAndRotates(t *testing.T) {
 	old, cur := NewKey(), NewKey()
-	os.Setenv("KS_ENCRYPTION_KEY", old)
+	os.Setenv("AM_ENCRYPTION_KEY", old)
 	k1, err := KeyringFromConfig(&Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -27,10 +27,10 @@ func TestKeyringSealsPerRowAndRotates(t *testing.T) {
 		t.Fatal("a value copied to another column must not open")
 	}
 	// After rotation the old key is retired but still opens what it sealed.
-	os.Setenv("KS_ENCRYPTION_KEY", cur)
-	os.Setenv("KS_ENCRYPTION_KEYS_OLD", old)
-	defer os.Unsetenv("KS_ENCRYPTION_KEY")
-	defer os.Unsetenv("KS_ENCRYPTION_KEYS_OLD")
+	os.Setenv("AM_ENCRYPTION_KEY", cur)
+	os.Setenv("AM_ENCRYPTION_KEYS_OLD", old)
+	defer os.Unsetenv("AM_ENCRYPTION_KEY")
+	defer os.Unsetenv("AM_ENCRYPTION_KEYS_OLD")
 	k2, err := KeyringFromConfig(&Config{})
 	if err != nil {
 		t.Fatal(err)

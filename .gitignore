@@ -1,5 +1,5 @@
 *.test
 /dist/
 .DS_Store
-/example/myapp/.ks/
+/example/myapp/.am/
 tmp/

@@ -12,19 +12,19 @@ import (
 )
 
 // cmdInit creates a new app: go.mod, the app-level spec, one example module, config, a
-// CI workflow, and everything ks gen derives from them (§19).
+// CI workflow, and everything am gen derives from them (§19).
 func cmdInit(args []string) error {
 	var module, framework *string
 	fs, _, err := flags("init", args, func(fs *flag.FlagSet) {
 		module = fs.String("module", "", "Go module path (default: the name)")
-		framework = fs.String("framework", "", "local Keystone checkout to build against (adds a replace)")
+		framework = fs.String("framework", "", "local Ambit checkout to build against (adds a replace)")
 	})
 	if err != nil {
 		return err
 	}
 	name := fs.Arg(0)
 	if name == "" || strings.ContainsAny(name, `/\ `) {
-		return fmt.Errorf("usage: ks init <name>")
+		return fmt.Errorf("usage: am init <name>")
 	}
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("%s already exists", name)
@@ -36,22 +36,22 @@ func cmdInit(args []string) error {
 	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
 		version = bi.Main.Version
 	}
-	gomod := fmt.Sprintf("module %s\n\ngo 1.24\n\nrequire keystone.dev/keystone %s\n", *module, version)
+	gomod := fmt.Sprintf("module %s\n\ngo 1.24\n\nrequire github.com/abhilashiig/ambit %s\n", *module, version)
 	if *framework != "" {
 		abs, err := filepath.Abs(*framework)
 		if err != nil {
 			return err
 		}
-		gomod += "\nreplace keystone.dev/keystone => " + abs + "\n"
+		gomod += "\nreplace github.com/abhilashiig/ambit => " + abs + "\n"
 	}
 	files := map[string]string{
 		"go.mod":                   gomod,
 		"app/app.go":               initApp,
 		"app/tasks/spec.go":        strings.ReplaceAll(initTasks, "MODULE", *module),
-		"ks.yaml":                  "# Keystone configuration (§18.2). Secrets come from the environment.\nlimits:\n  queryBudget: 50\n",
-		".github/workflows/ks.yml": initCI,
-		"seed/001_example.sql":     "-- Seed rows for ks dev, loaded on start and on POST /_ks/reset.\n",
-		".gitignore":               "bin/\n.ks/\n",
+		"am.yaml":                  "# Ambit configuration (§18.2). Secrets come from the environment.\nlimits:\n  queryBudget: 50\n",
+		".github/workflows/am.yml": initCI,
+		"seed/001_example.sql":     "-- Seed rows for am dev, loaded on start and on POST /_am/reset.\n",
+		".gitignore":               "bin/\n.am/\n",
 	}
 	for path, body := range files {
 		full := filepath.Join(name, path)
@@ -68,7 +68,7 @@ func cmdInit(args []string) error {
 	tidy := exec.Command("go", "mod", "tidy")
 	tidy.Stderr = os.Stderr
 	if err := tidy.Run(); err != nil {
-		return errors.New("go mod tidy failed; pass --framework <keystone checkout> if the framework is not published")
+		return errors.New("go mod tidy failed; pass --framework <ambit checkout> if the framework is not published")
 	}
 	if err := cmdGen(nil); err != nil {
 		return err
@@ -78,7 +78,7 @@ func cmdInit(args []string) error {
 	if err := tidy.Run(); err != nil {
 		return err
 	}
-	fmt.Printf("created %s: edit app/tasks/spec.go, implement app/tasks/actions.go, then ks check && ks test\n", name)
+	fmt.Printf("created %s: edit app/tasks/spec.go, implement app/tasks/actions.go, then am check && am test\n", name)
 	return nil
 }
 
@@ -86,7 +86,7 @@ const initApp = `// Package app holds the app-level spec: actors, roles, tenancy
 package app
 
 import (
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 )
 
 // Org is the tenant: the top-level isolation boundary.
@@ -123,7 +123,7 @@ const initTasks = `// Package tasks is the example module. Humans own this spec;
 package tasks
 
 import (
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 
 	"MODULE/app"
 )
@@ -159,7 +159,7 @@ var ListTasks = s.Query("ListTasks",
 )
 `
 
-const initCI = `name: ks
+const initCI = `name: am
 on: [push, pull_request]
 jobs:
   check:
@@ -171,7 +171,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
     env:
-      KS_TEST_DB_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      AM_TEST_DB_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v4
         with:
@@ -179,10 +179,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install keystone.dev/keystone/cmd/ks@latest
-      - run: ks gen && git diff --exit-code
-      - run: ks check --strict
-      - run: ks test
-      - run: ks migrate verify
-      - run: ks diff --base origin/${{ github.base_ref || 'main' }} --format markdown
+      - run: go install github.com/abhilashiig/ambit/cmd/am@latest
+      - run: am gen && git diff --exit-code
+      - run: am check --strict
+      - run: am test
+      - run: am migrate verify
+      - run: am diff --base origin/${{ github.base_ref || 'main' }} --format markdown
 `

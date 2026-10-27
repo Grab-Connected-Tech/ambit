@@ -7,44 +7,44 @@ import (
 	"testing"
 	"time"
 
-	"keystone.dev/keystone/example/myapp/app"
-	"keystone.dev/keystone/example/myapp/gen"
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/kstest"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/amtest"
+	"github.com/abhilashiig/ambit/example/myapp/app"
+	"github.com/abhilashiig/ambit/example/myapp/gen"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 // world is one tenant with an accountant, a plain member and a draft invoice.
 type world struct {
-	env        *kstest.Env
-	org        ks.ID
-	accountant ks.Actor
-	member     ks.Actor
+	env        *amtest.Env
+	org        am.ID
+	accountant am.Actor
+	member     am.Actor
 	invoice    *gen.Invoice
 }
 
 func setup(t *testing.T) world {
-	env := kstest.New(t, gen.Model)
+	env := amtest.New(t, gen.Model)
 	org := env.Tenant()
 	acct := env.Actor(org, app.Accountant, app.Member)
-	cust := kstest.Create(env, gen.CustomerTable, gen.Customer{TenantID: org, Name: "Ada", Email: "ada@example.test", OwnerID: acct.ID})
-	inv := kstest.Create(env, gen.InvoiceTable, gen.Invoice{
-		TenantID: org, CustomerID: cust.ID, Amount: ks.MoneyOf(5000, "USD"),
-		Status: gen.InvoiceStatusDraft, Notes: ks.Set("net 30"),
+	cust := amtest.Create(env, gen.CustomerTable, gen.Customer{TenantID: org, Name: "Ada", Email: "ada@example.test", OwnerID: acct.ID})
+	inv := amtest.Create(env, gen.InvoiceTable, gen.Invoice{
+		TenantID: org, CustomerID: cust.ID, Amount: am.MoneyOf(5000, "USD"),
+		Status: gen.InvoiceStatusDraft, Notes: am.Set("net 30"),
 	})
 	return world{env: env, org: org, accountant: acct, member: env.Actor(org, app.Member), invoice: inv}
 }
 
 func TestSendInvoice(t *testing.T) {
 	w := setup(t)
-	out, err := kstest.Call(w.env, w.accountant, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
+	out, err := amtest.Call(w.env, w.accountant, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out.Status != gen.InvoiceStatusSent {
 		t.Fatalf("status %s, want sent", out.Status)
 	}
-	if at, _ := out.SentAt.Get(); !at.Equal(kstest.Epoch) {
+	if at, _ := out.SentAt.Get(); !at.Equal(amtest.Epoch) {
 		t.Fatalf("sent_at comes from the clock: got %v", at)
 	}
 	if n := len(w.env.Emails()); n != 1 {
@@ -53,8 +53,8 @@ func TestSendInvoice(t *testing.T) {
 	w.env.AssertQueriesAtMost(4)
 
 	// Sending twice is a declared failure, and its effect is rolled back with it.
-	_, err = kstest.Call(w.env, w.accountant, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
-	if ks.AsError(err).Code != "not_draft" {
+	_, err = amtest.Call(w.env, w.accountant, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
+	if am.AsError(err).Code != "not_draft" {
 		t.Fatalf("got %v, want not_draft", err)
 	}
 	if n := len(w.env.Emails()); n != 1 {
@@ -64,8 +64,8 @@ func TestSendInvoice(t *testing.T) {
 
 func TestSendInvoiceNeedsARole(t *testing.T) {
 	w := setup(t)
-	_, err := kstest.Call(w.env, w.member, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
-	if ks.AsError(err).Code != ks.CodeForbidden {
+	_, err := amtest.Call(w.env, w.member, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
+	if am.AsError(err).Code != am.CodeForbidden {
 		t.Fatalf("a member may not send: got %v", err)
 	}
 }
@@ -73,11 +73,11 @@ func TestSendInvoiceNeedsARole(t *testing.T) {
 func TestAnotherTenantCannotSeeTheInvoice(t *testing.T) {
 	w := setup(t)
 	other := w.env.Actor(w.env.Tenant(), app.Admin, app.Accountant, app.Member)
-	_, err := kstest.Call(w.env, other, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
-	if ks.AsError(err).Code != ks.CodeNotFound {
+	_, err := amtest.Call(w.env, other, gen.SendInvoiceHandler, Actions.SendInvoice, gen.SendInvoiceInput{InvoiceID: w.invoice.ID})
+	if am.AsError(err).Code != am.CodeNotFound {
 		t.Fatalf("another tenant's row is invisible, not forbidden: got %v", err)
 	}
-	page, err := kstest.Call(w.env, other, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
+	page, err := amtest.Call(w.env, other, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,14 +89,14 @@ func TestAnotherTenantCannotSeeTheInvoice(t *testing.T) {
 func TestMarkPaid(t *testing.T) {
 	w := setup(t)
 	w.env.StubHTTP("api.psp.example", []byte(`{"captured":true}`))
-	_, err := kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid,
-		gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: ks.MoneyOf(4000, "USD"), PspChargeID: "ch_1"})
-	if ks.AsError(err).Code != "amount_mismatch" {
+	_, err := amtest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid,
+		gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: am.MoneyOf(4000, "USD"), PspChargeID: "ch_1"})
+	if am.AsError(err).Code != "amount_mismatch" {
 		t.Fatalf("got %v, want amount_mismatch", err)
 	}
 	w.env.Clock.Advance(time.Hour)
-	out, err := kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid,
-		gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: ks.MoneyOf(5000, "USD"), PspChargeID: "ch_1"})
+	out, err := amtest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid,
+		gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: am.MoneyOf(5000, "USD"), PspChargeID: "ch_1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,16 +105,16 @@ func TestMarkPaid(t *testing.T) {
 	}
 	// A paid invoice is outside the Update rule (draft or sent), so a second payment
 	// cannot even see it as writable.
-	_, err = kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid,
-		gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: ks.MoneyOf(5000, "USD"), PspChargeID: "ch_2"})
-	if code := ks.AsError(err).Code; code != "already_paid" {
+	_, err = amtest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid,
+		gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: am.MoneyOf(5000, "USD"), PspChargeID: "ch_2"})
+	if code := am.AsError(err).Code; code != "already_paid" {
 		t.Fatalf("got %v, want already_paid", err)
 	}
 }
 
 func TestListInvoicesHidesNotesFromMembers(t *testing.T) {
 	w := setup(t)
-	page, err := kstest.Call(w.env, w.member, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
+	page, err := amtest.Call(w.env, w.member, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestListInvoicesHidesNotesFromMembers(t *testing.T) {
 	if page.Rows[0].Notes.Present() {
 		t.Fatal("notes are readable by admins and accountants only")
 	}
-	page, err = kstest.Call(w.env, w.accountant, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
+	page, err = amtest.Call(w.env, w.accountant, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestListInvoicesHidesNotesFromMembers(t *testing.T) {
 
 func TestCountDrafts(t *testing.T) {
 	w := setup(t)
-	out, err := kstest.Call(w.env, w.member, gen.CountDraftsHandler, Actions.CountDrafts, gen.CountDraftsInput{})
+	out, err := amtest.Call(w.env, w.member, gen.CountDraftsHandler, Actions.CountDrafts, gen.CountDraftsInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +147,8 @@ func TestCountDrafts(t *testing.T) {
 
 func TestSendRemindersRunsAsSystem(t *testing.T) {
 	w := setup(t)
-	system := ks.Actor{Kind: ks.ActorSystem, ID: w.org, Tenant: w.org, Authed: true}
-	if _, err := kstest.Call(w.env, system, gen.SendRemindersHandler, Actions.SendReminders, gen.SendRemindersInput{}); err != nil {
+	system := am.Actor{Kind: am.ActorSystem, ID: w.org, Tenant: w.org, Authed: true}
+	if _, err := amtest.Call(w.env, system, gen.SendRemindersHandler, Actions.SendReminders, gen.SendRemindersInput{}); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(w.env.Emails()); n != 1 {
@@ -157,26 +157,26 @@ func TestSendRemindersRunsAsSystem(t *testing.T) {
 }
 
 func TestFuzzBillingActions(t *testing.T) {
-	env := kstest.New(t, gen.Model)
-	kstest.Fuzz(env, gen.SendInvoiceHandler, Actions.SendInvoice, 40)
+	env := amtest.New(t, gen.Model)
+	amtest.Fuzz(env, gen.SendInvoiceHandler, Actions.SendInvoice, 40)
 	env.StubHTTP("api.psp.example", []byte(`{"captured":true}`))
-	kstest.Fuzz(env, gen.MarkPaidHandler, Actions.MarkPaid, 40)
-	kstest.Fuzz(env, gen.ListInvoicesHandler, Actions.ListInvoices, 40)
+	amtest.Fuzz(env, gen.MarkPaidHandler, Actions.MarkPaid, 40)
+	amtest.Fuzz(env, gen.ListInvoicesHandler, Actions.ListInvoices, 40)
 }
 
 func TestTaxIDIsEncryptedAtRest(t *testing.T) {
 	w := setup(t)
 	admin := w.env.Actor(w.org, app.Admin, app.Member)
-	inv := kstest.Create(w.env, gen.InvoiceTable, gen.Invoice{
-		TenantID: w.org, CustomerID: w.invoice.CustomerID, Amount: ks.MoneyOf(100, "USD"),
-		Status: gen.InvoiceStatusDraft, TaxId: ks.Set("DE123456789"),
+	inv := amtest.Create(w.env, gen.InvoiceTable, gen.Invoice{
+		TenantID: w.org, CustomerID: w.invoice.CustomerID, Amount: am.MoneyOf(100, "USD"),
+		Status: gen.InvoiceStatusDraft, TaxId: am.Set("DE123456789"),
 	})
 	var raw []byte
 	w.env.QueryRow(`SELECT tax_id FROM invoice WHERE id = $1`, []any{inv.ID}, &raw)
 	if len(raw) == 0 || strings.Contains(string(raw), "DE123456789") {
 		t.Fatalf("tax_id is stored in the clear: %q", raw)
 	}
-	page, err := kstest.Call(w.env, admin, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
+	page, err := amtest.Call(w.env, admin, gen.ListInvoicesHandler, Actions.ListInvoices, gen.ListInvoicesInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestAFailedPaymentWriteRefundsTheCapture(t *testing.T) {
 	w.env.StubHTTP("api.psp.example", []byte(`{"captured":true}`))
 	refunds := func() int {
 		var n int
-		w.env.QueryRow(`SELECT count(*) FROM ks_jobs WHERE action = 'billing.RefundCharge'`, nil, &n)
+		w.env.QueryRow(`SELECT count(*) FROM am_jobs WHERE action = 'billing.RefundCharge'`, nil, &n)
 		return n
 	}
 	// The capture is confirmed, then the action fails: the transaction rolls back, the
@@ -237,8 +237,8 @@ func TestAFailedPaymentWriteRefundsTheCapture(t *testing.T) {
 		}
 		return nil, gen.ErrMarkPaidAmountMismatch()
 	}
-	in := gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: ks.MoneyOf(5000, "USD"), PspChargeID: "ch_9"}
-	if _, err := kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, failing, in); err == nil {
+	in := gen.MarkPaidInput{InvoiceID: w.invoice.ID, Amount: am.MoneyOf(5000, "USD"), PspChargeID: "ch_9"}
+	if _, err := amtest.Call(w.env, w.accountant, gen.MarkPaidHandler, failing, in); err == nil {
 		t.Fatal("the action fails")
 	}
 	if n := refunds(); n != 1 {
@@ -266,7 +266,7 @@ func TestAFailedPaymentWriteRefundsTheCapture(t *testing.T) {
 		t.Fatalf("the refund effect names the capture: %+v", w.env.Effects())
 	}
 	// A payment that commits queues nothing.
-	if _, err := kstest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid, in); err != nil {
+	if _, err := amtest.Call(w.env, w.accountant, gen.MarkPaidHandler, Actions.MarkPaid, in); err != nil {
 		t.Fatal(err)
 	}
 	if n := refunds(); n != 1 {

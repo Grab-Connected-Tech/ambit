@@ -1,5 +1,5 @@
 // Package run applies planned migrations to a database (§13.1). It reads the plan files
-// from any fs.FS, so ks migrate reads migrations/ on disk and an app binary reads the
+// from any fs.FS, so am migrate reads migrations/ on disk and an app binary reads the
 // copy embedded in it.
 package run
 
@@ -20,8 +20,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/migrate"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/migrate"
 )
 
 var migrationName = regexp.MustCompile(`^(\d{4})_([a-z0-9_]+)\.plan\.json$`)
@@ -67,7 +67,7 @@ func checksum(b []byte) string {
 type appliedRow struct{ Checksum, ModelHash string }
 
 func applied(ctx context.Context, conn *pgx.Conn) (map[string]appliedRow, error) {
-	rows, err := conn.Query(ctx, `SELECT version, checksum, model_hash FROM ks_migrations`)
+	rows, err := conn.Query(ctx, `SELECT version, checksum, model_hash FROM am_migrations`)
 	if err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "42P01" {
@@ -119,14 +119,14 @@ func Status(ctx context.Context, conn *pgx.Conn, fsys fs.FS) ([]StatusRow, []Mig
 	return out, all, nil
 }
 
-// Modified is the KS-MIG-002 refusal for an applied plan that was edited.
+// Modified is the AM-MIG-002 refusal for an applied plan that was edited.
 func Modified(r StatusRow) error {
-	return fmt.Errorf("KS-MIG-002: applied migration %s_%s was edited; applied migrations are immutable, plan a new one instead", r.Version, r.Name)
+	return fmt.Errorf("AM-MIG-002: applied migration %s_%s was edited; applied migrations are immutable, plan a new one instead", r.Version, r.Name)
 }
 
 // Apply runs every pending migration in order and returns the ones it ran. allowed holds
 // the flags a plan's steps may require (--allow-destructive, --plan); each must be given
-// before anything runs (KS-MIG-001).
+// before anything runs (AM-MIG-001).
 func Apply(ctx context.Context, conn *pgx.Conn, fsys fs.FS, allowed map[string]bool) ([]string, error) {
 	rows, all, err := Status(ctx, conn, fsys)
 	if err != nil {
@@ -143,7 +143,7 @@ func Apply(ctx context.Context, conn *pgx.Conn, fsys fs.FS, allowed map[string]b
 		m := all[i]
 		for _, s := range m.Plan.Steps {
 			if s.NeedsFlag != "" && !allowed[s.NeedsFlag] {
-				return ran, fmt.Errorf("KS-MIG-001: %s_%s step %q (%s) needs %s", m.Version, m.Name, s.Detail, s.Class, s.NeedsFlag)
+				return ran, fmt.Errorf("AM-MIG-001: %s_%s step %q (%s) needs %s", m.Version, m.Name, s.Detail, s.Class, s.NeedsFlag)
 			}
 			if s.Backfill != nil && strings.TrimSpace(s.Backfill.Set) == "" {
 				return ran, fmt.Errorf("%s_%s step %q backfills %s.%s: write the value each existing row gets into the plan's backfill.set",
@@ -200,26 +200,26 @@ func ApplyOne(ctx context.Context, conn *pgx.Conn, m Migration, destructive bool
 		}
 	}
 	_, err := conn.Exec(ctx,
-		`INSERT INTO ks_migrations (version, name, checksum, model_hash, destructive_allowed) VALUES ($1, $2, $3, $4, $5)`,
+		`INSERT INTO am_migrations (version, name, checksum, model_hash, destructive_allowed) VALUES ($1, $2, $3, $4, $5)`,
 		m.Version, m.Name, m.Checksum, m.Plan.ModelHash, destructive)
 	return err
 }
 
 // backfill fills a column's nulls in batches keyed by primary key, one transaction per
-// batch, recording the cursor in ks_backfills so an interrupted run resumes where it
+// batch, recording the cursor in am_backfills so an interrupted run resumes where it
 // stopped rather than starting over (§13.3).
 func backfill(ctx context.Context, conn *pgx.Conn, version string, b migrate.Backfill) error {
 	if b.Batch <= 0 {
 		b.Batch = 1000
 	}
 	// The migration role writes every tenant's rows.
-	if _, err := conn.Exec(ctx, "SELECT set_config('ks.cross_tenant', 'on', false)"); err != nil {
+	if _, err := conn.Exec(ctx, "SELECT set_config('am.cross_tenant', 'on', false)"); err != nil {
 		return err
 	}
 	var cursor string
-	err := conn.QueryRow(ctx, `INSERT INTO ks_backfills (id, version, column_name, cursor) VALUES ($1, $2, $3, '""')
+	err := conn.QueryRow(ctx, `INSERT INTO am_backfills (id, version, column_name, cursor) VALUES ($1, $2, $3, '""')
 		ON CONFLICT (version, column_name) DO UPDATE SET updated_at = now()
-		RETURNING coalesce(cursor #>> '{}', '')`, ks.NewID(), version, b.Table+"."+b.Column).Scan(&cursor)
+		RETURNING coalesce(cursor #>> '{}', '')`, am.NewID(), version, b.Table+"."+b.Column).Scan(&cursor)
 	if err != nil {
 		return err
 	}
@@ -235,7 +235,7 @@ func backfill(ctx context.Context, conn *pgx.Conn, version string, b migrate.Bac
 			if err != nil || n == 0 {
 				return err
 			}
-			_, err = tx.Exec(ctx, `UPDATE ks_backfills SET cursor = to_jsonb($3::text), rows_done = rows_done + $4, state = 'running', updated_at = now()
+			_, err = tx.Exec(ctx, `UPDATE am_backfills SET cursor = to_jsonb($3::text), rows_done = rows_done + $4, state = 'running', updated_at = now()
 				WHERE version = $1 AND column_name = $2`, version, b.Table+"."+b.Column, last, n)
 			return err
 		})
@@ -247,7 +247,7 @@ func backfill(ctx context.Context, conn *pgx.Conn, version string, b migrate.Bac
 		}
 		cursor = last
 	}
-	_, err = conn.Exec(ctx, `UPDATE ks_backfills SET state = 'done', updated_at = now() WHERE version = $1 AND column_name = $2`,
+	_, err = conn.Exec(ctx, `UPDATE am_backfills SET state = 'done', updated_at = now() WHERE version = $1 AND column_name = $2`,
 		version, b.Table+"."+b.Column)
 	return err
 }
@@ -274,7 +274,7 @@ func Main(ctx context.Context, fsys fs.FS, databaseURL string, args []string) in
 		}
 	}
 	if databaseURL == "" {
-		fmt.Fprintln(os.Stderr, "migrate: set KS_DATABASE_URL")
+		fmt.Fprintln(os.Stderr, "migrate: set AM_DATABASE_URL")
 		return 2
 	}
 	conn, err := pgx.Connect(ctx, databaseURL)

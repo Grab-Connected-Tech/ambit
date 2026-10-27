@@ -123,7 +123,7 @@
   },
   "membership": {
     "name": "Membership",
-    "table": "ks_membership",
+    "table": "am_membership",
     "fields": [
       {
         "name": "id",
