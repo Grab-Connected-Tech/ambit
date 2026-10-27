@@ -39,6 +39,12 @@ func (in *CreateCustomerInput) Validate() *ks.Error {
 	if !validEmail(in.Email) {
 		return ks.Invalid("email", "is not an email address")
 	}
+	if in.Owner.Present() {
+		v, _ := in.Owner.Get()
+		if malformedID(v) {
+			return ks.Invalid("owner", "is not an id")
+		}
+	}
 	return nil
 }
 
@@ -120,6 +126,9 @@ func (in *GetCustomerInput) Validate() *ks.Error {
 	if in.CustomerID.IsNil() {
 		return ks.Invalid("customer_id", "is required")
 	}
+	if malformedID(in.CustomerID) {
+		return ks.Invalid("customer_id", "is not an id")
+	}
 	return nil
 }
 
@@ -188,6 +197,12 @@ type ListCustomersInput struct {
 func (in *ListCustomersInput) Validate() *ks.Error {
 	if in == nil {
 		return ks.Invalid("body", "the request has no body")
+	}
+	if in.Owner.Present() {
+		v, _ := in.Owner.Get()
+		if malformedID(v) {
+			return ks.Invalid("owner", "is not an id")
+		}
 	}
 	if in.Q.Present() {
 		v, _ := in.Q.Get()

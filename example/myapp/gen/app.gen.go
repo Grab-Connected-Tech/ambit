@@ -53,6 +53,9 @@ var emailPattern = regexp.MustCompile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 
 func validEmail(s string) bool { return emailPattern.MatchString(s) }
 
+// malformedID reports an id that is present but not a UUID; absent is a separate rule.
+func malformedID(id ks.ID) bool { return !id.IsNil() && !id.IsValid() }
+
 var patterns patternCache
 
 // syncMap caches compiled regexes; a pattern in a validation is written once and read on

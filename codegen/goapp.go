@@ -53,6 +53,9 @@ var emailPattern = regexp.MustCompile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 
 func validEmail(s string) bool { return emailPattern.MatchString(s) }
 
+// malformedID reports an id that is present but not a UUID; absent is a separate rule.
+func malformedID(id ks.ID) bool { return !id.IsNil() && !id.IsValid() }
+
 var patterns patternCache
 
 // syncMap caches compiled regexes; a pattern in a validation is written once and read on
@@ -234,6 +237,38 @@ func writeGoMain(b *strings.Builder, app *model.App, o Options) error {
 	}
 	b.WriteString("\t}\n\tif err := gen.Serve(ctx, handlers); err != nil {\n\t\tfmt.Fprintln(os.Stderr, err)\n\t\tos.Exit(1)\n\t}\n}\n")
 	return nil
+}
+
+// rulesTest emits gen/rules_test.go: the generated tests of §16.2. They name each module
+// resource's table and wrap each action's adapter around a stub, and kstest derives the
+// cases from the model, so the tests regenerate with the spec and cannot drift from it.
+func rulesTest(app *model.App) []byte {
+	var b strings.Builder
+	b.WriteString(header + "\npackage gen\n\nimport (\n\t\"testing\"\n\n\t\"keystone.dev/keystone/kstest\"\n\t\"keystone.dev/keystone/runtime\"\n)\n\n")
+	b.WriteString("// TestGeneratedRules proves tenant isolation, the access matrix, field rules,\n// invariants, authorization and input validation for every declaration (§16.2).\n")
+	b.WriteString("func TestGeneratedRules(t *testing.T) {\n")
+	mods := append([]model.Module(nil), app.Modules...)
+	sort.Slice(mods, func(i, j int) bool { return mods[i].Name < mods[j].Name })
+	var handlers []string
+	for _, m := range mods {
+		res := append([]model.Resource(nil), m.Resources...)
+		sort.Slice(res, func(i, j int) bool { return res[i].Name < res[j].Name })
+		for _, r := range res {
+			fmt.Fprintf(&b, "\tt.Run(%q, func(t *testing.T) { kstest.TableRules(t, Model, %sTable) })\n", model.Qual(m.Name, r.Name), r.Name)
+		}
+		acts := append([]model.Action(nil), m.Actions...)
+		sort.Slice(acts, func(i, j int) bool { return acts[i].Name < acts[j].Name })
+		for _, a := range acts {
+			if a.Kind == model.KindSchedule || a.Kind == model.KindJob {
+				continue
+			}
+			out, ptr := outputType(app, &a)
+			out = pointer(out, ptr)
+			handlers = append(handlers, fmt.Sprintf("\t\t%sHandler(func(*%sCtx, %sInput) (%s, error) { var zero %s; return zero, nil }),\n", a.Name, a.Name, a.Name, out, out))
+		}
+	}
+	b.WriteString("\tkstest.ActionRules(t, Model, []*runtime.Handler{\n" + strings.Join(handlers, "") + "\t})\n}\n")
+	return []byte(b.String())
 }
 
 // writeActionStubs gives a module with actions but no actions.go a starting one: the

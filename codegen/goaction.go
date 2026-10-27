@@ -304,6 +304,7 @@ func validations(f *model.Field, expr string) []string {
 		if !f.Optional {
 			add("V.IsNil()", "is required")
 		}
+		add("malformedID(V)", "is not an id")
 	case f.Type.Kind == model.KindText, f.Type.Kind == model.KindURL:
 		if f.Type.MaxLen != nil {
 			add("len(V) > "+fmt.Sprint(*f.Type.MaxLen), "is too long")

@@ -231,7 +231,7 @@ func (e *Env) Tenant(fields ...map[string]any) ks.ID {
 	if columnOf(e.Model.Tenant.Fields, "tenant_id") {
 		set["tenant_id"] = id // the tenant row is its own tenant
 	}
-	e.insert(e.Model.Tenant.Table, e.Model.Tenant.Fields, id, set)
+	e.insertIn(e.Model.Tenant.Table, e.Model.Tenant.Fields, id, set, id)
 	return id
 }
 
@@ -241,13 +241,17 @@ func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
 	e.T.Helper()
 	a := ks.Actor{Kind: ks.ActorUser, ID: ks.NewID(), Tenant: tenant, Authed: true}
 	for _, r := range roles {
+		var name string
 		switch r := r.(type) {
 		case string:
-			a.Roles = append(a.Roles, r)
+			name = r
 		case interface{ Name() string }:
-			a.Roles = append(a.Roles, r.Name())
+			name = r.Name()
 		default:
 			e.T.Fatalf("kstest: a role is a string or a spec role, not %T", r)
+		}
+		if !contains(a.Roles, name) {
+			a.Roles = append(a.Roles, name)
 		}
 	}
 	if acc := e.Model.Account; acc != nil {
@@ -255,7 +259,7 @@ func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
 		if columnOf(acc.Fields, "tenant_id") {
 			set["tenant_id"] = tenant
 		}
-		e.insert(acc.Table, acc.Fields, a.ID, set)
+		e.insertIn(acc.Table, acc.Fields, a.ID, set, tenant)
 	}
 	e.system(func(tx pgx.Tx) error {
 		for _, role := range a.Roles {
@@ -270,15 +274,36 @@ func (e *Env) Actor(tenant ks.ID, roles ...any) ks.Actor {
 	return a
 }
 
-// insert writes one row: the given values, the framework columns, and a placeholder for
-// every other required field without a default.
-func (e *Env) insert(table string, fields []model.Field, id ks.ID, set map[string]any) {
+// insertIn writes one row: the given values, the framework columns, a fixture for every
+// required reference (in the same tenant), and a placeholder for every other required
+// field without a default.
+func (e *Env) insertIn(table string, fields []model.Field, id ks.ID, set map[string]any, tenant ks.ID) {
+	e.T.Helper()
+	cols, args := e.rowValues(fields, id, set, tenant)
+	e.exec(table, cols, args)
+}
+
+func (e *Env) rowValues(fields []model.Field, id ks.ID, set map[string]any, tenant ks.ID) ([]string, []any) {
 	e.T.Helper()
 	cols := []string{"id"}
 	args := []any{id}
 	for _, f := range fields {
 		switch f.Column {
 		case "id", "created_at", "updated_at", "version":
+			continue
+		}
+		if f.Column == "tenant_id" && !columnSet(set, "tenant_id") {
+			continue
+		}
+		if f.Type.Kind == model.KindMoney && len(f.Columns) == 2 {
+			minor, has := set[f.Columns[0]]
+			if !has {
+				if f.Optional || f.Default != nil {
+					continue
+				}
+				minor = int64(1) // positive: money invariants usually ask for it
+			}
+			cols, args = append(cols, f.Columns[0], f.Columns[1]), append(args, minor, currency(f))
 			continue
 		}
 		if v, ok := set[f.Column]; ok {
@@ -288,32 +313,37 @@ func (e *Env) insert(table string, fields []model.Field, id ks.ID, set map[strin
 		if f.Optional || f.Default != nil {
 			continue
 		}
-		if f.Type.Kind == model.KindMoney && len(f.Columns) == 2 {
-			cur := f.Type.Currency
-			if cur == "" {
-				cur = "USD"
-			}
-			cols, args = append(cols, f.Columns[0], f.Columns[1]), append(args, int64(0), cur)
+		if f.Ref != nil {
+			cols, args = append(cols, f.Column), append(args, e.Fixture(f.Ref.Resource, tenant))
 			continue
 		}
 		v, ok := placeholder(f, e.Clock.Now())
 		if !ok {
-			e.T.Fatalf("kstest: %s.%s is required and has no placeholder; pass it explicitly", table, f.Column)
+			e.T.Fatalf("kstest: %s is required and has no placeholder; pass it explicitly", f.Column)
 		}
 		cols, args = append(cols, f.Column), append(args, v)
 	}
-	e.exec(table, cols, args)
+	return cols, args
+}
+
+func columnSet(set map[string]any, col string) bool {
+	_, ok := set[col]
+	return ok
+}
+
+func insertSQL(table string, cols []string) (string, int) {
+	params := make([]string, len(cols))
+	quoted := make([]string, len(cols))
+	for i := range cols {
+		params[i] = fmt.Sprintf("$%d", i+1)
+		quoted[i] = `"` + cols[i] + `"`
+	}
+	return fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s)`, table, strings.Join(quoted, ", "), strings.Join(params, ", ")), len(cols)
 }
 
 func (e *Env) exec(table string, cols []string, args []any) {
 	e.T.Helper()
-	params := make([]string, len(args))
-	quoted := make([]string, len(cols))
-	for i := range args {
-		params[i] = fmt.Sprintf("$%d", i+1)
-		quoted[i] = `"` + cols[i] + `"`
-	}
-	sql := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s)`, table, strings.Join(quoted, ", "), strings.Join(params, ", "))
+	sql, _ := insertSQL(table, cols)
 	e.system(func(tx pgx.Tx) error {
 		_, err := tx.Exec(context.Background(), sql, args...)
 		return err

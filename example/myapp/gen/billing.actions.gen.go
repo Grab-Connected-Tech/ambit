@@ -234,6 +234,9 @@ func (in *MarkPaidInput) Validate() *ks.Error {
 	if in.InvoiceID.IsNil() {
 		return ks.Invalid("invoice_id", "is required")
 	}
+	if malformedID(in.InvoiceID) {
+		return ks.Invalid("invoice_id", "is not an id")
+	}
 	if len(in.PspChargeID) > 200 {
 		return ks.Invalid("psp_charge_id", "is too long")
 	}
@@ -329,6 +332,9 @@ func (in *SendInvoiceInput) Validate() *ks.Error {
 	}
 	if in.InvoiceID.IsNil() {
 		return ks.Invalid("invoice_id", "is required")
+	}
+	if malformedID(in.InvoiceID) {
+		return ks.Invalid("invoice_id", "is not an id")
 	}
 	return nil
 }

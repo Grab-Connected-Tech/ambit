@@ -195,6 +195,10 @@ func Generate(o Options) (*Result, error) {
 		return nil, err
 	}
 
+	if err := write(filepath.Join(goDir, "rules_test.go"), rulesTest(app), true); err != nil {
+		return nil, err
+	}
+
 	stubs, err := writeActionStubs(app, o)
 	if err != nil {
 		return nil, err
