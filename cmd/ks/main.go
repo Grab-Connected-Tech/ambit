@@ -42,6 +42,7 @@ const usage = `usage: ks <command> [flags]
   docs --llm [--out file]           write the single-file framework reference for models
   perf [--min-rows n]               explain captured queries; flag scans that need an index
   bench [<module.Action>] [--max-p95 ms]  load-test actions: latency percentiles, allocations
+  upgrade [version]                 move to another framework version, regenerate, plan
   outbox list|inspect|replay        operate on pending and dead-lettered effects
   jobs list|inspect|replay          operate on jobs
 
@@ -63,7 +64,7 @@ func main() {
 		"init": cmdInit, "gen": cmdGen, "check": cmdCheck, "test": cmdTest, "diff": cmdDiff,
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
 		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
-		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs, "perf": cmdPerf, "bench": cmdBench,
+		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs, "perf": cmdPerf, "bench": cmdBench, "upgrade": cmdUpgrade,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {
