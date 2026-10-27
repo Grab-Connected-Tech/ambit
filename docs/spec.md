@@ -1,15 +1,15 @@
-# The spec language
+# <img src="assets/logo/svg/ambit-mark.svg" alt="" width="28" height="28"> The spec language
 
 A spec is Go code that only declares things. Each module's `spec.go` holds package-level
 `var` declarations built from the `spec` package, imported as `s`. Spec files may not contain
-functions or control flow (`ks check` enforces this, rule KS-SPEC-001). `ks gen` runs the
+functions or control flow (`am check` enforces this, rule AM-SPEC-001). `am gen` runs the
 declarations once at build time and compiles them into `app.model.json`.
 
 ```go
 package billing
 
 import (
-	s "keystone.dev/keystone/spec"
+	s "github.com/abhilashiig/ambit/spec"
 
 	"myapp/app"
 	"myapp/app/customers"
@@ -75,27 +75,27 @@ automatically. The table name is the snake-cased resource name.
 
 | Builder | Go type in `gen` | Notes |
 | --- | --- | --- |
-| `s.Text(name)` | `string` | Add `.MaxLen(n)`: a text field without one is a warning (KS-DATA-004) |
+| `s.Text(name)` | `string` | Add `.MaxLen(n)`: a text field without one is a warning (AM-DATA-004) |
 | `s.Int(name)` | `int64` | `.Min(n)`, `.Max(n)` |
-| `s.Decimal(name)` | `ks.Decimal` | `.Precision(p)`, `.Scale(s)`; travels as a string in JSON |
-| `s.Money(name)` | `ks.Money` | Minor units plus currency (`.Currency("EUR")`); JSON `{"minor":1250,"currency":"EUR"}` |
+| `s.Decimal(name)` | `am.Decimal` | `.Precision(p)`, `.Scale(s)`; travels as a string in JSON |
+| `s.Money(name)` | `am.Money` | Minor units plus currency (`.Currency("EUR")`); JSON `{"minor":1250,"currency":"EUR"}` |
 | `s.Bool(name)` | `bool` | |
 | `s.Timestamp(name)`, `s.Date(name)` | `time.Time` | `.DefaultNow()` |
 | `s.Enum(name, values...)` | a generated named string type | e.g. `gen.InvoiceStatusDraft` |
 | `s.Email(name)`, `s.URL(name)` | `string` | Validated on input; `.Schemes(...)` for URLs |
 | `s.JSON(name)`, `s.Bytes(name)` | raw JSON, `[]byte` | `.MaxSize(n)` |
-| `s.ID(name, resource)` | `ks.ID` | An id input that refers to a resource |
-| `s.Ref(name, resource)` | `ks.ID` (`<Name>ID`) | A foreign key; `.OnDelete("restrict"\|"cascade"\|"set_null")` |
+| `s.ID(name, resource)` | `am.ID` | An id input that refers to a resource |
+| `s.Ref(name, resource)` | `am.ID` (`<Name>ID`) | A foreign key; `.OnDelete("restrict"\|"cascade"\|"set_null")` |
 
 Modifiers that apply to any field:
 
 | Modifier | Meaning |
 | --- | --- |
-| `.Optional()` | May be absent. The Go type becomes `ks.Opt[T]` |
+| `.Optional()` | May be absent. The Go type becomes `am.Opt[T]` |
 | `.Default(v)` | Value when absent on insert |
 | `.Unique()` | Unique (within the tenant, for tenant resources) |
 | `.Immutable()` | Cannot change after insert (enforced by a trigger) |
-| `.Sensitive()` | Redacted from logs, traces and audit diffs. Pair with a `FieldRead` rule (KS-SEC-007) |
+| `.Sensitive()` | Redacted from logs, traces and audit diffs. Pair with a `FieldRead` rule (AM-SEC-007) |
 | `.Pattern(re)`, `.MinLen(n)`, `.Trim()` | Input validation |
 | `.RenameFrom("old")` | Lets a migration rename a column instead of dropping and re-adding it |
 | `s.Encrypted(field)` | Encrypted at rest with the app's key; see [Operations](operations.md#encryption-at-rest) |
@@ -147,7 +147,7 @@ s.Access(
 - **Hidden fields.** A field the caller may not read is never fetched. It comes back absent
   (or zero, for a required field).
 - **Tenant isolation is implicit.** No rule can express it away. Reading across tenants needs
-  `s.CrossTenant()` on the action, and `ks diff` always ranks that high-risk.
+  `s.CrossTenant()` on the action, and `am diff` always ranks that high-risk.
 
 ## Actions
 
@@ -189,7 +189,7 @@ var DailyReminders = s.Schedule("DailyReminders", s.Cron("0 9 * * *"), s.Runs(Se
 | --- | --- |
 | `Input(fields...)` | Typed, validated input. Uses the same builders as fields; `s.FieldOf(res, "f")` reuses one |
 | `Returns(res)`, `Returns(s.Page(res))`, `Returns(fields...)` | The output |
-| `Requires(rule)` / `Public()` | Who may call it. Public mutations need a rate limit (KS-SEC-005) |
+| `Requires(rule)` / `Public()` | Who may call it. Public mutations need a rate limit (AM-SEC-005) |
 | `Reads`, `Writes`, `Calls`, `Effects` | The only data, other actions and side effects the code can reach |
 | `Errors(codes...)` | Declared failure codes, each with a typed constructor and a client type |
 | `RateLimit(s.PerActor/PerIP/PerTenant(n, period))` | Request limits |
@@ -199,7 +199,7 @@ var DailyReminders = s.Schedule("DailyReminders", s.Cron("0 9 * * *"), s.Runs(Se
 | `Get()` | Also answer `GET` with query parameters |
 | `ReplicaOK()`, `Serializable()` | Read from the replica; serializable isolation with automatic retries |
 | `CrossTenant()` | May read across tenants (high-risk in the diff) |
-| `Deprecated(reason)` | Shown in the client. Breaking API changes need a release of this first (KS-API-001) |
+| `Deprecated(reason)` | Shown in the client. Breaking API changes need a release of this first (AM-API-001) |
 
 ## Effects
 
@@ -223,3 +223,7 @@ s.HTTP(s.Hosts("api.psp.example")).Immediate().Compensate("billing.RefundCharge"
 
 The compensating job receives the original effect call and the provider's response as its
 input (`in.Effect`, `in.Result`).
+
+---
+
+<sub>Ambit is built and maintained by [Grab Connected Tech](https://www.grabians.com/). Need a team to build or scale a product on Ambit? Write to [hello@grabians.com](mailto:hello@grabians.com).</sub>

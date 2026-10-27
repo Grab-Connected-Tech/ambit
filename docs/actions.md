@@ -1,4 +1,4 @@
-# Writing actions
+# <img src="assets/logo/svg/ambit-mark.svg" alt="" width="28" height="28"> Writing actions
 
 An action is a function with a signature fixed by its spec. Implementations live in the
 module's `actions.go`, in an `Actions` table that the generated entrypoint wires up. If a
@@ -9,8 +9,8 @@ package billing
 
 import (
 	"myapp/gen"
-	"keystone.dev/keystone/ks"
-	"keystone.dev/keystone/runtime"
+	"github.com/abhilashiig/ambit/am"
+	"github.com/abhilashiig/ambit/runtime"
 )
 
 var Actions = struct {
@@ -22,8 +22,8 @@ var Actions = struct {
 }
 ```
 
-`ks gen` writes this file with `ks.NotImplemented()` stubs the first time. After that the file
-is yours: regeneration never touches it. `ks new action` adds an entry for you.
+`am gen` writes this file with `am.NotImplemented()` stubs the first time. After that the file
+is yours: regeneration never touches it. `am new action` adds an entry for you.
 
 ## The context
 
@@ -35,12 +35,12 @@ is yours: regeneration never touches it. `ks new action` adds an entry for you.
 | `c.Actor` | The caller: `ID`, `Tenant`, `Roles`, `Kind` (`user`, `service`, `system`) |
 | `c.DB` | One view per resource the spec lists in `Reads`/`Writes`, e.g. `c.DB.Invoices` |
 | `c.Email`, `c.HTTP`, ... | One handle per declared effect |
-| `c.Clock` | The time. Use `c.Clock.Now()`, never `time.Now()` (KS-CODE-004), so tests control it |
+| `c.Clock` | The time. Use `c.Clock.Now()`, never `time.Now()` (AM-CODE-004), so tests control it |
 | `c.Log` | A `slog.Logger` already tagged with the action and trace |
 
-Action code may not import `net/http`, `database/sql`, `os` and similar packages (KS-SEC-001).
-Everything reaches the world through the context. `ks check` lists the rules, and
-`ks explain <RULE>` shows good and bad examples for each.
+Action code may not import `net/http`, `database/sql`, `os` and similar packages (AM-SEC-001).
+Everything reaches the world through the context. `am check` lists the rules, and
+`am explain <RULE>` shows good and bad examples for each.
 
 ## Reading
 
@@ -62,8 +62,8 @@ err = c.DB.Invoices.Q().Where(...).Each(c, 200, func(inv *gen.Invoice) error { .
 ```
 
 A query must end in `Get`, `First`, `Page`, `Count` or `Each`. There is no unbounded
-"all rows" (KS-DATA-001). Relations load only through `.With(...)`, and a scoped call inside a
-loop is flagged (KS-DATA-002).
+"all rows" (AM-DATA-001). Relations load only through `.With(...)`, and a scoped call inside a
+loop is flagged (AM-DATA-002).
 
 Column descriptors live in `gen.<Plural>` (`gen.Invoices.Status`, `gen.Customers.Name`):
 
@@ -85,8 +85,8 @@ cust, err := c.DB.Customers.Insert(c, []runtime.Assignment{
 
 // Update: pass the version you read. A concurrent change returns a conflict (409).
 updated, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{
-	Status: ks.Set(gen.InvoiceStatusSent),
-	SentAt: ks.Set(c.Clock.Now()),
+	Status: am.Set(gen.InvoiceStatusSent),
+	SentAt: am.Set(c.Clock.Now()),
 }.Assignments())
 
 err = c.DB.Invoices.Delete(c, inv.ID, inv.Version)   // only if the spec allows deletes
@@ -98,12 +98,12 @@ changes no row.
 
 ## Optional values
 
-`ks.Opt[T]` tells "absent" apart from "present but empty":
+`am.Opt[T]` tells "absent" apart from "present but empty":
 
 ```go
 if v, ok := in.Notes.Get(); ok { ... }
 name := in.Nickname.Or("friend")
-patch := gen.CustomerPatch{Name: ks.Set("Ada")}    // fields left unset are not written
+patch := gen.CustomerPatch{Name: am.Set("Ada")}    // fields left unset are not written
 ```
 
 ## Errors
@@ -112,9 +112,9 @@ Return the generated constructor for a declared error, or a framework error:
 
 ```go
 return nil, gen.ErrSendInvoiceNotDraft()            // 422 {"code": "not_draft"}
-return nil, ks.Invalid("amount", "must be positive") // 400
-return nil, ks.NotFound()                            // 404
-return nil, ks.Forbidden("only the owner may")       // 403
+return nil, am.Invalid("amount", "must be positive") // 400
+return nil, am.NotFound()                            // 404
+return nil, am.Forbidden("only the owner may")       // 403
 ```
 
 Any other error becomes a 500 with the details kept out of the response. The client's types
@@ -139,7 +139,7 @@ whose first line is `Subject: ...`, rendered with Go's `text/template`. A storag
 
 Declare it in `Reads` (`s.Reads(customers.Customer)`), and `c.DB` gets a view of that resource
 under its own access rules. A module may read another module's resources but never write
-them (`ks check`, KS-SPEC-005).
+them (`am check`, AM-SPEC-005).
 
 `s.Calls(...)` is accepted and validated (it must point at a declared action, and call cycles
 are refused), but **no call handle is generated yet**. An action cannot invoke another
@@ -147,6 +147,10 @@ module's action directly today.
 
 ## Raw SQL
 
-Raw SQL is available only inside `ks.Unsafe(c, "reason", func(tx ks.RawTx) error { ... })`.
+Raw SQL is available only inside `am.Unsafe(c, "reason", func(tx am.RawTx) error { ... })`.
 It still carries the tenant settings for row-level security, counts against the query
 budget, and shows up in every behavior diff.
+
+---
+
+<sub>Ambit is built and maintained by [Grab Connected Tech](https://www.grabians.com/). Need a team to build or scale a product on Ambit? Write to [hello@grabians.com](mailto:hello@grabians.com).</sub>

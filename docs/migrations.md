@@ -1,17 +1,17 @@
-# Migrations
+# <img src="assets/logo/svg/ambit-mark.svg" alt="" width="28" height="28"> Migrations
 
 Migrations are planned from the difference between the app model at the last migration and
 the model now. Each step is classified by risk, and a risky step needs an explicit flag to
 apply.
 
 ```sh
-ks migrate plan --name add_due_date   # writes migrations/0002_add_due_date.*
-ks migrate verify                     # every migration on a fresh database must match the model
-ks migrate apply                      # needs KS_DATABASE_URL
-ks migrate status
+am migrate plan --name add_due_date   # writes migrations/0002_add_due_date.*
+am migrate verify                     # every migration on a fresh database must match the model
+am migrate apply                      # needs AM_DATABASE_URL
+am migrate status
 ```
 
-`ks migrate plan` writes three files per migration:
+`am migrate plan` writes three files per migration:
 
 | File | What it is |
 | --- | --- |
@@ -20,7 +20,7 @@ ks migrate status
 | `NNNN_name.model.json` | The model after this migration: the base for the next plan |
 
 Applied migrations are immutable. `apply` records each plan's checksum, and an edited applied
-plan fails `status` and `apply` (KS-MIG-002). To change something, plan a new migration.
+plan fails `status` and `apply` (AM-MIG-002). To change something, plan a new migration.
 
 ## Change classes
 
@@ -34,11 +34,11 @@ plan fails `status` and `apply` (KS-MIG-002). To change something, plan a new mi
 | Change a field's type | needs plan | Expand and contract through a new column |
 | Remove a field or a resource | destructive | Deprecate it first, then remove it with `--allow-destructive` |
 
-Applying a step that needs a flag fails without it (KS-MIG-001):
+Applying a step that needs a flag fails without it (AM-MIG-001):
 
 ```sh
-ks migrate apply --plan                # steps that need a reviewed plan
-ks migrate apply --allow-destructive   # destructive steps
+am migrate apply --plan                # steps that need a reviewed plan
+am migrate apply --allow-destructive   # destructive steps
 ```
 
 ## Backfills
@@ -53,7 +53,7 @@ before applying, as a SQL expression:
 ```
 
 `apply` refuses a backfill with an empty `set`. Backfills run in batches of 1,000 rows keyed by
-primary key, one transaction per batch, and record their progress in `ks_backfills`. An
+primary key, one transaction per batch, and record their progress in `am_backfills`. An
 interrupted run resumes where it stopped.
 
 Migrations run with a 2 s lock timeout (retried with backoff when a lock is busy) and a
@@ -74,7 +74,11 @@ Instances refuse to start against a schema older than their model.
 
 ## Framework upgrades
 
-A new Keystone version can generate different policies or indexes for the same model.
-`ks upgrade` updates the framework, regenerates, and plans a `framework_upgrade` migration
+A new Ambit version can generate different policies or indexes for the same model.
+`am upgrade` updates the framework, regenerates, and plans a `framework_upgrade` migration
 when that happens. The step re-applies row-level security and brings the indexes in line,
 rebuilding them concurrently.
+
+---
+
+<sub>Ambit is built and maintained by [Grab Connected Tech](https://www.grabians.com/). Need a team to build or scale a product on Ambit? Write to [hello@grabians.com](mailto:hello@grabians.com).</sub>
