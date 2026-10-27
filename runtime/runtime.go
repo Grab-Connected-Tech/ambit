@@ -483,9 +483,10 @@ func actorValues(a ks.Actor) policy.ActorValues {
 	return policy.ActorValues{ID: a.ID.Bytes(), Tenant: a.Tenant.Bytes(), IsSystem: a.Kind == ks.ActorSystem}
 }
 
-// builder assembles a scoped SELECT (§8.1): tenant, then the Read rule, then the
-// action's own filter.
-type builder[T any] struct {
+// Query assembles a scoped SELECT (§8.1): tenant, then the Read rule, then the action's
+// own filter. It is what generated code hands to an action, so the only way to reach the
+// database through a resource is a typed one.
+type Query[T any] struct {
 	v      *View[T]
 	parts  []string
 	parts2 []Cond
@@ -511,10 +512,10 @@ type With[T any] struct {
 }
 
 // Q starts a scoped query on the resource.
-func (v *View[T]) Q() *builder[T] { return &builder[T]{v: v} }
+func (v *View[T]) Q() *Query[T] { return &Query[T]{v: v} }
 
 // Where adds a generated condition.
-func (b *builder[T]) Where(c ...Cond) *builder[T] {
+func (b *Query[T]) Where(c ...Cond) *Query[T] {
 	for _, x := range c {
 		if x.SQL == "" {
 			continue
@@ -574,13 +575,13 @@ func Always() Cond { return Cond{SQL: "true"} }
 func Never() Cond { return Cond{SQL: "false"} }
 
 // OrderBy appends ordering terms.
-func (b *builder[T]) OrderBy(terms ...orderTerm) *builder[T] {
+func (b *Query[T]) OrderBy(terms ...orderTerm) *Query[T] {
 	b.order = append(b.order, terms...)
 	return b
 }
 
 // With loads relations in one batched query each.
-func (b *builder[T]) With(w ...With[T]) *builder[T] {
+func (b *Query[T]) With(w ...With[T]) *Query[T] {
 	b.withs = append(b.withs, w...)
 	return b
 }

@@ -545,10 +545,6 @@ func setup(t *testing.T) *harness {
 		t.Fatalf("app: %v", err)
 	}
 	t.Cleanup(app.Close)
-	t.Cleanup(func() {
-		st := app.Pool.Stat()
-		fmt.Fprintf(os.Stderr, "\n# POOLSTAT acquired=%d idle=%d total=%d\n", st.AcquiredConns(), st.IdleConns(), st.TotalConns())
-	})
 
 	h := &harness{t: t, app: app, pool: app.Pool, tenants: map[string]ks.ID{}}
 	for _, orgName := range []string{"Acme", "Globex"} {

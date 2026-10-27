@@ -79,7 +79,12 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
 - **L2 done** `compile` (KS-SPEC/SEC/DATA checks w/ diagnostics), `migrate` (DDL + RLS +
   §13.2 classification), `diff` (risk-ranked report, text/md/json), `checker` (catalog +
   AST analyzers + facts). Tests green.
-- **L3 next** `runtime` on pgx, then `codegen` + `cmd/ks`.
+- **L3 done** `runtime` on pgx: pipeline (§3.3), scoped reads/writes, sessions/API tokens,
+  jobs, outbox, schedules w/ advisory lock, budgets, rate limits, audit, metrics, drain.
+  `go test ./runtime` runs a real-Postgres integration suite (temp DB per test, non-owner
+  role so RLS is actually tested) and skips cleanly without `KS_TEST_DB_URL`. Green.
+- **L4 next** `codegen` (the `gen` package the example app imports), then `cmd/ks` wiring,
+  then the example app built end to end.
 
 ## Deviations from the spec text (all deliberate, all recorded)
 1. Checker analyzers use stdlib `go/ast` + `go/parser`, not `x/tools/go/analysis` (§2.10).
@@ -97,7 +102,18 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
 ## Decisions to keep
 - `policy` SQL text uses the `__KS_ROOT__.` marker + `?` binds; `Place` renumbers to `$n`.
 - Framework tables are `ks_*` and created by the same generated migration stream.
-- Actor GUCs: `app.tenant_id`, `app.actor_id`, `app.actor_system`, `app.cross_tenant`.
+- Actor GUCs: `ks.tenant_id`, `ks.actor_id`, `ks.actor_system`, `ks.cross_tenant`.
+- `policy.TableSQL(node, table, target, alias)` + `SQL.WithRoot(alias)` produce fragments;
+  `TargetPolicy` inlines literals and leaves actor values as binds (`policy.Place`).
+- Runtime statement building goes through one `sqlBuilder` so every `?` becomes `$n` in
+  the order the parameters appear — projection first, then WHERE, then RETURNING.
+- Field-read rules are projected as `CASE WHEN … THEN col ELSE NULL END`; field-write
+  rules are ANDed into the UPDATE's WHERE, so a refused write changes no row.
+- `Buckets` caches rate-limit *denials* only. A cached allowance is wrong across
+  instances, and refilling a cached bucket stretches the declared limit.
+- Framework (`ks_*`) tables the runtime writes outside a request use the permissive RLS
+  policy; their own predicates decide visibility. `ks_membership`/`ks_audit` stay
+  tenant-scoped, so tests read them through `harness.look` (a system+cross tx).
 
 ## Deliberate scope calls (recorded so it looks unfinished rather than forgotten)
 In: spec DSL, model+canonical hash, policy->SQL/Go/compare, codegen (types/db/ctx/routes/main/

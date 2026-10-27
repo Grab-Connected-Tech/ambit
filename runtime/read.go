@@ -106,7 +106,7 @@ func (v *View[T]) ByIDs(ctx context.Context, ids []ks.ID, withs ...With[T]) ([]*
 
 // Page runs the query with keyset pagination. The page size is capped by config, so
 // a request cannot ask for more than the framework will give.
-func (b *builder[T]) Page(ctx context.Context, cursor string, size int) (*PageOf[T], error) {
+func (b *Query[T]) Page(ctx context.Context, cursor string, size int) (*PageOf[T], error) {
 	v := b.v
 	if size <= 0 {
 		size = v.db.cfg.DefaultPageSize
@@ -190,7 +190,7 @@ func (b *builder[T]) Page(ctx context.Context, cursor string, size int) (*PageOf
 
 // First returns at most one row; the limit is implicit, so an unbounded read is not
 // expressible (KS-DATA-001).
-func (b *builder[T]) First(ctx context.Context) (*T, error) {
+func (b *Query[T]) First(ctx context.Context) (*T, error) {
 	page, err := b.Page(ctx, "", 1)
 	if err != nil {
 		return nil, err
@@ -203,7 +203,7 @@ func (b *builder[T]) First(ctx context.Context) (*T, error) {
 
 // Count totals the visible rows. It exists only for actions that declared Counts(),
 // which is enforced in the generated method set, not here.
-func (b *builder[T]) Count(ctx context.Context) (int64, error) {
+func (b *Query[T]) Count(ctx context.Context) (int64, error) {
 	v := b.v
 	sb := &sqlBuilder{a: actorValues(v.db.actor)}
 	var extra []string
@@ -230,7 +230,7 @@ func (b *builder[T]) Count(ctx context.Context) (int64, error) {
 }
 
 // Each walks every visible row in batches, for jobs (§8.1).
-func (b *builder[T]) Each(ctx context.Context, batch int, fn func(*T) error) error {
+func (b *Query[T]) Each(ctx context.Context, batch int, fn func(*T) error) error {
 	if batch <= 0 {
 		batch = 500
 	}
@@ -257,7 +257,7 @@ func (b *builder[T]) Each(ctx context.Context, batch int, fn func(*T) error) err
 
 // keysetTerms renders the lexicographic "rows after this cursor" predicate with ?
 // placeholders, so the caller numbers them with the rest of the statement.
-func (b *builder[T]) keysetTerms(terms []orderTerm, cur []cursorValue) (string, []any) {
+func (b *Query[T]) keysetTerms(terms []orderTerm, cur []cursorValue) (string, []any) {
 	if len(cur) != len(terms) {
 		return "", nil
 	}
@@ -283,7 +283,7 @@ func (b *builder[T]) keysetTerms(terms []orderTerm, cur []cursorValue) (string, 
 }
 
 // keyset renders the lexicographic "everything after this cursor" predicate.
-func (b *builder[T]) keyset(terms []orderTerm, cur []cursorValue, offset int) (string, []any) {
+func (b *Query[T]) keyset(terms []orderTerm, cur []cursorValue, offset int) (string, []any) {
 	if len(cur) != len(terms) {
 		return "", nil
 	}
@@ -311,7 +311,7 @@ func (b *builder[T]) keyset(terms []orderTerm, cur []cursorValue, offset int) (s
 
 // cursorKeys reads the ordering values back out of the last row. The generator gives
 // each table a Key function for exactly this.
-func (b *builder[T]) cursorKeys(terms []orderTerm, last *T) []cursorValue {
+func (b *Query[T]) cursorKeys(terms []orderTerm, last *T) []cursorValue {
 	out := make([]cursorValue, 0, len(terms))
 	if last == nil {
 		return out
