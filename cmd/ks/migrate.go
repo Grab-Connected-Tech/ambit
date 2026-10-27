@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -13,13 +10,12 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"keystone.dev/keystone/ks"
 	"keystone.dev/keystone/migrate"
+	"keystone.dev/keystone/migrate/run"
 	"keystone.dev/keystone/model"
 )
 
@@ -32,14 +28,6 @@ import (
 // Applied migrations are immutable: ks_migrations keeps each plan's checksum, and a plan
 // file that no longer matches it fails status and apply (KS-MIG-002).
 const migrationsDir = "migrations"
-
-var migrationName = regexp.MustCompile(`^(\d{4})_([a-z0-9_]+)\.plan\.json$`)
-
-type migration struct {
-	Version, Name, Path string
-	Plan                migrate.Plan
-	Checksum            string
-}
 
 func cmdMigrate(args []string) error {
 	var name *string
@@ -87,38 +75,6 @@ func databaseURL(vars ...string) (string, error) {
 	return "", fmt.Errorf("set %s to the database to migrate", vars[0])
 }
 
-// migrations lists the planned migrations in order.
-func migrations() ([]migration, error) {
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	var out []migration
-	for _, e := range entries {
-		m := migrationName.FindStringSubmatch(e.Name())
-		if m == nil {
-			continue
-		}
-		path := filepath.Join(migrationsDir, e.Name())
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		mg := migration{Version: m[1], Name: m[2], Path: path, Checksum: checksum(raw)}
-		if err := json.Unmarshal(raw, &mg.Plan); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		out = append(out, mg)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Version < out[j].Version })
-	return out, nil
-}
-
-func checksum(b []byte) string {
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
-}
-
 func migratePlan(name string, asJSON bool) error {
 	head, diags, err := loadModel()
 	if err != nil {
@@ -141,7 +97,7 @@ func migratePlan(name string, asJSON bool) error {
 		}
 	} else {
 		last := all[len(all)-1]
-		raw, err := os.ReadFile(strings.TrimSuffix(last.Path, ".plan.json") + ".model.json")
+		raw, err := os.ReadFile(filepath.Join(migrationsDir, strings.TrimSuffix(last.Path, ".plan.json")+".model.json"))
 		if err != nil {
 			return fmt.Errorf("the base model of %s is missing: %w", last.Path, err)
 		}
@@ -221,66 +177,13 @@ func renderSQL(p migrate.Plan) string {
 	return b.String()
 }
 
-type appliedRow struct{ Checksum, ModelHash string }
-
-func applied(ctx context.Context, conn *pgx.Conn) (map[string]appliedRow, error) {
-	rows, err := conn.Query(ctx, `SELECT version, checksum, model_hash FROM ks_migrations`)
-	if err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "42P01" {
-			return map[string]appliedRow{}, nil // nothing applied yet
-		}
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]appliedRow{}
-	for rows.Next() {
-		var v string
-		var r appliedRow
-		if err := rows.Scan(&v, &r.Checksum, &r.ModelHash); err != nil {
-			return nil, err
-		}
-		out[v] = r
-	}
-	return out, rows.Err()
-}
-
-type statusRow struct {
-	Version string `json:"version"`
-	Name    string `json:"name"`
-	State   string `json:"state"` // applied|pending|modified
-}
-
-func status(ctx context.Context, conn *pgx.Conn) ([]statusRow, []migration, error) {
-	all, err := migrations()
-	if err != nil {
-		return nil, nil, err
-	}
-	done, err := applied(ctx, conn)
-	if err != nil {
-		return nil, nil, err
-	}
-	var out []statusRow
-	for _, m := range all {
-		r := statusRow{Version: m.Version, Name: m.Name, State: "pending"}
-		if a, ok := done[m.Version]; ok {
-			r.State = "applied"
-			if a.Checksum != m.Checksum {
-				r.State = "modified"
-			}
-		}
-		out = append(out, r)
-	}
-	return out, all, nil
-}
-
 func migrateStatus(ctx context.Context, url string, asJSON bool) error {
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		return err
 	}
 	defer conn.Close(ctx)
-	rows, _, err := status(ctx, conn)
+	rows, _, err := run.Status(ctx, conn, os.DirFS(migrationsDir))
 	if err != nil {
 		return err
 	}
@@ -293,14 +196,10 @@ func migrateStatus(ctx context.Context, url string, asJSON bool) error {
 	}
 	for _, r := range rows {
 		if r.State == "modified" {
-			return modified(r)
+			return run.Modified(r)
 		}
 	}
 	return nil
-}
-
-func modified(r statusRow) error {
-	return fmt.Errorf("KS-MIG-002: applied migration %s_%s was edited; applied migrations are immutable, plan a new one instead", r.Version, r.Name)
 }
 
 func migrateApply(ctx context.Context, url string, allowed map[string]bool, asJSON bool) error {
@@ -309,33 +208,9 @@ func migrateApply(ctx context.Context, url string, allowed map[string]bool, asJS
 		return err
 	}
 	defer conn.Close(ctx)
-	rows, all, err := status(ctx, conn)
+	ran, err := run.Apply(ctx, conn, os.DirFS(migrationsDir), allowed)
 	if err != nil {
 		return err
-	}
-	var ran []string
-	for i, r := range rows {
-		switch r.State {
-		case "modified":
-			return modified(r)
-		case "applied":
-			continue
-		}
-		m := all[i]
-		// Every flag the plan asks for must be given before anything runs (KS-MIG-001).
-		for _, s := range m.Plan.Steps {
-			if s.NeedsFlag != "" && !allowed[s.NeedsFlag] {
-				return fmt.Errorf("KS-MIG-001: %s_%s step %q (%s) needs %s", m.Version, m.Name, s.Detail, s.Class, s.NeedsFlag)
-			}
-			if s.Backfill != nil && strings.TrimSpace(s.Backfill.Set) == "" {
-				return fmt.Errorf("%s_%s step %q backfills %s.%s: write the value each existing row gets into the plan's backfill.set",
-					m.Version, m.Name, s.Detail, s.Backfill.Table, s.Backfill.Column)
-			}
-		}
-		if err := applyOne(ctx, conn, m, allowed["--allow-destructive"]); err != nil {
-			return fmt.Errorf("%s_%s: %w", m.Version, m.Name, err)
-		}
-		ran = append(ran, m.Version+"_"+m.Name)
 	}
 	if asJSON {
 		printJSON(map[string]any{"applied": ran})
@@ -349,106 +224,9 @@ func migrateApply(ctx context.Context, url string, allowed map[string]bool, asJS
 	return nil
 }
 
-// applyOne runs a plan's transactional statements under lock and statement timeouts,
-// retrying lock timeouts with backoff, then the statements that cannot run in a
-// transaction (§13.1 step 4).
-func applyOne(ctx context.Context, conn *pgx.Conn, m migration, destructive bool) error {
-	var inTx, outside []string
-	for _, s := range m.Plan.Steps {
-		inTx = append(inTx, s.InTx...)
-		outside = append(outside, s.OutsideTx...)
-	}
-	for attempt := 1; ; attempt++ {
-		err := pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
-			for _, stmt := range append([]string{
-				"SET LOCAL lock_timeout = '2s'", "SET LOCAL statement_timeout = '15min'"}, inTx...) {
-				if _, err := tx.Exec(ctx, stmt); err != nil {
-					return fmt.Errorf("%w\n  in: %s", err, firstLine(stmt))
-				}
-			}
-			return nil
-		})
-		var pg *pgconn.PgError
-		if err == nil {
-			break
-		}
-		if !errors.As(err, &pg) || pg.Code != "55P03" || attempt == 5 {
-			return err
-		}
-		time.Sleep(time.Duration(attempt*attempt) * 500 * time.Millisecond)
-	}
-	// Backfills run between the expand statements and the constraints that need them.
-	for _, s := range m.Plan.Steps {
-		if s.Backfill != nil {
-			if err := backfill(ctx, conn, m.Version, *s.Backfill); err != nil {
-				return fmt.Errorf("backfill %s.%s: %w", s.Backfill.Table, s.Backfill.Column, err)
-			}
-		}
-	}
-	for _, stmt := range outside {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("%w\n  in: %s", err, firstLine(stmt))
-		}
-	}
-	_, err := conn.Exec(ctx,
-		`INSERT INTO ks_migrations (version, name, checksum, model_hash, destructive_allowed) VALUES ($1, $2, $3, $4, $5)`,
-		m.Version, m.Name, m.Checksum, m.Plan.ModelHash, destructive)
-	return err
-}
-
-// backfill fills a column's nulls in batches keyed by primary key, one transaction per
-// batch, recording the cursor in ks_backfills so an interrupted run resumes where it
-// stopped rather than starting over (§13.3).
-func backfill(ctx context.Context, conn *pgx.Conn, version string, b migrate.Backfill) error {
-	if b.Batch <= 0 {
-		b.Batch = 1000
-	}
-	// The migration role writes every tenant's rows.
-	if _, err := conn.Exec(ctx, "SELECT set_config('ks.cross_tenant', 'on', false)"); err != nil {
-		return err
-	}
-	var cursor string
-	err := conn.QueryRow(ctx, `INSERT INTO ks_backfills (id, version, column_name, cursor) VALUES ($1, $2, $3, '""')
-		ON CONFLICT (version, column_name) DO UPDATE SET updated_at = now()
-		RETURNING coalesce(cursor #>> '{}', '')`, ks.NewID(), version, b.Table+"."+b.Column).Scan(&cursor)
-	if err != nil {
-		return err
-	}
-	table, col := quoteIdent(b.Table), quoteIdent(b.Column)
-	for {
-		var last string
-		var n int64
-		err := pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
-			err := tx.QueryRow(ctx, fmt.Sprintf(`WITH batch AS (
-				SELECT id FROM %[1]s WHERE %[2]s IS NULL AND ($1 = '' OR id > $1::uuid) ORDER BY id LIMIT %[3]d FOR UPDATE)
-				, done AS (UPDATE %[1]s t SET %[2]s = %[4]s FROM batch WHERE t.id = batch.id RETURNING t.id)
-				SELECT coalesce(max(id::text), ''), count(*) FROM done`, table, col, b.Batch, b.Set), cursor).Scan(&last, &n)
-			if err != nil || n == 0 {
-				return err
-			}
-			_, err = tx.Exec(ctx, `UPDATE ks_backfills SET cursor = to_jsonb($3::text), rows_done = rows_done + $4, state = 'running', updated_at = now()
-				WHERE version = $1 AND column_name = $2`, version, b.Table+"."+b.Column, last, n)
-			return err
-		})
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			break
-		}
-		cursor = last
-	}
-	_, err = conn.Exec(ctx, `UPDATE ks_backfills SET state = 'done', updated_at = now() WHERE version = $1 AND column_name = $2`,
-		version, b.Table+"."+b.Column)
-	return err
-}
+func migrations() ([]run.Migration, error) { return run.List(os.DirFS(migrationsDir)) }
 
 func quoteIdent(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
-
-func firstLine(s string) string {
-	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
-	return s
-}
 
 // migrateVerify applies every migration to a fresh database and checks the result has
 // the schema of the current model: a plan that drifts from the model fails here, not in
@@ -498,7 +276,7 @@ func migrateVerify(ctx context.Context, url string, asJSON bool) error {
 		return fmt.Errorf("no migrations; run ks migrate plan")
 	}
 	for _, m := range all {
-		if err := applyOne(ctx, a, m, true); err != nil {
+		if err := run.ApplyOne(ctx, a, m, true); err != nil {
 			return fmt.Errorf("%s_%s does not apply to a fresh database: %w", m.Version, m.Name, err)
 		}
 	}

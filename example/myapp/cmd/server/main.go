@@ -13,12 +13,18 @@ import (
 	customers "keystone.dev/keystone/example/myapp/app/customers"
 
 	"keystone.dev/keystone/example/myapp/gen"
+	"keystone.dev/keystone/example/myapp/migrations"
+	"keystone.dev/keystone/migrate/run"
 	"keystone.dev/keystone/runtime"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		os.Exit(run.Main(ctx, migrations.FS, gen.Config().DatabaseURL, os.Args[2:]))
+	}
 
 	handlers := []*runtime.Handler{
 		gen.CountDraftsHandler(billing.Actions.CountDrafts),

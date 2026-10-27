@@ -199,6 +199,15 @@ func Generate(o Options) (*Result, error) {
 		return nil, err
 	}
 
+	// The migrations directory is a package that embeds its plan files, so the app
+	// binary can apply them (§18.3).
+	if err := write(filepath.Join(sqlDir, "migrations.go"), []byte(header+"\n// Package migrations embeds the planned migrations of this app.\npackage migrations\n\nimport \"embed\"\n\n// FS holds the plan files ks migrate plan wrote; the binary applies them.\n//\n//go:embed *\nvar FS embed.FS\n"), true); err != nil {
+		return nil, err
+	}
+	if err := write("Dockerfile", dockerfile(o), false); err != nil {
+		return nil, err
+	}
+
 	stubs, err := writeActionStubs(app, o)
 	if err != nil {
 		return nil, err
