@@ -63,6 +63,20 @@ type Change struct {
 	Subject  string `json:"subject"`
 	Detail   string `json:"detail"`
 	Why      string `json:"why,omitempty"`
+	// Blocked is a change the review cannot approve as is: a breaking API change whose
+	// old shape was not deprecated for a release first (KS-API-001, §12.4).
+	Blocked bool `json:"blocked,omitempty"`
+}
+
+// Blocked lists the changes that must not merge as they are.
+func (r Report) Blocked() []Change {
+	var out []Change
+	for _, c := range r.Changes {
+		if c.Blocked {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Report is a whole diff.
@@ -677,23 +691,20 @@ func apiChanges(base, head *model.App) []Change {
 				out = append(out, Change{Risk: Low, Category: CatAPI, Subject: ref, Detail: "compatible addition: new action"})
 			}
 		case had && !has:
-			out = append(out, Change{Risk: High, Category: CatAPI, Subject: ref, Detail: "breaking: action removed or renamed"})
+			out = append(out, breakingChange(ref, "breaking: action removed or renamed", o.Deprecated(), compat))
 		default:
 			breaking := false
 			for _, f := range addedRequired(o.Input(), n.Input()) {
 				breaking = true
-				out = append(out, Change{Risk: High, Category: CatAPI, Subject: ref,
-					Detail: "breaking: new required input " + f})
+				out = append(out, breakingChange(ref, "breaking: new required input "+f, o.Deprecated(), compat))
 			}
 			for _, f := range removedOutputFields(o.Output(), n.Output()) {
 				breaking = true
-				out = append(out, Change{Risk: High, Category: CatAPI, Subject: ref,
-					Detail: "breaking: removed output field " + f})
+				out = append(out, breakingChange(ref, "breaking: removed output field "+f, o.Deprecated(), compat))
 			}
 			for _, f := range narrowedEnums(o.Input(), n.Input()) {
 				breaking = true
-				out = append(out, Change{Risk: High, Category: CatAPI, Subject: ref,
-					Detail: "breaking: narrowed enum " + f})
+				out = append(out, breakingChange(ref, "breaking: narrowed enum "+f, o.Deprecated(), compat))
 			}
 			if n.Deprecated() != "" && o.Deprecated() == "" {
 				out = append(out, Change{Risk: Medium, Category: CatAPI, Subject: ref,
@@ -712,6 +723,18 @@ func apiChanges(base, head *model.App) []Change {
 		}
 	}
 	return out
+}
+
+// breakingChange records a breaking API change. Unless the app opted out of
+// compatibility, the old shape must have been Deprecated() in a release first, so
+// clients had a version to move off it (§12.4).
+func breakingChange(ref, detail, deprecated, compat string) Change {
+	c := Change{Risk: High, Category: CatAPI, Subject: ref, Detail: detail}
+	if compat != "none" && deprecated == "" {
+		c.Blocked = true
+		c.Detail += " without a release of Deprecated() first (KS-API-001)"
+	}
+	return c
 }
 
 func sameFields(a, b []model.Field) bool { return fieldDelta(a, b) == "" }

@@ -59,7 +59,11 @@ func (r Report) Text() string {
 	var b strings.Builder
 	w := subjectWidth(r)
 	for _, c := range r.Changes {
-		fmt.Fprintf(&b, "%-5s %-11s %-*s %s\n", c.Risk, c.Category, w, c.Subject, c.Detail)
+		mark := ""
+		if c.Blocked {
+			mark = "BLOCKED "
+		}
+		fmt.Fprintf(&b, "%-5s %-11s %-*s %s%s\n", c.Risk, c.Category, w, c.Subject, mark, c.Detail)
 	}
 	b.WriteString("\n" + r.Summary() + "\n")
 	return b.String()
@@ -75,7 +79,11 @@ func (r Report) Markdown() string {
 	}
 	b.WriteString("| Risk | Area | What changed | Detail |\n| --- | --- | --- | --- |\n")
 	for _, c := range r.Changes {
-		fmt.Fprintf(&b, "| %s | %s | `%s` | %s |\n", c.Risk, c.Category, c.Subject, c.Detail)
+		mark := ""
+		if c.Blocked {
+			mark = "**blocked:** "
+		}
+		fmt.Fprintf(&b, "| %s | %s | `%s` | %s%s |\n", c.Risk, c.Category, c.Subject, mark, c.Detail)
 	}
 	b.WriteString("\n" + r.Summary() + "\n")
 	if r.Count(High) > 0 {

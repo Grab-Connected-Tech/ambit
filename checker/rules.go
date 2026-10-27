@@ -189,6 +189,12 @@ function is a broken promise to the client that was generated for it.`,
 		`// spec declares SendInvoice, actions/ has no SendInvoice`,
 		`func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, error) { ... }`,
 		"actions"},
+	{"KS-API-001", "error", "breaking API change without a deprecation release", "12.4",
+		`A client generated from the last release still calls the old shape. Marking it
+Deprecated() for one release gives every client a version that warns before it breaks;
+an internal-only API can opt out with api.compatibility: none.`,
+		`// release N removes billing.SendInvoice outright`,
+		`// release N: s.Deprecated("use SendInvoiceV2"); release N+1: remove it`, "diff"},
 	{"KS-PERF-001", "error", "query or row budget exceeded in tests", "8.4",
 		`Budgets are the framework's promise about per-request work. Exceeding one in a test is
 the same failure with a smaller dataset.`,

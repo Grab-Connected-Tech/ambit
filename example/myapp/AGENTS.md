@@ -48,6 +48,7 @@ The analyzers enforce the catalog below; `ks explain <ID>` says why each exists.
 | KS-CODE-003 | warning |
 | KS-CODE-004 | error |
 | KS-CODE-005 | error |
+| KS-API-001 | error |
 | KS-PERF-001 | error |
 | KS-PERF-002 | warning |
 | KS-PERF-003 | error |

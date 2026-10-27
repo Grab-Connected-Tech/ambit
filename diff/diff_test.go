@@ -289,3 +289,36 @@ func TestUnknownBaseIsAllHighRisk(t *testing.T) {
 	find(t, r, Change{Risk: High, Category: CatAction, Subject: "billing.SendInvoice", Detail: "new action that writes"})
 	find(t, r, Change{Risk: Low, Category: CatAction, Subject: "billing.ListInvoices", Detail: "new query action"})
 }
+
+func TestBreakingChangesNeedADeprecationRelease(t *testing.T) {
+	removeListInvoices := func(a *model.App) {
+		for m := range a.Modules {
+			var keep []model.Action
+			for _, act := range a.Modules[m].Actions {
+				if act.Name != "ListInvoices" {
+					keep = append(keep, act)
+				}
+			}
+			a.Modules[m].Actions = keep
+		}
+	}
+	blocked := func(b, h *model.App) int { return len(Between(b, h, model.Facts{}, model.Facts{}).Blocked()) }
+
+	head := base()
+	removeListInvoices(head)
+	if blocked(base(), head) != 1 {
+		t.Fatal("removing an action that was never deprecated is blocked (KS-API-001)")
+	}
+	deprecated := base()
+	_, act := deprecated.FindAction("billing.ListInvoices")
+	act.Deprecated = "use ListInvoicesV2"
+	if blocked(deprecated, head) != 0 {
+		t.Fatal("removing an action deprecated in the base release is allowed")
+	}
+	internal := base()
+	removeListInvoices(internal)
+	internal.Defaults.Compatibility = "none"
+	if blocked(base(), internal) != 0 {
+		t.Fatal("api.compatibility: none opts out")
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"keystone.dev/keystone/compile"
 	"keystone.dev/keystone/diff"
 	"keystone.dev/keystone/model"
+	"keystone.dev/keystone/runtime"
 )
 
 const usage = `usage: ks <command> [flags]
@@ -370,7 +371,15 @@ func cmdDiff(args []string) error {
 		// A revision without a model is the first release: everything is new.
 		baseApp, baseFacts = nil, model.Facts{}
 	}
-	fmt.Print(diff.Render(diff.Between(baseApp, headApp, baseFacts, headFacts), f))
+	// api.compatibility in ks.yaml opts an internal-only API out of §12.4.
+	if cfg, err := runtime.LoadConfig("ks.yaml"); err == nil && cfg.Compatibility != "" {
+		headApp.Defaults.Compatibility = cfg.Compatibility
+	}
+	rep := diff.Between(baseApp, headApp, baseFacts, headFacts)
+	fmt.Print(diff.Render(rep, f))
+	if len(rep.Blocked()) > 0 {
+		return exitError{1} // a breaking change that was not deprecated first (§12.4)
+	}
 	return nil
 }
 
