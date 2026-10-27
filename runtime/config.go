@@ -42,6 +42,9 @@ type Config struct {
 	OTLPEndpoint   string
 	AdminPort      int
 
+	// CacheShared adds the Postgres entry tier to the in-process query cache (§11.3).
+	CacheShared bool
+
 	// Compatibility: "none" lets an app break its API on purpose (§12.4).
 	Compatibility string
 
@@ -238,6 +241,11 @@ func flatten(m map[string]any, prefix []string, out map[string]bool) {
 
 // apply maps the parsed document onto the typed config and records unknown keys.
 func (c *Config) apply(doc map[string]any) error {
+	// Secrets first: effect settings name them ("secret:smtpPassword"), and map order
+	// would otherwise decide whether the reference resolves.
+	for name, val := range asMap(doc["secrets"]) {
+		c.Secrets[name] = text(val)
+	}
 	for k, v := range doc {
 		switch k {
 		case "app":
@@ -266,9 +274,8 @@ func (c *Config) apply(doc map[string]any) error {
 				c.MaxInFlight = n
 			}
 		case "secrets":
-			for name, val := range asMap(v) {
-				c.Secrets[name] = text(val)
-			}
+		case "cache":
+			c.CacheShared = text(asMap(v)["shared"]) == "true"
 		case "effects":
 			for name, cfg := range asMap(v) {
 				m := map[string]string{}

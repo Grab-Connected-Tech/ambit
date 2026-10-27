@@ -48,6 +48,8 @@ type App struct {
 	Buckets    *Buckets
 	Caches     *Cache
 	Clock      ks.Clock
+	// Replica serves ReplicaOK() queries when database.replicaUrl is set.
+	Replica *pgxpool.Pool
 	// Keys seals and opens Encrypted() fields; nil when the app declares none (§9.4).
 	Keys *Keyring
 	// OnCall, when set, receives a Trace after every handler execution. Set it before
@@ -214,6 +216,9 @@ func New(ctx context.Context, o Options) (*App, error) {
 		wake:      make(chan struct{}, 1),
 		roles:     map[string]bool{},
 	}
+	if limit := setMemoryLimit(); limit > 0 {
+		log.Info("memory limit from cgroup", "bytes", limit)
+	}
 	keys, err := KeyringFromConfig(o.Cfg)
 	if err != nil {
 		return nil, err
@@ -272,6 +277,18 @@ func New(ctx context.Context, o Options) (*App, error) {
 		return nil, fmt.Errorf("runtime: cannot reach the database: %w", err)
 	}
 	a.Pool = pool
+	if o.Cfg.ReplicaURL != "" {
+		rcfg, err := pgxpool.ParseConfig(o.Cfg.ReplicaURL)
+		if err != nil {
+			pool.Close()
+			return nil, fmt.Errorf("runtime: replica url: %w", err)
+		}
+		rcfg.MaxConns = cfg.MaxConns
+		if a.Replica, err = pgxpool.NewWithConfig(ctx, rcfg); err != nil {
+			pool.Close()
+			return nil, err
+		}
+	}
 	if o.SkipSchemaCheck {
 		a.SkipSchemaCheck = true
 	} else if err := a.checkSchema(ctx); err != nil {
@@ -288,6 +305,9 @@ func (a *App) Close() {
 	}
 	if a.Pool != nil {
 		a.Pool.Close()
+	}
+	if a.Replica != nil {
+		a.Replica.Close()
 	}
 }
 
@@ -329,6 +349,8 @@ type Scope struct {
 	Actor       ks.ID
 	IsSystem    bool
 	CrossTenant bool
+	// Replica runs the transaction read-only on the replica, when one is configured.
+	Replica bool
 }
 
 func systemScope() Scope {
@@ -376,8 +398,12 @@ func (a *App) BeginTx(ctx context.Context, s Scope, stmtTimeout time.Duration, s
 	if os.Getenv("KS_DEBUG_SQL") != "" {
 		fmt.Fprintf(os.Stderr, "\n# BEGIN acquired=%d\n", a.Pool.Stat().AcquiredConns())
 	}
-	tx, err := a.Pool.BeginTx(ctx, pgx.TxOptions{
-		AccessMode: pgx.ReadWrite,
+	pool, mode := a.Pool, pgx.ReadWrite
+	if s.Replica && a.Replica != nil {
+		pool, mode = a.Replica, pgx.ReadOnly // ReplicaOK() queries (§8.3)
+	}
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{
+		AccessMode: mode,
 		IsoLevel:   level(serializable),
 	})
 	if err != nil {
@@ -497,6 +523,10 @@ func (a *App) Commit(ctx context.Context, d *DB, tx pgx.Tx) error {
 	fail := func(err error) error {
 		a.Rollback(ctx, tx)
 		return err
+	}
+	// Generations first: flushAudit consumes the write log they are derived from.
+	if err := bumpGenerations(ctx, tx, d); err != nil {
+		return fail(err)
 	}
 	if err := a.flushAudit(ctx, d); err != nil {
 		return fail(err)

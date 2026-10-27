@@ -470,7 +470,24 @@ func Create[T any](e *Env, table *runtime.Table[T], row T) *T {
 		cols, args = append(cols, c.Column), append(args, e.sealFixture(c.Encrypted, table.Table, c.Column, ks.ID(v.FieldByName("ID").String()), val))
 	}
 	e.exec(table.Table, cols, args)
+	e.invalidate(table.Ref, ks.ID(v.FieldByName("TenantID").String()))
 	return &row
+}
+
+// invalidate bumps a resource's cache generation for a fixture written beside the
+// runtime, as a write through it would (§11.3).
+func (e *Env) invalidate(ref string, tenant ks.ID) {
+	if tenant.IsNil() {
+		return
+	}
+	if strings.HasPrefix(ref, ".") {
+		ref = "app" + ref
+	}
+	e.system(func(tx pgx.Tx) error {
+		_, err := tx.Exec(context.Background(), `INSERT INTO ks_cache_generation (id, tenant_id, resource, generation) VALUES ($1, $2, $3, 1)
+			ON CONFLICT (tenant_id, resource) DO UPDATE SET generation = ks_cache_generation.generation + 1`, ks.NewID(), tenant, ref)
+		return err
+	})
 }
 
 // columnValue reads a struct field as a parameter; set is false for an absent ks.Opt.
@@ -520,6 +537,13 @@ func Call[C, In, Out any](e *Env, actor ks.Actor, wrap func(func(*C, In) (Out, e
 func (e *Env) QueryRow(sql string, args []any, dest ...any) {
 	e.T.Helper()
 	e.system(func(tx pgx.Tx) error { return tx.QueryRow(context.Background(), sql, args...).Scan(dest...) })
+}
+
+// Traces lists every action execution so far, oldest first.
+func (e *Env) Traces() []runtime.Trace {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]runtime.Trace(nil), e.traces...)
 }
 
 // LastTrace is what the most recent action execution did.

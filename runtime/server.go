@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 
 	"github.com/jackc/pgx/v5"
@@ -160,7 +162,14 @@ func (s *Server) adminHandler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ready")
 	})
-	mux.HandleFunc("/debug/pprof/", pprofIndex)
+	// Profiles reveal memory contents, so they need the admin token even on the admin
+	// port; without one configured they stay off (§11.4).
+	for path, h := range map[string]http.HandlerFunc{
+		"/debug/pprof/": pprof.Index, "/debug/pprof/cmdline": pprof.Cmdline, "/debug/pprof/profile": pprof.Profile,
+		"/debug/pprof/symbol": pprof.Symbol, "/debug/pprof/trace": pprof.Trace,
+	} {
+		mux.Handle(path, s.adminAuth(h))
+	}
 	return mux
 }
 
@@ -498,6 +507,18 @@ func (a *App) runWith(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	if d, err := time.ParseDuration(h.Spec.Limits.StmtTimeout); err == nil && d > 0 {
 		stmtTimeout = d
 	}
+	// Step 6: a cached query answers without a transaction (§11.3).
+	cache := a.cacheFor(callCtx, h, actor, in)
+	if body, ok := cache.lookup(callCtx); ok {
+		out.Body = body
+		out.Meta = &CallMeta{Trace: traceIDFrom(in)}
+		return out, nil
+	}
+	defer func() {
+		if out.Body != nil {
+			cache.store(callCtx, out.Body)
+		}
+	}()
 	attempts := 1
 	if h.Spec.Serializable {
 		attempts = 3
@@ -528,7 +549,8 @@ func isSerialization(err error) bool {
 
 func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call, log *slog.Logger, invocation ks.ID, stmtTimeout time.Duration, opts runOptions) (HandlerOutput, error) {
 	var out HandlerOutput
-	scope := Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == ks.ActorSystem, CrossTenant: h.Spec.CrossTenant}
+	scope := Scope{Tenant: actor.Tenant, Actor: actor.ID, IsSystem: actor.Kind == ks.ActorSystem, CrossTenant: h.Spec.CrossTenant,
+		Replica: h.Spec.ReplicaOK && h.Kind == model.KindQuery}
 	tx, err := a.BeginTx(ctx, scope, stmtTimeout, h.Spec.Serializable)
 	if err != nil {
 		return out, err
@@ -824,10 +846,20 @@ type Clock = ks.Clock
 // SystemClock reads the wall clock.
 type SystemClock = ks.SystemClock
 
-func pprofIndex(w http.ResponseWriter, r *http.Request) {
-	// The framework exposes the standard profiles only when the binary links
-	// net/http/pprof; ks builds do, on the admin port alone (§11.4).
-	http.NotFound(w, r)
+// adminAuth admits a request carrying the admin token as a bearer credential.
+func (s *Server) adminAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := s.A.Cfg.Secret("adminToken")
+		if token == "" {
+			token = os.Getenv("KS_ADMIN_TOKEN")
+		}
+		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if token == "" || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
+			http.Error(w, "admin token required", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func envOr(key, def string) string {

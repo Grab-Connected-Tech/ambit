@@ -69,3 +69,36 @@ func TestFuzzCustomerActions(t *testing.T) {
 	kstest.Fuzz(env, gen.CreateCustomerHandler, Actions.CreateCustomer, 40)
 	kstest.Fuzz(env, gen.ListCustomersHandler, Actions.ListCustomers, 40)
 }
+
+func TestListCustomersIsCachedAndInvalidatedByWrites(t *testing.T) {
+	env := kstest.New(t, gen.Model)
+	org := env.Tenant()
+	acct := env.Actor(org, app.Accountant, app.Member)
+	list := func(a ks.Actor) int {
+		page, err := kstest.Call(env, a, gen.ListCustomersHandler, Actions.ListCustomers, gen.ListCustomersInput{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(page.Rows)
+	}
+	if n := list(acct); n != 0 {
+		t.Fatalf("empty tenant lists %d", n)
+	}
+	executions := len(env.Traces())
+	list(acct)
+	if len(env.Traces()) != executions {
+		t.Fatal("the second identical call is answered from the cache, without running the action")
+	}
+	if _, err := kstest.Call(env, acct, gen.CreateCustomerHandler, Actions.CreateCustomer,
+		gen.CreateCustomerInput{Name: "Ada", Email: "ada@example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := list(acct); n != 1 {
+		t.Fatalf("a write to Customer invalidates the cached list: got %d", n)
+	}
+	// Another tenant never sees this tenant's cached page.
+	other := env.Actor(env.Tenant(), app.Member)
+	if n := list(other); n != 0 {
+		t.Fatalf("another tenant lists %d", n)
+	}
+}

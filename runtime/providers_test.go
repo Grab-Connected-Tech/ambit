@@ -123,3 +123,32 @@ func TestProvidersFromConfig(t *testing.T) {
 }
 
 func must[T any](v T, _ error) T { return v }
+
+func TestCgroupLimit(t *testing.T) {
+	for in, want := range map[string]int64{"max\n": 0, "536870912\n": 536870912, "9223372036854771712": 0, "": 0} {
+		if got := cgroupLimit(in); got != want {
+			t.Errorf("%q: got %d want %d", in, got, want)
+		}
+	}
+}
+
+func TestPprofNeedsTheAdminToken(t *testing.T) {
+	s := &Server{A: &App{Cfg: Defaults(), Registry: NewMetrics()}}
+	h := s.adminHandler()
+	get := func(token string) int {
+		req := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if get("") != http.StatusUnauthorized {
+		t.Fatal("with no token configured, profiles stay off")
+	}
+	t.Setenv("KS_ADMIN_TOKEN", "t0ken")
+	if get("wrong") != http.StatusUnauthorized || get("t0ken") != http.StatusOK {
+		t.Fatal("only the admin token opens the profiles")
+	}
+}

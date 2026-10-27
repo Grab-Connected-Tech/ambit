@@ -53,6 +53,7 @@ func (e *Env) Fixture(ref string, tenant ks.ID) ks.ID {
 		set["tenant_id"] = tenant
 	}
 	e.insertIn(res.Table, res.Fields, id, set, tenant)
+	e.invalidate(ref, tenant)
 	return id
 }
 
