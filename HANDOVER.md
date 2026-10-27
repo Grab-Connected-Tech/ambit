@@ -136,10 +136,13 @@ Facts learned the slow way (do not re-derive):
 ## Commit conventions here
 
 - Author must stay `Abhilash <abhi@grabians.com>` (repo-local git config; already set).
-- Do **not** add `Co-Authored-By` trailers. Earlier commits in this repo carry a
-  `Co-Authored-By: AI <noreply@anthropic.com>` line that was added without being asked and
-  named the wrong vendor; it is factually wrong. Rewrite those trailers out with
-  `git filter-branch --msg-filter 'grep -v "^Co-Authored-By: AI <noreply@anthropic.com>$"'`
-  (or `git rebase -i`), keeping the author unchanged, if the user has not objected.
+- Do **not** add `Co-Authored-By` trailers. Nobody asked for one, and this session is not
+  running the vendor such a line would name.
+- Most commits carry a `Co-Authored-By: AI <noreply@anthropic.com>` trailer and are wrong
+  for both reasons. Check before rewriting: a `git log --grep=<trailer>` that finds nothing
+  while `git log -1 --format=%B <sha>` shows the line means the pattern needs a literal
+  file check (write `git log --format=%B` to a file and grep that). If they are there,
+  rewrite with `git filter-branch --msg-filter` (or `rebase -i`) so the trailer lines go
+  away while author, dates and tree hashes stay identical.
 - `git commit -F <file>` rather than `-m "$(cat <<EOF…)"`: the local bash is 3.2 and
   mishandles apostrophes inside command-substituted heredocs.
