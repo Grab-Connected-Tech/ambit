@@ -2,6 +2,7 @@
   "name": "initial",
   "baseHash": "",
   "modelHash": "e1a0ff4b9cb8eec38c9fa2d8ac503be36f66d36c2958200b64443ee2fa4e23b3",
+  "ddlHash": "037b85464800d174b9b5d8e8857f21aa1c28dc6ac74260c45a4d8dacb81b251b",
   "steps": [
     {
       "class": "safe",
@@ -13,8 +14,8 @@
         "COMMENT ON TABLE \"org\" IS 'resource Org; managed by ks, do not edit'",
         "ALTER TABLE \"org\" ENABLE ROW LEVEL SECURITY;",
         "ALTER TABLE \"org\" FORCE ROW LEVEL SECURITY;",
-        "DROP POLICY IF EXISTS ks_public ON \"org\";",
-        "CREATE POLICY ks_public ON \"org\" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);",
+        "DROP POLICY IF EXISTS ks_tenant_isolation ON \"org\";",
+        "CREATE POLICY ks_tenant_isolation ON \"org\" AS PERMISSIVE FOR ALL USING ((\"org\".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK ((\"org\".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));",
         "CREATE TABLE \"user_account\" (\n  \"tenant_id\" uuid NOT NULL REFERENCES \"org\"(id) ON DELETE CASCADE,\n  \"id\" uuid NOT NULL,\n  \"created_at\" timestamptz NOT NULL DEFAULT now(),\n  \"updated_at\" timestamptz NOT NULL DEFAULT now(),\n  \"version\" bigint NOT NULL DEFAULT 1,\n  \"email\" text NOT NULL CHECK (\"email\" ~ '^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$'),\n  \"name\" text CHECK (length(\"name\") \u003c= 200),\n  \"last_login\" timestamptz,\n  \"password_hash\" text CHECK (length(\"password_hash\") \u003c= 200),\n  CONSTRAINT \"user_account_pk\" PRIMARY KEY (id)\n);",
         "COMMENT ON TABLE \"user_account\" IS 'resource User; managed by ks, do not edit'",
         "ALTER TABLE \"user_account\" ENABLE ROW LEVEL SECURITY;",

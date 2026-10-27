@@ -21,9 +21,9 @@ ALTER TABLE "org" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "org" FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS ks_public ON "org";
+DROP POLICY IF EXISTS ks_tenant_isolation ON "org";
 
-CREATE POLICY ks_public ON "org" AS PERMISSIVE FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY ks_tenant_isolation ON "org" AS PERMISSIVE FOR ALL USING (("org".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool)) WITH CHECK (("org".tenant_id = coalesce(nullif(current_setting('ks.tenant_id', true), ''), '00000000-0000-0000-0000-000000000000')::uuid OR coalesce(nullif(current_setting('ks.cross_tenant', true), ''), 'off')::bool));
 
 CREATE TABLE "user_account" (
   "tenant_id" uuid NOT NULL REFERENCES "org"(id) ON DELETE CASCADE,

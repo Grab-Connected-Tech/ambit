@@ -12,6 +12,8 @@ import (
 // TestGeneratedRules proves tenant isolation, the access matrix, field rules,
 // invariants, authorization and input validation for every declaration (§16.2).
 func TestGeneratedRules(t *testing.T) {
+	t.Run("Org", func(t *testing.T) { kstest.TableRules(t, Model, OrgTable) })
+	t.Run("User", func(t *testing.T) { kstest.TableRules(t, Model, UserTable) })
 	t.Run("billing.Invoice", func(t *testing.T) { kstest.TableRules(t, Model, InvoiceTable) })
 	t.Run("customers.Customer", func(t *testing.T) { kstest.TableRules(t, Model, CustomerTable) })
 	kstest.ActionRules(t, Model, []*runtime.Handler{

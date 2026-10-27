@@ -258,7 +258,7 @@ func tenantIsolation[T any](t *testing.T, app *model.App, table *runtime.Table[T
 	}
 	defer e.App.Rollback(ctx, tx)
 	var n int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM "`+res.Table+`"`).Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM "`+res.Table+`" WHERE tenant_id = $1`, mine).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {

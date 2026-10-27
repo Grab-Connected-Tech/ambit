@@ -65,7 +65,10 @@ type Plan struct {
 	Name      string `json:"name"`
 	BaseHash  string `json:"baseHash"`
 	ModelHash string `json:"modelHash"`
-	Steps     []Step `json:"steps"`
+	// DDLHash is the generated schema this plan leads to; a later plan that finds it
+	// changed under the same model knows the framework was upgraded.
+	DDLHash string `json:"ddlHash,omitempty"`
+	Steps   []Step `json:"steps"`
 }
 
 // Empty reports a plan with nothing to do.

@@ -156,6 +156,11 @@ type Frag struct {
 // Empty reports a fragment that imposes no restriction.
 func (f Frag) Empty() bool { return f.SQL == "" || f.SQL == "true" || f.SQL == "1=1" }
 
+// Denies reports a rule that admits nothing: Never(), or no rule at all. Empty is the
+// opposite question (a rule that adds no condition), so Always() must not be read as
+// "no rule" by a write guard.
+func (f Frag) Denies() bool { return f.SQL == "" || f.SQL == "false" }
+
 // Check is a deferred invariant: a predicate over one row that must hold (§5.5).
 type Check struct {
 	Name string

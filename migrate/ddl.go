@@ -4,6 +4,7 @@
 package migrate
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"slices"
 	"sort"
@@ -396,9 +397,40 @@ func immutableTrigger(a *model.App, ref string, r model.Resource) []string {
 		quoteIdent(r.Table+"_immutable"), quoteIdent(r.Table), strings.Join(cols, ", "))}
 }
 
+// tenantTableDDL writes the tenant table. Its tenant_id is its own id, so the same
+// isolation policy as every tenant resource applies: one tenant cannot read another's
+// row even through a query that forgets the filter. Creating a tenant (signup) is
+// therefore a cross-tenant or system operation (§8.5).
 func tenantTableDDL(a *model.App, fw model.Tenant) []string {
-	r := model.Resource{Name: fw.Name, Table: fw.Table, Fields: fw.Fields, Tenant: false, Timestamps: true}
+	r := model.Resource{Name: fw.Name, Table: fw.Table, Fields: fw.Fields, Tenant: hasColumn(fw.Fields, "tenant_id"), Timestamps: true}
 	return resourceDDL(a, fw.Name, r)
+}
+
+func hasColumn(fields []model.Field, col string) bool {
+	for _, f := range fields {
+		if f.Column == col {
+			return true
+		}
+	}
+	return false
+}
+
+// PolicyDDL is every table's row-level security setup, idempotently: what a framework
+// upgrade re-applies when the policies it generates changed but the model did not.
+func PolicyDDL(a *model.App) []string {
+	var out []string
+	for _, stmt := range DDL(a) {
+		s := strings.TrimSpace(stmt)
+		if strings.Contains(s, "ROW LEVEL SECURITY") || strings.HasPrefix(s, "DROP POLICY") || strings.HasPrefix(s, "CREATE POLICY") {
+			out = append(out, stmt)
+		}
+	}
+	return out
+}
+
+// DDLHash identifies the schema the framework generates for a model.
+func DDLHash(a *model.App) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(DDL(a), "\n"))))
 }
 
 func accountTableDDL(a *model.App, fw model.Tenant) []string {

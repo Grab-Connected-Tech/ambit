@@ -247,6 +247,10 @@ func rulesTest(app *model.App) []byte {
 	b.WriteString(header + "\npackage gen\n\nimport (\n\t\"testing\"\n\n\t\"keystone.dev/keystone/kstest\"\n\t\"keystone.dev/keystone/runtime\"\n)\n\n")
 	b.WriteString("// TestGeneratedRules proves tenant isolation, the access matrix, field rules,\n// invariants, authorization and input validation for every declaration (§16.2).\n")
 	b.WriteString("func TestGeneratedRules(t *testing.T) {\n")
+	// The tenant and the account are resources too, with rules of their own.
+	for _, r := range appLevelResources(app) {
+		fmt.Fprintf(&b, "\tt.Run(%q, func(t *testing.T) { kstest.TableRules(t, Model, %sTable) })\n", r.Name, r.Name)
+	}
 	mods := append([]model.Module(nil), app.Modules...)
 	sort.Slice(mods, func(i, j int) bool { return mods[i].Name < mods[j].Name })
 	var handlers []string

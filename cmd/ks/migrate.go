@@ -150,7 +150,14 @@ func migratePlan(name string, asJSON bool) error {
 			return err
 		}
 		plan = migrate.Diff(base, head)
+		// The same model can generate different DDL after a framework upgrade; policies
+		// are re-applied then, since they are idempotent and carry the security fixes.
+		if last.Plan.DDLHash != "" && last.Plan.DDLHash != migrate.DDLHash(head) && migrate.DDLHash(base) != last.Plan.DDLHash {
+			plan.Steps = append(plan.Steps, migrate.Step{Class: migrate.Safe, Subject: "framework",
+				Detail: "re-apply row-level security after a framework upgrade", InTx: migrate.PolicyDDL(head)})
+		}
 	}
+	plan.DDLHash = migrate.DDLHash(head)
 	if plan.Empty() {
 		if asJSON {
 			printJSON(map[string]any{"planned": false})

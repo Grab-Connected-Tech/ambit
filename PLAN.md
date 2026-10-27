@@ -92,11 +92,6 @@ example/myapp/  reference app (app.go + customers + billing) with committed gen/
   green, `ks diff` non-empty vs. base. Run the suite with
   `KS_TEST_DB_URL=postgres://$USER@localhost:5432/postgres?sslmode=disable go test ./...`.
 
-## Open decision
-- The tenant table (`org`) gets `ks_public` RLS (`USING (true)`): the query layer's tenant
-  filter isolates orgs, but the database backstop does not. Tightening it means org
-  creation (signup) must run cross-tenant or as system. See `migrate.tenantTableDDL`.
-
 ## Deviations from the spec text (all deliberate, all recorded)
 1. Checker analyzers use stdlib `go/ast` + `go/parser`, not `x/tools/go/analysis` (§2.10).
 2. `s.Email(name)` is the field builder, so the email effect is `s.EmailEffect()`; SMS is

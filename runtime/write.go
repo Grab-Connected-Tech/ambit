@@ -27,7 +27,7 @@ type Assignment struct {
 // (§9.1 mass assignment).
 func (v *View[T]) Insert(ctx context.Context, sets []Assignment, withs ...With[T]) (*T, error) {
 	d := v.db
-	if v.t.Create.Empty() {
+	if v.t.Create.Denies() {
 		return nil, ks.Forbidden("the resource declares no Create rule, so nothing may be inserted")
 	}
 	cols, vals, args := v.insertValues(sets)
@@ -158,7 +158,7 @@ func (v *View[T]) Delete(ctx context.Context, id ks.ID, version ks.Version) erro
 	if err != nil {
 		return err
 	}
-	if v.t.Delete.Empty() {
+	if v.t.Delete.Denies() {
 		return ks.Forbidden("the resource declares Delete(Never())")
 	}
 	sb := &sqlBuilder{a: actorValues(d.actor)}

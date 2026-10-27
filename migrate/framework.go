@@ -33,7 +33,6 @@ func withIFNotExists(in []string) []string {
 	for _, s := range in {
 		s = strings.Replace(s, "DROP TABLE IF EXISTS", "--", 1)
 		s = strings.Replace(s, "CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1)
-		s = strings.Replace(s, "CREATE POLICY ", "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = substring(", 1)
 		out = append(out, s)
 	}
 	return out
