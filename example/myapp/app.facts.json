@@ -1,0 +1,185 @@
+{
+  "app": "app",
+  "modelHash": "e1a0ff4b9cb8eec38c9fa2d8ac503be36f66d36c2958200b64443ee2fa4e23b3",
+  "generated": "v0.1",
+  "deps": [
+    {
+      "path": "github.com/jackc/pgpassfile",
+      "version": "v1.0.0",
+      "indirect": true
+    },
+    {
+      "path": "github.com/jackc/pgservicefile",
+      "version": "v0.0.0-20240606120523-5a60cdf6a761",
+      "indirect": true
+    },
+    {
+      "path": "github.com/jackc/pgx/v5",
+      "version": "v5.11.0"
+    },
+    {
+      "path": "github.com/jackc/puddle/v2",
+      "version": "v2.2.2",
+      "indirect": true
+    },
+    {
+      "path": "golang.org/x/sync",
+      "version": "v0.17.0",
+      "indirect": true
+    },
+    {
+      "path": "golang.org/x/text",
+      "version": "v0.29.0",
+      "indirect": true
+    }
+  ],
+  "queries": [
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent))",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent)).\n\tOrderBy(gen.Invoices.CreatedAt.Asc())",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent)).\n\tOrderBy(gen.Invoices.CreatedAt.Asc()).\n\tEach(c, 200, func(inv *gen.Invoice) error {\n\t\t_, err := c.Email.Send(c, []byte(\"{}\"))\n\t\treturn err\n\t})",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q().OrderBy(gen.Invoices.CreatedAt.Desc())",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q().Where(gen.Invoices.Status.Eq(gen.InvoiceStatusDraft))",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q().Where(gen.Invoices.Status.Eq(gen.InvoiceStatusDraft)).Count(c)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tks.Set(gen.InvoiceStatusPaid),\n\tPaidAt:\tks.Set(c.Clock.Now()),\n}.Assignments())",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tks.Set(gen.InvoiceStatusSent),\n\tSentAt:\tks.Set(c.Clock.Now()),\n}.Assignments())",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendReminders",
+      "sql": "in.Status.Get()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.ListCustomers",
+      "sql": "c.DB.Customers.Get(c, in.CustomerID)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.ListCustomers",
+      "sql": "c.DB.Customers.Insert(c, sets)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.ListCustomers",
+      "sql": "c.DB.Customers.Q()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.ListCustomers",
+      "sql": "c.DB.Customers.Q().OrderBy(gen.Customers.CreatedAt.Desc())",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.ListCustomers",
+      "sql": "in.Owner.Get()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.ListCustomers",
+      "sql": "in.Owner.Get()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.ListCustomers",
+      "sql": "in.Q.Get()",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    }
+  ]
+}

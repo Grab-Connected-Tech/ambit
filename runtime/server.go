@@ -39,6 +39,7 @@ type Server struct {
 	sem      chan struct{}
 	log      *slog.Logger
 	inflight atomicCount
+	dev      http.Handler // /_ks/* introspection, in development only
 }
 
 type atomicCount struct {
@@ -55,7 +56,11 @@ func (c *atomicCount) add(d int64) int64 {
 
 // NewServer wires routes and the backpressure limit.
 func (a *App) NewServer(addr string) *Server {
-	s := &Server{A: a, addr: addr, log: a.Log, sem: make(chan struct{}, max1(a.Cfg.MaxInFlight))}
+	s := &Server{A: a, addr: addr, sem: make(chan struct{}, max1(a.Cfg.MaxInFlight))}
+	if DevMode() {
+		s.dev = a.enableDev()
+	}
+	s.log = a.Log
 	s.srv = &http.Server{Addr: addr, Handler: s.recover(s.limit(http.HandlerFunc(s.router)))}
 	s.admin = &http.Server{Addr: ":" + strconv.Itoa(a.Cfg.AdminPort), Handler: s.adminHandler()}
 	return s
@@ -179,6 +184,10 @@ func (s *Server) router(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "ready")
 		return
 	}
+	if s.dev != nil && strings.HasPrefix(r.URL.Path, "/_ks/") {
+		s.dev.ServeHTTP(w, r)
+		return
+	}
 	h, ok := s.A.ByPath[r.URL.Path]
 	if !ok {
 		writeError(w, r, ks.NotFound(), traceID)
@@ -210,6 +219,7 @@ func (s *Server) router(w http.ResponseWriter, r *http.Request) {
 		Headers: headers(r),
 		IP:      clientIP(r),
 		Key:     r.Header.Get("Idempotency-Key"),
+		Trace:   traceID,
 	}
 	out, err := s.A.Run(r.Context(), h, actor, in, s.log.With("traceId", traceID, "action", h.Ref))
 	meta := &CallMeta{Trace: traceID}
@@ -523,7 +533,7 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 	if err != nil {
 		return out, err
 	}
-	d := a.NewDB(tx, actor, WithApp(a), WithLogger(log), WithAction(h.Ref), WithClock(a.Clock),
+	d := a.NewDB(tx, actor, WithApp(a), WithLogger(log), WithAction(h.Ref), WithClock(a.Clock), WithTrace(in.Trace),
 		WithCrossTenant(h.Spec.CrossTenant),
 		WithBudget(orInt(h.Spec.Limits.QueryBudget, a.Cfg.QueryBudget), int64(orInt(h.Spec.Limits.RowBudget, int(a.Cfg.RowBudget))), a.FailOnBudget),
 	)
@@ -533,8 +543,14 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 		d.clock = SystemClock{}
 	}
 	call := &Call{Context: ctx, Actor: actor, DB: d, Log: log, Clock: a.Clock, Body: in.Body, Query: in.Query,
-		Headers: in.Headers, IP: in.IP, Key: in.Key, Invocation: invocation, Trace: logTrace(log), App: a}
+		Headers: in.Headers, IP: in.IP, Key: in.Key, Invocation: invocation, Trace: in.Trace, App: a}
+	start := time.Now()
 	result, callErr := h.Handle(call)
+	if a.OnCall != nil {
+		a.OnCall(Trace{ID: in.Trace, Invocation: invocation, Action: h.Ref, Actor: actor, Start: start,
+			Millis: float64(time.Since(start).Microseconds()) / 1000, Err: callErr,
+			Stmts: d.Stmts(), Effects: d.EffectsQueued})
+	}
 	out = HandlerOutput{}
 	if callErr == nil {
 		encoded, encErr := Encode(result)
@@ -565,13 +581,6 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor ks.Actor, in *Call,
 		}
 	}
 	return out, nil
-}
-
-func logTrace(log *slog.Logger) string {
-	if log == nil {
-		return ""
-	}
-	return ""
 }
 
 // authorize evaluates the action's Requires against the actor, in Go (§3.3 step 4).
@@ -858,6 +867,21 @@ type Call struct {
 	Invocation ks.ID
 	Trace      string
 	App        *App
+}
+
+// Trace is what one handler execution did: the statements it ran and the effects it
+// queued. App.OnCall receives one per attempt, which is how ks test counts queries and
+// captures effects, and how ks dev serves /_ks/traces (§16.1, §17.4).
+type Trace struct {
+	ID         string       `json:"traceId"`
+	Invocation ks.ID        `json:"invocationId"`
+	Action     string       `json:"action"`
+	Actor      ks.Actor     `json:"actor"`
+	Start      time.Time    `json:"start"`
+	Millis     float64      `json:"millis"`
+	Err        error        `json:"-"`
+	Stmts      []Stmt       `json:"queries"`
+	Effects    []EffectCall `json:"effects"`
 }
 
 // Encode turns what an action returned into the response body. A nil result is a 204 with

@@ -45,6 +45,9 @@ type App struct {
 	Buckets    *Buckets
 	Caches     *Cache
 	Clock      ks.Clock
+	// OnCall, when set, receives a Trace after every handler execution. Set it before
+	// serving; it is read without a lock.
+	OnCall func(Trace)
 	// FailOnBudget makes a budget overrun an error, which is how ks test enforces it.
 	FailOnBudget bool
 	// StartWorkers and StartWebOnly select the process role (§10.6).

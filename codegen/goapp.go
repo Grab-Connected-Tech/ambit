@@ -3,6 +3,9 @@ package codegen
 import (
 	"encoding/json"
 	"fmt"
+	"go/format"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -231,6 +234,98 @@ func writeGoMain(b *strings.Builder, app *model.App, o Options) error {
 	}
 	b.WriteString("\t}\n\tif err := gen.Serve(ctx, handlers); err != nil {\n\t\tfmt.Fprintln(os.Stderr, err)\n\t\tos.Exit(1)\n\t}\n}\n")
 	return nil
+}
+
+// writeActionStubs gives a module with actions but no actions.go a starting one: the
+// Actions table the entrypoint names, each action returning ks.NotImplemented() (§17.1
+// step 3). An existing file is never touched; it belongs to whoever writes the actions.
+func writeActionStubs(app *model.App, o Options) ([]string, error) {
+	var written []string
+	for _, m := range app.Modules {
+		var list []model.Action
+		for _, a := range m.Actions {
+			if a.Kind != model.KindSchedule {
+				list = append(list, a)
+			}
+		}
+		if len(list) == 0 {
+			continue
+		}
+		imp := o.moduleImport(m.Name)
+		rel, ok := strings.CutPrefix(imp, o.Module+"/")
+		if !ok || o.Module == "" {
+			continue
+		}
+		path := filepath.Join(o.Dir, filepath.FromSlash(rel), "actions.go")
+		if _, err := os.Stat(path); err == nil {
+			continue
+		}
+		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+		var b strings.Builder
+		b.WriteString("// This file holds the " + m.Name + " module's action implementations. ks gen wrote it\n")
+		b.WriteString("// once as a starting point; it is yours now and regeneration leaves it alone (§17.1).\n")
+		b.WriteString("package " + pkgName(imp) + "\n\nimport (\n\t\"" + o.genImport() + "\"\n\t\"keystone.dev/keystone/ks\"\n")
+		usesRuntime := false
+		for _, a := range list {
+			if out, _ := outputType(app, &a); strings.Contains(out, "runtime.") {
+				usesRuntime = true
+			}
+		}
+		if usesRuntime {
+			b.WriteString("\t\"keystone.dev/keystone/runtime\"\n")
+		}
+		b.WriteString(")\n\nvar Actions = struct {\n")
+		sig := func(a model.Action) string {
+			out, ptr := outputType(app, &a)
+			out = pointer(qualifyGen(out), ptr)
+			return "(*gen." + a.Name + "Ctx, gen." + a.Name + "Input) (" + out + ", error)"
+		}
+		for _, a := range list {
+			b.WriteString("\t" + a.Name + " func" + sig(a) + "\n")
+		}
+		b.WriteString("}{\n")
+		for _, a := range list {
+			b.WriteString("\t" + a.Name + ": " + lowerFirst(a.Name) + ",\n")
+		}
+		b.WriteString("}\n")
+		for _, a := range list {
+			out, ptr := outputType(app, &a)
+			out = pointer(qualifyGen(out), ptr)
+			b.WriteString("\nfunc " + lowerFirst(a.Name) + "(c *gen." + a.Name + "Ctx, in gen." + a.Name + "Input) (" + out + ", error) {\n")
+			b.WriteString("\tvar zero " + out + "\n\treturn zero, ks.NotImplemented()\n}\n")
+		}
+		src, err := format.Source([]byte(b.String()))
+		if err != nil {
+			return nil, fmt.Errorf("codegen: action stub for %s: %w", m.Name, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, src, 0o644); err != nil {
+			return nil, err
+		}
+		written = append(written, filepath.ToSlash(filepath.Join(rel, "actions.go")))
+	}
+	return written, nil
+}
+
+// qualifyGen names a gen package type from outside it: Invoice -> gen.Invoice,
+// *runtime.PageOf[Invoice] -> *runtime.PageOf[gen.Invoice].
+func qualifyGen(t string) string {
+	if t == "struct{}" {
+		return t
+	}
+	if inner, ok := strings.CutPrefix(t, "*runtime.PageOf["); ok {
+		return "*runtime.PageOf[gen." + inner
+	}
+	return "gen." + strings.TrimPrefix(t, "*")
+}
+
+func lowerFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
 }
 
 func sortedKeys(m map[string]*model.Module) []string {

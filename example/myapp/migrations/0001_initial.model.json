@@ -1,0 +1,1303 @@
+{
+  "schemaVersion": 1,
+  "app": {
+    "name": "app",
+    "tenant": "Org"
+  },
+  "defaults": {
+    "queryBudget": 20,
+    "rowBudget": 10000,
+    "actionTimeout": "10s",
+    "statementTimeout": "5s",
+    "maxPageSize": 100,
+    "requestBodyBytes": 1048576,
+    "maxInFlight": 256
+  },
+  "roles": [
+    "accountant",
+    "admin",
+    "member"
+  ],
+  "tenant": {
+    "name": "Org",
+    "table": "org",
+    "fields": [
+      {
+        "name": "tenant_id",
+        "goName": "TenantID",
+        "column": "tenant_id",
+        "type": {
+          "kind": "id"
+        },
+        "immutable": true
+      },
+      {
+        "name": "id",
+        "goName": "ID",
+        "column": "id",
+        "type": {
+          "kind": "id"
+        }
+      },
+      {
+        "name": "created_at",
+        "goName": "CreatedAt",
+        "column": "created_at",
+        "type": {
+          "kind": "timestamp"
+        },
+        "default": {
+          "kind": "now",
+          "text": ""
+        },
+        "immutable": true
+      },
+      {
+        "name": "updated_at",
+        "goName": "UpdatedAt",
+        "column": "updated_at",
+        "type": {
+          "kind": "timestamp"
+        },
+        "default": {
+          "kind": "now",
+          "text": ""
+        }
+      },
+      {
+        "name": "version",
+        "goName": "Version",
+        "column": "version",
+        "type": {
+          "kind": "int"
+        },
+        "default": {
+          "kind": "int",
+          "text": "1"
+        }
+      },
+      {
+        "name": "name",
+        "goName": "Name",
+        "column": "name",
+        "type": {
+          "kind": "text",
+          "maxLen": 200
+        }
+      },
+      {
+        "name": "plan",
+        "goName": "Plan",
+        "column": "plan",
+        "type": {
+          "kind": "enum",
+          "values": [
+            "enterprise",
+            "free",
+            "pro"
+          ]
+        },
+        "default": {
+          "kind": "string",
+          "text": "free"
+        }
+      }
+    ],
+    "access": {
+      "read": {
+        "op": "role",
+        "roles": [
+          "member"
+        ]
+      },
+      "update": {
+        "op": "role",
+        "roles": [
+          "admin"
+        ]
+      },
+      "delete": {
+        "op": "never"
+      }
+    }
+  },
+  "membership": {
+    "name": "Membership",
+    "table": "ks_membership",
+    "fields": [
+      {
+        "name": "id",
+        "goName": "ID",
+        "column": "id",
+        "type": {
+          "kind": "id"
+        }
+      },
+      {
+        "name": "tenant_id",
+        "goName": "TenantID",
+        "column": "tenant_id",
+        "type": {
+          "kind": "id"
+        },
+        "immutable": true
+      },
+      {
+        "name": "actor_id",
+        "goName": "ActorID",
+        "column": "actor_id",
+        "type": {
+          "kind": "id"
+        },
+        "immutable": true
+      },
+      {
+        "name": "role",
+        "goName": "Role",
+        "column": "role",
+        "type": {
+          "kind": "text",
+          "maxLen": 64
+        }
+      }
+    ]
+  },
+  "account": {
+    "name": "User",
+    "table": "user_account",
+    "fields": [
+      {
+        "name": "tenant_id",
+        "goName": "TenantID",
+        "column": "tenant_id",
+        "type": {
+          "kind": "id"
+        },
+        "immutable": true
+      },
+      {
+        "name": "id",
+        "goName": "ID",
+        "column": "id",
+        "type": {
+          "kind": "id"
+        }
+      },
+      {
+        "name": "created_at",
+        "goName": "CreatedAt",
+        "column": "created_at",
+        "type": {
+          "kind": "timestamp"
+        },
+        "default": {
+          "kind": "now",
+          "text": ""
+        },
+        "immutable": true
+      },
+      {
+        "name": "updated_at",
+        "goName": "UpdatedAt",
+        "column": "updated_at",
+        "type": {
+          "kind": "timestamp"
+        },
+        "default": {
+          "kind": "now",
+          "text": ""
+        }
+      },
+      {
+        "name": "version",
+        "goName": "Version",
+        "column": "version",
+        "type": {
+          "kind": "int"
+        },
+        "default": {
+          "kind": "int",
+          "text": "1"
+        }
+      },
+      {
+        "name": "email",
+        "goName": "Email",
+        "column": "email",
+        "type": {
+          "kind": "email"
+        },
+        "unique": true
+      },
+      {
+        "name": "name",
+        "goName": "Name",
+        "column": "name",
+        "type": {
+          "kind": "text",
+          "maxLen": 200
+        },
+        "optional": true
+      },
+      {
+        "name": "last_login",
+        "goName": "LastLogin",
+        "column": "last_login",
+        "type": {
+          "kind": "timestamp"
+        },
+        "optional": true
+      },
+      {
+        "name": "passwordHash",
+        "goName": "PasswordHash",
+        "column": "password_hash",
+        "type": {
+          "kind": "text",
+          "maxLen": 200
+        },
+        "optional": true,
+        "sensitive": true
+      }
+    ],
+    "access": {
+      "read": {
+        "op": "or",
+        "kids": [
+          {
+            "op": "owner",
+            "path": [
+              "id"
+            ]
+          },
+          {
+            "op": "role",
+            "roles": [
+              "admin"
+            ]
+          }
+        ]
+      },
+      "create": {
+        "op": "always"
+      },
+      "update": {
+        "op": "or",
+        "kids": [
+          {
+            "op": "owner",
+            "path": [
+              "id"
+            ]
+          },
+          {
+            "op": "role",
+            "roles": [
+              "admin"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "op": "role",
+        "roles": [
+          "admin"
+        ]
+      },
+      "fieldRead": [
+        {
+          "field": "passwordHash",
+          "expr": {
+            "op": "role",
+            "roles": [
+              "admin"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "identity": {
+    "sessions": {
+      "ttl": "720h0m0s",
+      "idleTimeout": "168h0m0s",
+      "rotate": true
+    },
+    "apiTokens": {
+      "scoped": true
+    },
+    "oidc": [
+      {
+        "provider": "google"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "billing",
+      "resources": [
+        {
+          "name": "Invoice",
+          "table": "invoice",
+          "tenant": true,
+          "fields": [
+            {
+              "name": "amount",
+              "goName": "Amount",
+              "column": "amount_minor",
+              "columns": [
+                "amount_minor",
+                "amount_currency"
+              ],
+              "type": {
+                "kind": "money",
+                "currency": "USD"
+              }
+            },
+            {
+              "name": "created_at",
+              "goName": "CreatedAt",
+              "column": "created_at",
+              "type": {
+                "kind": "timestamp"
+              },
+              "default": {
+                "kind": "now",
+                "text": ""
+              },
+              "immutable": true
+            },
+            {
+              "name": "customer",
+              "goName": "Customer",
+              "column": "customer_id",
+              "type": {
+                "kind": "ref",
+                "goType": "CustomerID"
+              },
+              "ref": {
+                "resource": "customers.Customer",
+                "onDelete": "restrict"
+              }
+            },
+            {
+              "name": "id",
+              "goName": "ID",
+              "column": "id",
+              "type": {
+                "kind": "id"
+              }
+            },
+            {
+              "name": "notes",
+              "goName": "Notes",
+              "column": "notes",
+              "type": {
+                "kind": "text",
+                "maxLen": 2000
+              },
+              "optional": true,
+              "sensitive": true
+            },
+            {
+              "name": "paid_at",
+              "goName": "PaidAt",
+              "column": "paid_at",
+              "type": {
+                "kind": "timestamp"
+              },
+              "optional": true
+            },
+            {
+              "name": "sent_at",
+              "goName": "SentAt",
+              "column": "sent_at",
+              "type": {
+                "kind": "timestamp"
+              },
+              "optional": true
+            },
+            {
+              "name": "status",
+              "goName": "Status",
+              "column": "status",
+              "type": {
+                "kind": "enum",
+                "values": [
+                  "draft",
+                  "paid",
+                  "sent",
+                  "void"
+                ]
+              },
+              "default": {
+                "kind": "string",
+                "text": "draft"
+              }
+            },
+            {
+              "name": "tax_id",
+              "goName": "TaxId",
+              "column": "tax_id",
+              "type": {
+                "kind": "text",
+                "maxLen": 40,
+                "encrypted": true,
+                "inner": {
+                  "kind": "text",
+                  "maxLen": 40
+                }
+              },
+              "optional": true,
+              "sensitive": true
+            },
+            {
+              "name": "tenant_id",
+              "goName": "TenantID",
+              "column": "tenant_id",
+              "type": {
+                "kind": "id"
+              },
+              "immutable": true
+            },
+            {
+              "name": "updated_at",
+              "goName": "UpdatedAt",
+              "column": "updated_at",
+              "type": {
+                "kind": "timestamp"
+              },
+              "default": {
+                "kind": "now",
+                "text": ""
+              }
+            },
+            {
+              "name": "version",
+              "goName": "Version",
+              "column": "version",
+              "type": {
+                "kind": "int"
+              },
+              "default": {
+                "kind": "int",
+                "text": "1"
+              }
+            }
+          ],
+          "indexes": [
+            {
+              "name": "customer_id_index",
+              "fields": [
+                "customer"
+              ]
+            },
+            {
+              "name": "invoice_customer_status",
+              "fields": [
+                "customer",
+                "status"
+              ]
+            }
+          ],
+          "invariants": [
+            {
+              "name": "amount_positive",
+              "expr": {
+                "op": "gt",
+                "kids": [
+                  {
+                    "op": "field",
+                    "path": [
+                      "amount"
+                    ]
+                  },
+                  {
+                    "op": "lit",
+                    "values": [
+                      {
+                        "kind": "int",
+                        "text": "0"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "enforcement": "check"
+            },
+            {
+              "name": "paid_has_date",
+              "expr": {
+                "op": "or",
+                "kids": [
+                  {
+                    "op": "not",
+                    "kids": [
+                      {
+                        "op": "eq",
+                        "kids": [
+                          {
+                            "op": "field",
+                            "path": [
+                              "status"
+                            ]
+                          },
+                          {
+                            "op": "lit",
+                            "values": [
+                              {
+                                "kind": "string",
+                                "text": "paid"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "isset",
+                    "kids": [
+                      {
+                        "op": "field",
+                        "path": [
+                          "paid_at"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "enforcement": "check"
+            },
+            {
+              "name": "sent_has_date",
+              "expr": {
+                "op": "or",
+                "kids": [
+                  {
+                    "op": "not",
+                    "kids": [
+                      {
+                        "op": "eq",
+                        "kids": [
+                          {
+                            "op": "field",
+                            "path": [
+                              "status"
+                            ]
+                          },
+                          {
+                            "op": "lit",
+                            "values": [
+                              {
+                                "kind": "string",
+                                "text": "sent"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "isset",
+                    "kids": [
+                      {
+                        "op": "field",
+                        "path": [
+                          "sent_at"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "enforcement": "check"
+            },
+            {
+              "name": "void_not_paid",
+              "expr": {
+                "op": "or",
+                "kids": [
+                  {
+                    "op": "not",
+                    "kids": [
+                      {
+                        "op": "eq",
+                        "kids": [
+                          {
+                            "op": "field",
+                            "path": [
+                              "status"
+                            ]
+                          },
+                          {
+                            "op": "lit",
+                            "values": [
+                              {
+                                "kind": "string",
+                                "text": "void"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "not",
+                    "kids": [
+                      {
+                        "op": "isset",
+                        "kids": [
+                          {
+                            "op": "field",
+                            "path": [
+                              "paid_at"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "enforcement": "check"
+            }
+          ],
+          "access": {
+            "read": {
+              "op": "role",
+              "roles": [
+                "member"
+              ]
+            },
+            "create": {
+              "op": "role",
+              "roles": [
+                "accountant",
+                "admin"
+              ]
+            },
+            "update": {
+              "op": "and",
+              "kids": [
+                {
+                  "op": "in",
+                  "kids": [
+                    {
+                      "op": "field",
+                      "path": [
+                        "status"
+                      ]
+                    },
+                    {
+                      "op": "lit",
+                      "values": [
+                        {
+                          "kind": "list",
+                          "elem": "string",
+                          "list": [
+                            {
+                              "kind": "string",
+                              "text": "draft"
+                            },
+                            {
+                              "kind": "string",
+                              "text": "sent"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "role",
+                  "roles": [
+                    "accountant",
+                    "admin"
+                  ]
+                }
+              ]
+            },
+            "delete": {
+              "op": "never"
+            },
+            "fieldRead": [
+              {
+                "field": "notes",
+                "expr": {
+                  "op": "role",
+                  "roles": [
+                    "accountant",
+                    "admin"
+                  ]
+                }
+              },
+              {
+                "field": "tax_id",
+                "expr": {
+                  "op": "role",
+                  "roles": [
+                    "admin"
+                  ]
+                }
+              }
+            ],
+            "fieldWrite": [
+              {
+                "field": "tax_id",
+                "expr": {
+                  "op": "role",
+                  "roles": [
+                    "admin"
+                  ]
+                }
+              }
+            ]
+          },
+          "timestamps": true,
+          "versioned": true
+        }
+      ],
+      "actions": [
+        {
+          "name": "CountDrafts",
+          "kind": "query",
+          "requires": {
+            "op": "role",
+            "roles": [
+              "member"
+            ]
+          },
+          "output": {
+            "fields": [
+              {
+                "name": "total",
+                "goName": "Total",
+                "column": "total",
+                "type": {
+                  "kind": "int"
+                }
+              }
+            ]
+          },
+          "reads": [
+            "billing.Invoice"
+          ],
+          "limits": {},
+          "counts": true
+        },
+        {
+          "name": "DailyReminders",
+          "kind": "schedule",
+          "output": {},
+          "limits": {},
+          "cron": "0 9 * * *",
+          "runs": "billing.SendReminders"
+        },
+        {
+          "name": "ListInvoices",
+          "kind": "query",
+          "requires": {
+            "op": "role",
+            "roles": [
+              "member"
+            ]
+          },
+          "input": [
+            {
+              "name": "status",
+              "goName": "Status",
+              "column": "status",
+              "type": {
+                "kind": "enum",
+                "values": [
+                  "draft",
+                  "paid",
+                  "sent",
+                  "void"
+                ]
+              },
+              "optional": true,
+              "default": {
+                "kind": "string",
+                "text": "draft"
+              }
+            }
+          ],
+          "output": {
+            "page": "billing.Invoice"
+          },
+          "reads": [
+            "billing.Invoice"
+          ],
+          "limits": {}
+        },
+        {
+          "name": "MarkPaid",
+          "kind": "mutation",
+          "requires": {
+            "op": "role",
+            "roles": [
+              "accountant",
+              "admin"
+            ]
+          },
+          "input": [
+            {
+              "name": "invoice_id",
+              "goName": "InvoiceId",
+              "column": "invoice_id_id",
+              "type": {
+                "kind": "id"
+              },
+              "ref": {
+                "resource": "billing.Invoice",
+                "onDelete": "restrict"
+              }
+            },
+            {
+              "name": "amount",
+              "goName": "Amount",
+              "column": "amount_minor",
+              "columns": [
+                "amount_minor",
+                "amount_currency"
+              ],
+              "type": {
+                "kind": "money",
+                "currency": "USD"
+              }
+            },
+            {
+              "name": "psp_charge_id",
+              "goName": "PspChargeId",
+              "column": "psp_charge_id",
+              "type": {
+                "kind": "text",
+                "maxLen": 200
+              }
+            }
+          ],
+          "output": {
+            "resource": "billing.Invoice"
+          },
+          "writes": [
+            "billing.Invoice"
+          ],
+          "effects": [
+            {
+              "type": "webhook",
+              "mode": "deferred",
+              "topic": "invoice.paid"
+            }
+          ],
+          "errors": [
+            {
+              "code": "already_paid"
+            },
+            {
+              "code": "amount_mismatch"
+            }
+          ],
+          "limits": {
+            "queryBudget": 8
+          },
+          "idempotent": true
+        },
+        {
+          "name": "SendInvoice",
+          "kind": "mutation",
+          "requires": {
+            "op": "role",
+            "roles": [
+              "accountant",
+              "admin"
+            ]
+          },
+          "input": [
+            {
+              "name": "invoice_id",
+              "goName": "InvoiceId",
+              "column": "invoice_id_id",
+              "type": {
+                "kind": "id"
+              },
+              "ref": {
+                "resource": "billing.Invoice",
+                "onDelete": "restrict"
+              }
+            }
+          ],
+          "output": {
+            "resource": "billing.Invoice"
+          },
+          "reads": [
+            "customers.Customer"
+          ],
+          "writes": [
+            "billing.Invoice"
+          ],
+          "effects": [
+            {
+              "type": "email",
+              "mode": "deferred"
+            }
+          ],
+          "errors": [
+            {
+              "code": "not_draft"
+            }
+          ],
+          "limits": {
+            "rateLimit": [
+              {
+                "scope": "actor",
+                "limit": 60,
+                "per": "1m0s"
+              }
+            ]
+          }
+        },
+        {
+          "name": "SendReminders",
+          "kind": "job",
+          "output": {},
+          "reads": [
+            "billing.Invoice",
+            "customers.Customer"
+          ],
+          "effects": [
+            {
+              "type": "email",
+              "mode": "deferred"
+            }
+          ],
+          "limits": {},
+          "retry": {
+            "maxAttempts": 5,
+            "backoff": "exponential",
+            "base": "1s",
+            "cap": "10m0s"
+          },
+          "concurrency": {
+            "key": "customer",
+            "limit": 1
+          },
+          "runAs": "system"
+        }
+      ]
+    },
+    {
+      "name": "customers",
+      "resources": [
+        {
+          "name": "Customer",
+          "table": "customer",
+          "tenant": true,
+          "fields": [
+            {
+              "name": "created_at",
+              "goName": "CreatedAt",
+              "column": "created_at",
+              "type": {
+                "kind": "timestamp"
+              },
+              "default": {
+                "kind": "now",
+                "text": ""
+              },
+              "immutable": true
+            },
+            {
+              "name": "email",
+              "goName": "Email",
+              "column": "email",
+              "type": {
+                "kind": "email"
+              },
+              "unique": true
+            },
+            {
+              "name": "external_id",
+              "goName": "ExternalId",
+              "column": "external_id",
+              "type": {
+                "kind": "text",
+                "maxLen": 64
+              },
+              "optional": true
+            },
+            {
+              "name": "id",
+              "goName": "ID",
+              "column": "id",
+              "type": {
+                "kind": "id"
+              }
+            },
+            {
+              "name": "name",
+              "goName": "Name",
+              "column": "name",
+              "type": {
+                "kind": "text",
+                "maxLen": 200
+              }
+            },
+            {
+              "name": "owner",
+              "goName": "Owner",
+              "column": "owner_id",
+              "type": {
+                "kind": "ref",
+                "goType": "UserID"
+              },
+              "ref": {
+                "resource": "app.User",
+                "onDelete": "restrict"
+              }
+            },
+            {
+              "name": "tenant_id",
+              "goName": "TenantID",
+              "column": "tenant_id",
+              "type": {
+                "kind": "id"
+              },
+              "immutable": true
+            },
+            {
+              "name": "updated_at",
+              "goName": "UpdatedAt",
+              "column": "updated_at",
+              "type": {
+                "kind": "timestamp"
+              },
+              "default": {
+                "kind": "now",
+                "text": ""
+              }
+            },
+            {
+              "name": "version",
+              "goName": "Version",
+              "column": "version",
+              "type": {
+                "kind": "int"
+              },
+              "default": {
+                "kind": "int",
+                "text": "1"
+              }
+            }
+          ],
+          "indexes": [
+            {
+              "name": "customer_email_unique",
+              "fields": [
+                "email"
+              ],
+              "unique": true
+            },
+            {
+              "name": "customer_owner",
+              "fields": [
+                "owner"
+              ]
+            },
+            {
+              "name": "owner_id_index",
+              "fields": [
+                "owner"
+              ]
+            }
+          ],
+          "access": {
+            "read": {
+              "op": "role",
+              "roles": [
+                "member"
+              ]
+            },
+            "create": {
+              "op": "role",
+              "roles": [
+                "accountant",
+                "admin"
+              ]
+            },
+            "update": {
+              "op": "role",
+              "roles": [
+                "accountant",
+                "admin"
+              ]
+            },
+            "delete": {
+              "op": "role",
+              "roles": [
+                "admin"
+              ]
+            }
+          },
+          "timestamps": true,
+          "versioned": true
+        }
+      ],
+      "actions": [
+        {
+          "name": "CreateCustomer",
+          "kind": "mutation",
+          "requires": {
+            "op": "role",
+            "roles": [
+              "accountant",
+              "admin"
+            ]
+          },
+          "input": [
+            {
+              "name": "name",
+              "goName": "Name",
+              "column": "name",
+              "type": {
+                "kind": "text",
+                "maxLen": 200
+              }
+            },
+            {
+              "name": "email",
+              "goName": "Email",
+              "column": "email",
+              "type": {
+                "kind": "email"
+              }
+            },
+            {
+              "name": "owner",
+              "goName": "Owner",
+              "column": "owner_id",
+              "type": {
+                "kind": "ref",
+                "goType": "UserID"
+              },
+              "optional": true,
+              "ref": {
+                "resource": "app.User",
+                "onDelete": "restrict"
+              }
+            }
+          ],
+          "output": {
+            "resource": "customers.Customer"
+          },
+          "writes": [
+            "customers.Customer"
+          ],
+          "errors": [
+            {
+              "code": "email_taken"
+            }
+          ],
+          "limits": {
+            "rateLimit": [
+              {
+                "scope": "actor",
+                "limit": 120,
+                "per": "1m0s"
+              }
+            ]
+          },
+          "idempotent": true
+        },
+        {
+          "name": "GetCustomer",
+          "kind": "query",
+          "requires": {
+            "op": "role",
+            "roles": [
+              "member"
+            ]
+          },
+          "input": [
+            {
+              "name": "customer_id",
+              "goName": "CustomerId",
+              "column": "customer_id_id",
+              "type": {
+                "kind": "id"
+              },
+              "ref": {
+                "resource": "customers.Customer",
+                "onDelete": "restrict"
+              }
+            }
+          ],
+          "output": {
+            "resource": "customers.Customer"
+          },
+          "reads": [
+            "customers.Customer"
+          ],
+          "limits": {}
+        },
+        {
+          "name": "ListCustomers",
+          "kind": "query",
+          "requires": {
+            "op": "role",
+            "roles": [
+              "member"
+            ]
+          },
+          "input": [
+            {
+              "name": "owner",
+              "goName": "Owner",
+              "column": "owner_id",
+              "type": {
+                "kind": "ref",
+                "goType": "UserID"
+              },
+              "optional": true,
+              "ref": {
+                "resource": "app.User",
+                "onDelete": "restrict"
+              }
+            },
+            {
+              "name": "q",
+              "goName": "Q",
+              "column": "q",
+              "type": {
+                "kind": "text",
+                "maxLen": 100
+              },
+              "optional": true
+            }
+          ],
+          "output": {
+            "page": "customers.Customer"
+          },
+          "reads": [
+            "customers.Customer"
+          ],
+          "limits": {},
+          "cache": {
+            "ttl": "5m0s",
+            "invalidatedBy": [
+              "customers.Customer"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "limits": {
+    "serializationRetries": 3
+  }
+}
