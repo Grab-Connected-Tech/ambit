@@ -109,7 +109,7 @@ var Invoices = struct {
 	CreatedAt:  runtime.NewCol[time.Time]("t.created_at"),
 	UpdatedAt:  runtime.NewCol[time.Time]("t.updated_at"),
 	Version:    runtime.NewCol[ks.Version]("t.version"),
-	Amount:     runtime.NewMoneyCol("t.amount_minor_minor", "t.amount_minor_currency"),
+	Amount:     runtime.NewMoneyCol("t.amount_minor", "t.amount_currency"),
 	CustomerID: runtime.NewIDCol("t.customer_id", "customers.Customer"),
 	Notes:      runtime.NewCol[string]("t.notes"),
 	PaidAt:     runtime.NewOptCol[time.Time]("t.paid_at"),

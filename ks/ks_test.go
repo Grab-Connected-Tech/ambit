@@ -331,3 +331,25 @@ func TestIDArgAndScan(t *testing.T) {
 		t.Fatal("nil ids must bind as NULL")
 	}
 }
+
+func TestOptRoundTripsThroughJSON(t *testing.T) {
+	type row struct {
+		A Opt[string] `json:"a"`
+		B Opt[int]    `json:"b"`
+		C Opt[string] `json:"c"`
+	}
+	raw, err := json.Marshal(row{A: Set("x"), B: Set(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != `{"a":"x","b":0,"c":null}` {
+		t.Fatalf("encoded %s", raw)
+	}
+	var back row
+	if err := json.Unmarshal([]byte(`{"a":"x","b":0}`), &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.A.Or("") != "x" || !back.B.Present() || back.C.Present() {
+		t.Fatalf("decoded %+v", back)
+	}
+}

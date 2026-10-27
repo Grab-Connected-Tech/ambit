@@ -35,6 +35,8 @@ var (
 	declRe    = regexp.MustCompile(`^\s*(\w+)\s*=\s*s\.(Query|Mutation|Job|Schedule)\("(\w+)"`)
 	implRe    = regexp.MustCompile(`^func\s+([A-Z]\w*)\s*\(`)
 	requireRe = regexp.MustCompile(`env\.Call\([^,]+,\s*(actions\.)?([A-Z]\w*)`)
+	// kstest.Call(env, actor, gen.SendInvoiceHandler, ...) names the action by its adapter.
+	kstestCallRe = regexp.MustCompile(`kstest\.Call\([^,]+,[^,]+,\s*gen\.([A-Z]\w*)Handler`)
 )
 
 // hashMarker returns the content hash recorded in a generated file.
@@ -167,21 +169,26 @@ func checkTests(cfg Config, res *Result) {
 	}
 	called := map[string]bool{}
 	for _, m := range cfg.App.Modules {
-		dir := filepath.Join(cfg.Root, "app", m.Name, "actions")
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if !strings.HasSuffix(e.Name(), "_test.go") {
-				continue
-			}
-			src, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		// Tests live beside the actions: in actions/, or in the module package itself.
+		for _, dir := range []string{filepath.Join(cfg.Root, "app", m.Name, "actions"), filepath.Join(cfg.Root, "app", m.Name)} {
+			entries, err := os.ReadDir(dir)
 			if err != nil {
 				continue
 			}
-			for _, mm := range requireRe.FindAllStringSubmatch(string(src), -1) {
-				called[mm[2]] = true
+			for _, e := range entries {
+				if !strings.HasSuffix(e.Name(), "_test.go") {
+					continue
+				}
+				src, err := os.ReadFile(filepath.Join(dir, e.Name()))
+				if err != nil {
+					continue
+				}
+				for _, mm := range requireRe.FindAllStringSubmatch(string(src), -1) {
+					called[mm[2]] = true
+				}
+				for _, mm := range kstestCallRe.FindAllStringSubmatch(string(src), -1) {
+					called[mm[1]] = true
+				}
 			}
 		}
 	}

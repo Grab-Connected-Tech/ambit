@@ -296,8 +296,13 @@ func declaredColumn(res *model.Resource, f *model.Field) col {
 	sql := "t." + f.Column
 	switch {
 	case c.money:
-		c.descType, c.expr, c.width = "runtime.MoneyCol",
-			`runtime.NewMoneyCol("`+sql+`_minor", "`+sql+`_currency")`, 2
+		// The model spells the pair in f.Columns (amount_minor, amount_currency); the
+		// base name is only a fallback for a model that predates it.
+		minor, currency := sql+"_minor", sql+"_currency"
+		if len(f.Columns) == 2 {
+			minor, currency = "t."+f.Columns[0], "t."+f.Columns[1]
+		}
+		c.descType, c.expr, c.width = "runtime.MoneyCol", `runtime.NewMoneyCol("`+minor+`", "`+currency+`")`, 2
 	case c.ref || f.Type.Kind == model.KindID:
 		c.descType = "runtime.IDCol"
 		c.expr = fmt.Sprintf("runtime.NewIDCol(%q, %q)", sql, targetOf(f))

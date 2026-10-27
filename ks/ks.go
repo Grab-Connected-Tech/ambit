@@ -5,6 +5,7 @@ package ks
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -139,6 +140,28 @@ func (o Opt[T]) Or(def T) T {
 		return o.value
 	}
 	return def
+}
+
+// MarshalJSON writes the value, or null when absent.
+func (o Opt[T]) MarshalJSON() ([]byte, error) {
+	if !o.set {
+		return []byte("null"), nil
+	}
+	return json.Marshal(o.value)
+}
+
+// UnmarshalJSON reads a value; null leaves the Opt absent, as a missing key does.
+func (o *Opt[T]) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		*o = Opt[T]{}
+		return nil
+	}
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*o = Set(v)
+	return nil
 }
 
 // Ptr returns a pointer to the value, or nil when absent.
