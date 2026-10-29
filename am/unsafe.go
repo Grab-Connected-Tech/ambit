@@ -42,15 +42,8 @@ func Unsafe(ctx context.Context, reason string, fn func(RawTx) error) error {
 	if !ok {
 		return InternalError(errors.New("am: am.Unsafe called outside an action transaction"))
 	}
-	if err := checkRawFn(fn); err != nil {
-		return err
-	}
 	return fn(tx)
 }
-
-// checkRawFn keeps raw SQL honest: no stacked statements, which would let a
-// single string bypass parameterization and the RLS session settings.
-func checkRawFn(fn func(RawTx) error) error { return nil }
 
 // UnsafeBlock records one raw-SQL escape hatch, extracted from source by the
 // checker into app.facts.json (§6.3).

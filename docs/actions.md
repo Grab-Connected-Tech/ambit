@@ -148,8 +148,15 @@ module's action directly today.
 ## Raw SQL
 
 Raw SQL is available only inside `am.Unsafe(c, "reason", func(tx am.RawTx) error { ... })`.
-It still carries the tenant settings for row-level security, counts against the query
-budget, and shows up in every behavior diff.
+The checker records every block, and each one shows up in the behavior diff.
+
+**The runtime does not attach a raw transaction yet**, so a call to `am.Unsafe` currently
+returns an internal error.
+
+Treat an `Unsafe` block as outside both layers of protection. Raw SQL runs on the action's
+transaction with its tenant settings, but nothing stops it from calling
+`set_config('am.cross_tenant', 'on', true)` itself, and then the row-level security backstop
+no longer applies inside the block. Review each block's SQL as if no access rules existed.
 
 ---
 
