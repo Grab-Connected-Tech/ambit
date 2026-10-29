@@ -491,7 +491,7 @@ func setup(t *testing.T) *harness {
 	if _, err := base.Exec(ctx, fmt.Sprintf("DROP ROLE IF EXISTS %s", pq(role))); err != nil {
 		t.Fatalf("drop role: %v", err)
 	}
-	if _, err := base.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN", pq(role))); err != nil {
+	if _, err := base.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD '%s'", pq(role), role)); err != nil {
 		t.Fatalf("create role: %v", err)
 	}
 	t.Cleanup(func() {
@@ -503,7 +503,7 @@ func setup(t *testing.T) *harness {
 	cfg.App = "fixture"
 	url := databaseURL(base, name)
 	ownerURL := url
-	cfg.DatabaseURL = withUser(url, role)
+	cfg.DatabaseURL = withUser(url, role, role)
 	cfg.QueryBudget = 20
 	cfg.MaxPageSize = 50
 	cfg.MaxInFlight = 8
@@ -580,19 +580,15 @@ func databaseURL(base *pgxpool.Pool, name string) string {
 	return u
 }
 
-// withUser rewrites a connection string's user, so the harness connects as the
-// non-owner app role rather than the schema owner.
-func withUser(u, user string) string {
+// withUser rewrites a connection string's credentials, so the harness connects as
+// the non-owner app role rather than the schema owner.
+func withUser(u, user, password string) string {
 	if strings.HasPrefix(u, "postgres://") || strings.HasPrefix(u, "postgresql://") {
 		parsed, err := url.Parse(u)
 		if err != nil {
 			return u
 		}
-		if pw, has := parsed.User.Password(); has {
-			parsed.User = url.UserPassword(user, pw)
-		} else {
-			parsed.User = url.User(user)
-		}
+		parsed.User = url.UserPassword(user, password)
 		return parsed.String()
 	}
 	if strings.Contains(u, "user=") {
@@ -601,10 +597,16 @@ func withUser(u, user string) string {
 			if strings.HasPrefix(p, "user=") {
 				parts[i] = "user=" + user
 			}
+			if strings.HasPrefix(p, "password=") {
+				parts[i] = "password=" + password
+			}
+		}
+		if !strings.Contains(u, "password=") {
+			parts = append(parts, "password="+password)
 		}
 		return strings.Join(parts, " ")
 	}
-	return u + " user=" + user
+	return u + " user=" + user + " password=" + password
 }
 
 func pq(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
@@ -916,13 +918,14 @@ func code(err error) string {
 
 // ---- the guarantees ----
 
-func TestWithUserKeepsPassword(t *testing.T) {
+func TestWithUserSwapsCredentials(t *testing.T) {
 	for in, want := range map[string]string{
-		"postgres://owner:s3cret@db:5432/app?sslmode=disable": "postgres://am_app:s3cret@db:5432/app?sslmode=disable",
-		"postgres://owner@db/app":                             "postgres://am_app@db/app",
-		"postgres://db/app":                                   "postgres://am_app@db/app",
+		"postgres://owner:s3cret@db:5432/app?sslmode=disable": "postgres://am_app:pw@db:5432/app?sslmode=disable",
+		"postgres://db/app":                                   "postgres://am_app:pw@db/app",
+		"host=db user=owner password=s3cret dbname=app":       "host=db user=am_app password=pw dbname=app",
+		"host=db dbname=app":                                  "host=db dbname=app user=am_app password=pw",
 	} {
-		if got := withUser(in, "am_app"); got != want {
+		if got := withUser(in, "am_app", "pw"); got != want {
 			t.Errorf("withUser(%q) = %q, want %q", in, got, want)
 		}
 	}
