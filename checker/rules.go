@@ -189,6 +189,13 @@ function is a broken promise to the client that was generated for it.`,
 		`// spec declares SendInvoice, actions/ has no SendInvoice`,
 		`func SendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, error) { ... }`,
 		"actions"},
+	{"AM-CODE-006", "error", "type-aware checks could not run", "14",
+		`The checker resolves what each call refers to with go/types, so renaming an
+import, wrapping a call or aliasing a type cannot hide it from a rule. When the type
+check fails the rules fall back to matching syntax, which those tricks can evade, so
+the run fails instead of quietly checking less.`,
+		`am built with Go 1.24, go on PATH is 1.25: export data cannot be read`,
+		`go build ./... passes, and am is built with the same Go toolchain`, "everywhere"},
 	{"AM-API-001", "error", "breaking API change without a deprecation release", "12.4",
 		`A client generated from the last release still calls the old shape. Marking it
 Deprecated() for one release gives every client a version that warns before it breaks;

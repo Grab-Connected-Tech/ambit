@@ -1,7 +1,7 @@
 // Package checker runs Ambit's analyzers over an app's source and extracts the
-// code facts the behavior diff reports (§14, §6.3). It works on syntax plus the app
-// model: type information would sharpen a few checks, but it would also add a
-// dependency, and §2.10 keeps the dependency set boring.
+// code facts the behavior diff reports (§14, §6.3). With Config.Types set, the rules
+// resolve names through go/types (what a call is, not how it is spelled); without it,
+// or for test files, they fall back to syntax plus the app model.
 package checker
 
 import (
@@ -9,6 +9,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,9 @@ type Config struct {
 	AllowedImports []string // am.yaml allowedImports (§7.4)
 	App            *model.App
 	Strict         bool
+	// Types runs the type-aware rules. It needs a module that builds; when the type
+	// check fails anyway, the run reports AM-CODE-006 rather than silently degrading.
+	Types bool
 }
 
 // Result is the checker's whole answer.
@@ -94,6 +98,7 @@ func Run(cfg Config) (Result, error) {
 	}
 	sort.Strings(files)
 	fset := token.NewFileSet()
+	parsed := map[string]*ast.File{}
 	for _, path := range files {
 		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 		if err != nil {
@@ -104,7 +109,32 @@ func Run(cfg Config) (Result, error) {
 			})
 			continue
 		}
+		abs, _ := filepath.Abs(path)
+		parsed[abs] = f
+	}
+	var info *types.Info
+	var typed map[*ast.File]bool
+	if cfg.Types {
+		var err error
+		if info, typed, err = typeCheck(cfg.Root, fset, parsed); err != nil {
+			res.Diags = append(res.Diags, compile.Diag{
+				Rule: "AM-CODE-006", Severity: compile.SevError,
+				Message: "type-aware checks could not run, so these files were checked by syntax only: " + err.Error(),
+				Fix:     "make sure go build ./... passes with the same Go toolchain am was built with",
+				Docs:    "am explain AM-CODE-006",
+			})
+		}
+	}
+	for _, path := range files {
+		abs, _ := filepath.Abs(path)
+		f := parsed[abs]
+		if f == nil {
+			continue
+		}
 		v := &visitor{cfg: cfg, fset: fset, file: f, path: rel(cfg.Root, path), abs: path, res: &res}
+		if typed[f] {
+			v.info = info
+		}
 		v.classify()
 		v.run()
 	}
@@ -135,6 +165,7 @@ type visitor struct {
 	action     string // the action this file implements, when it is an action file
 	kind       fileKind
 	lines      []string
+	info       *types.Info // nil when the file is checked by syntax only
 }
 
 type fileKind int
@@ -343,6 +374,11 @@ func (v *visitor) walkCalls() {
 		}
 		stack = append(stack, n)
 		switch x := n.(type) {
+		case *ast.FuncDecl:
+			// Facts belong to the function they sit in, not the file's last one.
+			if x.Recv == nil && v.kind != fileTest {
+				v.action = strings.ToUpper(x.Name.Name[:1]) + x.Name.Name[1:]
+			}
 		case *ast.ForStmt, *ast.RangeStmt:
 			loops++
 		case *ast.GoStmt:
@@ -352,9 +388,38 @@ func (v *visitor) walkCalls() {
 			v.checkCall(x, loops)
 		case *ast.SelectorExpr:
 			v.checkTimeUse(x)
+			v.checkFuncRef(x, x.Sel, stack)
+		case *ast.Ident:
+			v.checkFuncRef(x, x, stack)
 		}
 		return true
 	})
+}
+
+// checkFuncRef judges a typed reference to time.Now and friends, and to am.Unsafe
+// used as a value: a block run through a func variable would never be recorded.
+func (v *visitor) checkFuncRef(n ast.Expr, id *ast.Ident, stack []ast.Node) {
+	if v.info == nil || len(stack) < 2 {
+		return
+	}
+	parent := stack[len(stack)-2]
+	if sel, ok := parent.(*ast.SelectorExpr); ok && sel.Sel == n {
+		return // judged at the selector
+	}
+	fn, _ := v.info.Uses[id].(*types.Func)
+	if fn == nil {
+		return
+	}
+	if _, isSel := n.(*ast.SelectorExpr); !isSel && isFunc(fn, "time", "Now", "Since", "Until") {
+		v.at("AM-CODE-004", n, "wall-clock time is not available to actions",
+			"use c.Clock.Now() and c.Clock.Since() so tests control time")
+	}
+	if isFunc(fn, amPkg, "Unsafe") {
+		if call, ok := parent.(*ast.CallExpr); !ok || ast.Unparen(call.Fun) != n {
+			v.at("AM-SEC-003", n, "am.Unsafe is used as a value, so its block cannot be recorded",
+				`call it directly: am.Unsafe(c, "reason", func(tx am.RawTx) error { ... })`)
+		}
+	}
 }
 
 // markInner records every call that is the left-hand side of a longer chain, so a
@@ -382,39 +447,17 @@ func (v *visitor) inner(n ast.Node) bool { return v.innerCalls[n] }
 
 func (v *visitor) checkCall(x *ast.CallExpr, loopDepth int) {
 	text := exprText(v.fset, v.file, x)
+	if v.info != nil {
+		v.checkCallTyped(x, text, loopDepth)
+		return
+	}
 
 	if strings.HasPrefix(text, "am.Unsafe(") || strings.Contains(text, "am.Unsafe(") {
-		reason := ""
-		if len(x.Args) >= 2 {
-			if lit, ok := x.Args[1].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-				reason = strings.Trim(lit.Value, `"`)
-			} else {
-				v.at("AM-SEC-003", x, "the unsafe reason must be a constant string",
-					"write the reason inline so a reviewer sees it in the file")
-				return
-			}
-		}
-		if strings.TrimSpace(reason) == "" {
-			v.at("AM-SEC-003", x, "am.Unsafe has no reason",
-				`state why the guarantee must be weakened: am.Unsafe(c, "reason", ...)`)
-			return
-		}
-		v.res.Facts.Unsafe = append(v.res.Facts.Unsafe, model.UnsafeFact{
-			File: v.path, Line: v.fset.Position(x.Pos()).Line, Module: v.module, Action: v.actionName(x),
-			Kind: "raw_sql", Reason: reason,
-		})
+		v.checkUnsafe(x)
 	}
 
 	if isDBCall(text) {
-		if loopDepth > 0 {
-			v.at("AM-DATA-002", x, "a scoped DB call inside a loop issues one query per iteration",
-				"load the relation with .With(gen.XWithY) on the outer query, then read it in the loop")
-		}
-		if stmtDiscardsResult(v.file, x) {
-			v.at("AM-DATA-003", x, "the error from a data call is ignored",
-				"handle err: return nil, err")
-		}
-		v.res.Facts.Queries = append(v.res.Facts.Queries, model.QueryFact{Action: v.module + "." + v.action, SQL: text, Count: 1})
+		v.checkDBCall(x, text, loopDepth)
 	}
 	if isEffectCall(text) && stmtDiscardsResult(v.file, x) && !strings.Contains(text, ".Send(") {
 		v.at("AM-DATA-003", x, "the error from an effect call is ignored", "check the error or return it")
@@ -439,7 +482,86 @@ func (v *visitor) checkCall(x *ast.CallExpr, loopDepth int) {
 	}
 }
 
+// checkCallTyped is checkCall with every "what is this call" answered by go/types.
+// AM-DATA-001 has no typed form: runtime.Query offers only bounded terminals, so an
+// unbounded read does not type-check in the first place.
+func (v *visitor) checkCallTyped(x *ast.CallExpr, text string, loopDepth int) {
+	fn := v.callee(x)
+	if fn == nil {
+		return
+	}
+	switch {
+	case isFunc(fn, amPkg, "Unsafe"):
+		v.checkUnsafe(x)
+	case isDBCallTyped(fn):
+		v.checkDBCall(x, text, loopDepth)
+	case isEffectCallTyped(fn):
+		if stmtDiscardsResult(v.file, x) {
+			v.at("AM-DATA-003", x, "the error from an effect call is ignored", "check the error or return it")
+		}
+	case isFunc(fn, "os", "Getenv", "LookupEnv", "Environ"):
+		v.at("AM-SEC-002", x, "an action reads an environment variable",
+			"declare the secret in am.yaml and receive it through the generated config")
+	case isLoggerTyped(fn):
+		// Any Sensitive field read anywhere in the arguments, not only a bare one.
+		for _, a := range x.Args {
+			ast.Inspect(a, func(n ast.Node) bool {
+				if sel, ok := n.(*ast.SelectorExpr); ok {
+					if f := v.sensitiveFieldTyped(sel); f != "" {
+						v.at("AM-SEC-004", x, fmt.Sprintf("%s is a Sensitive field and is passed to a log or error message", f),
+							"log the resource id instead: c.Log.Info(\"paid\", \"invoice_id\", inv.ID)")
+					}
+				}
+				return true
+			})
+		}
+	}
+}
+
+// checkDBCall applies the data rules to a call that runs SQL.
+func (v *visitor) checkDBCall(x *ast.CallExpr, text string, loopDepth int) {
+	if loopDepth > 0 {
+		v.at("AM-DATA-002", x, "a scoped DB call inside a loop issues one query per iteration",
+			"load the relation with .With(gen.XWithY) on the outer query, then read it in the loop")
+	}
+	if stmtDiscardsResult(v.file, x) {
+		v.at("AM-DATA-003", x, "the error from a data call is ignored",
+			"handle err: return nil, err")
+	}
+	v.res.Facts.Queries = append(v.res.Facts.Queries, model.QueryFact{Action: v.module + "." + v.action, SQL: text, Count: 1})
+}
+
+// checkUnsafe requires a constant reason and records the block as a code fact.
+func (v *visitor) checkUnsafe(x *ast.CallExpr) {
+	reason := ""
+	if len(x.Args) >= 2 {
+		if lit, ok := x.Args[1].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+			reason = strings.Trim(lit.Value, `"`)
+		} else {
+			v.at("AM-SEC-003", x, "the unsafe reason must be a constant string",
+				"write the reason inline so a reviewer sees it in the file")
+			return
+		}
+	}
+	if strings.TrimSpace(reason) == "" {
+		v.at("AM-SEC-003", x, "am.Unsafe has no reason",
+			`state why the guarantee must be weakened: am.Unsafe(c, "reason", ...)`)
+		return
+	}
+	v.res.Facts.Unsafe = append(v.res.Facts.Unsafe, model.UnsafeFact{
+		File: v.path, Line: v.fset.Position(x.Pos()).Line, Module: v.module, Action: v.actionName(x),
+		Kind: "raw_sql", Reason: reason,
+	})
+}
+
 func (v *visitor) checkTimeUse(x *ast.SelectorExpr) {
+	if v.info != nil {
+		if fn, _ := v.info.Uses[x.Sel].(*types.Func); isFunc(fn, "time", "Now", "Since", "Until") {
+			v.at("AM-CODE-004", x, "wall-clock time is not available to actions",
+				"use c.Clock.Now() and c.Clock.Since() so tests control time")
+		}
+		return
+	}
 	text := exprText(v.fset, v.file, x)
 	switch text {
 	case "time.Now", "time.Since", "time.Until", "time.Now()":
@@ -527,6 +649,10 @@ func (v *visitor) checkEnumSwitch(x *ast.SwitchStmt) {
 	if x.Tag == nil {
 		return
 	}
+	if v.info != nil {
+		v.checkEnumSwitchTyped(x)
+		return
+	}
 	text := exprText(v.fset, v.file, x.Tag)
 	if !strings.Contains(text, "Status") && !strings.Contains(text, "gen.") {
 		return
@@ -560,6 +686,68 @@ func (v *visitor) checkEnumSwitch(x *ast.SwitchStmt) {
 		v.at("AM-CODE-003", x, fmt.Sprintf("the switch handles %d of %d enum values and has no default", cases, total),
 			"list every value, or add a default that fails, so adding a value breaks the build")
 	}
+}
+
+// checkEnumSwitchTyped counts distinct case values against the constants a generated
+// enum type declares, whatever the tag expression is called.
+func (v *visitor) checkEnumSwitchTyped(x *ast.SwitchStmt) {
+	tn := named(v.info.TypeOf(x.Tag))
+	if tn == nil || !isGenPkg(tn.Pkg()) {
+		return
+	}
+	if b, ok := tn.Type().Underlying().(*types.Basic); !ok || b.Info()&types.IsString == 0 {
+		return
+	}
+	all := map[string]bool{}
+	scope := tn.Pkg().Scope()
+	for _, name := range scope.Names() {
+		if c, ok := scope.Lookup(name).(*types.Const); ok && types.Identical(c.Type(), tn.Type()) {
+			all[c.Val().ExactString()] = true
+		}
+	}
+	seen := map[string]bool{}
+	for _, cl := range x.Body.List {
+		cc, ok := cl.(*ast.CaseClause)
+		if !ok {
+			continue
+		}
+		if cc.List == nil {
+			return // a default handles the rest
+		}
+		for _, e := range cc.List {
+			if tv := v.info.Types[e]; tv.Value != nil {
+				seen[tv.Value.ExactString()] = true
+			}
+		}
+	}
+	if len(all) > 0 && len(seen) < len(all) {
+		v.at("AM-CODE-003", x, fmt.Sprintf("the switch handles %d of %d enum values and has no default", len(seen), len(all)),
+			"list every value, or add a default that fails, so adding a value breaks the build")
+	}
+}
+
+// sensitiveFieldTyped names the Sensitive field a selector reads, judged by the
+// generated resource type it is read from rather than by the field's name alone.
+func (v *visitor) sensitiveFieldTyped(sel *ast.SelectorExpr) string {
+	s := v.info.Selections[sel]
+	if s == nil || s.Kind() != types.FieldVal {
+		return ""
+	}
+	tn := named(s.Recv())
+	if tn == nil || !isGenPkg(tn.Pkg()) {
+		return ""
+	}
+	for _, r := range v.cfg.App.AllResources() {
+		if r.Resource.Name != tn.Name() {
+			continue
+		}
+		for _, f := range r.Resource.Fields {
+			if f.Sensitive && f.GoName == sel.Sel.Name {
+				return r.Ref + "." + f.Name
+			}
+		}
+	}
+	return ""
 }
 
 // sensitiveField returns the field name when a selector reads a Sensitive field.

@@ -255,7 +255,7 @@ func cmdCheck(args []string) error {
 	}
 	path, _ := importPath(".")
 	gomod, _ := os.ReadFile(goModPath())
-	res, err := checker.Run(checker.Config{Root: ".", ModulePath: path, GoMod: string(gomod), App: app, Strict: *strict})
+	res, err := checker.Run(checker.Config{Root: ".", ModulePath: path, GoMod: string(gomod), App: app, Strict: *strict, Types: true})
 	if err != nil {
 		return err
 	}
@@ -371,9 +371,16 @@ func cmdDiff(args []string) error {
 	}
 	path, _ := importPath(".")
 	gomod, _ := os.ReadFile(goModPath())
-	res, err := checker.Run(checker.Config{Root: ".", ModulePath: path, GoMod: string(gomod), App: headApp})
+	res, err := checker.Run(checker.Config{Root: ".", ModulePath: path, GoMod: string(gomod), App: headApp, Types: true})
 	if err != nil {
 		return err
+	}
+	// Facts from a syntax-only pass could miss an aliased am.Unsafe: refuse rather
+	// than report fewer unsafe blocks than the code has.
+	for _, d := range res.Diags {
+		if d.Rule == "AM-CODE-006" {
+			return report(compile.Diags{d}, asJSON, false)
+		}
 	}
 	headFacts := res.Facts
 	headFacts.ModelHash = headApp.Hash()

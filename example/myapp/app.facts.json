@@ -42,105 +42,63 @@
   ],
   "queries": [
     {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q()",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q()",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q()",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent))",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent)).\n\tOrderBy(gen.Invoices.CreatedAt.Asc())",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent)).\n\tOrderBy(gen.Invoices.CreatedAt.Asc()).\n\tEach(c, 200, func(inv *gen.Invoice) error {\n\t\t_, err := c.Email.Send(c, []byte(\"{}\"))\n\t\treturn err\n\t})",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q().OrderBy(gen.Invoices.CreatedAt.Desc())",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
-      "sql": "c.DB.Invoices.Q().Where(gen.Invoices.Status.Eq(gen.InvoiceStatusDraft))",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "billing.RefundCharge",
+      "action": "billing.CountDrafts",
       "sql": "c.DB.Invoices.Q().Where(gen.Invoices.Status.Eq(gen.InvoiceStatusDraft)).Count(c)",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.RefundCharge",
+      "action": "billing.ListInvoices",
+      "sql": "q.Page(c, in.Cursor, in.Limit)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.MarkPaid",
+      "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.MarkPaid",
       "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tam.Set(gen.InvoiceStatusPaid),\n\tPaidAt:\tam.Set(c.Clock.Now()),\n}.Assignments())",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.RefundCharge",
+      "action": "billing.SendInvoice",
+      "sql": "c.DB.Invoices.Get(c, in.InvoiceID)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "billing.SendInvoice",
       "sql": "c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n\tStatus:\tam.Set(gen.InvoiceStatusSent),\n\tSentAt:\tam.Set(c.Clock.Now()),\n}.Assignments())",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "billing.RefundCharge",
-      "sql": "in.Status.Get()",
+      "action": "billing.SendReminders",
+      "sql": "c.DB.Invoices.Q().\n\tWhere(gen.Invoices.Status.In(gen.InvoiceStatusDraft, gen.InvoiceStatusSent)).\n\tOrderBy(gen.Invoices.CreatedAt.Asc()).\n\tEach(c, 200, func(inv *gen.Invoice) error {\n\t\t_, err := c.Email.Send(c, []byte(\"{}\"))\n\t\treturn err\n\t})",
       "table": "",
       "rows": 0,
       "count": 1
     },
     {
-      "action": "customers.ListCustomers",
+      "action": "customers.CreateCustomer",
+      "sql": "c.DB.Customers.Insert(c, sets)",
+      "table": "",
+      "rows": 0,
+      "count": 1
+    },
+    {
+      "action": "customers.GetCustomer",
       "sql": "c.DB.Customers.Get(c, in.CustomerID)",
       "table": "",
       "rows": 0,
@@ -148,35 +106,7 @@
     },
     {
       "action": "customers.ListCustomers",
-      "sql": "c.DB.Customers.Insert(c, sets)",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "customers.ListCustomers",
-      "sql": "c.DB.Customers.Q()",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "customers.ListCustomers",
-      "sql": "c.DB.Customers.Q().OrderBy(gen.Customers.CreatedAt.Desc())",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "customers.ListCustomers",
-      "sql": "in.Owner.Get()",
-      "table": "",
-      "rows": 0,
-      "count": 1
-    },
-    {
-      "action": "customers.ListCustomers",
-      "sql": "in.Q.Get()",
+      "sql": "q.Page(c, in.Cursor, in.Limit)",
       "table": "",
       "rows": 0,
       "count": 1
