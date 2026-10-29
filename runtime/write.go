@@ -349,17 +349,6 @@ func (v *View[T]) columnCast(column string) string {
 	return "::" + t
 }
 
-// hasCol reports whether an assignment already names a column, so the framework never
-// writes id or tenant_id twice.
-func hasCol(cols []string, want string) bool {
-	for _, c := range cols {
-		if strings.Trim(c, `"`) == want {
-			return true
-		}
-	}
-	return false
-}
-
 func quote(s string) string {
 	if s == "" || strings.ContainsAny(s, `"; `) {
 		return `""`

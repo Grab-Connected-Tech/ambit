@@ -115,9 +115,6 @@ func (b *Query[T]) Page(ctx context.Context, cursor string, size int) (*PageOf[T
 	if max := v.db.cfg.MaxPageSize; max > 0 && size > max {
 		size = max
 	}
-	if size > v.db.cfg.MaxPageSize && v.db.cfg.MaxPageSize > 0 {
-		size = v.db.cfg.MaxPageSize
-	}
 	cur, err := decodeCursor(cursor)
 	if err != nil {
 		return nil, err
@@ -277,33 +274,6 @@ func (b *Query[T]) keysetTerms(terms []orderTerm, cur []cursorValue) (string, []
 			} else {
 				ands = append(ands, terms[j].SQL+" "+op+" ?")
 			}
-			args = append(args, cur[j].Val)
-		}
-		ors = append(ors, "("+strings.Join(ands, " AND ")+")")
-	}
-	return strings.Join(ors, " OR "), args
-}
-
-// keyset renders the lexicographic "everything after this cursor" predicate.
-func (b *Query[T]) keyset(terms []orderTerm, cur []cursorValue, offset int) (string, []any) {
-	if len(cur) != len(terms) {
-		return "", nil
-	}
-	var ors []string
-	var args []any
-	for i := range terms {
-		var ands []string
-		for j := 0; j <= i; j++ {
-			op := ">"
-			if terms[j].Desc {
-				op = "<"
-			}
-			if j < i {
-				ands = append(ands, fmt.Sprintf("%s = $%d", terms[j].SQL, offset+len(args)+1))
-				args = append(args, cur[j].Val)
-				continue
-			}
-			ands = append(ands, fmt.Sprintf("%s %s $%d", terms[j].SQL, op, offset+len(args)+1))
 			args = append(args, cur[j].Val)
 		}
 		ors = append(ors, "("+strings.Join(ands, " AND ")+")")

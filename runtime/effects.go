@@ -156,8 +156,6 @@ func (d *DB) callProvider(ctx context.Context, call EffectCall) (EffectResult, e
 
 func (d *DB) actionApp() *model.App { return d.app }
 
-// declaresEffect is the runtime half of the capability check: a host outside the
-// allowlist is refused here, not merely discouraged (§5.8).
 // compensationFor names the job an immediate effect declared with Compensate().
 func compensationFor(a *model.App, call EffectCall) string {
 	if a == nil {
@@ -175,6 +173,9 @@ func compensationFor(a *model.App, call EffectCall) string {
 	return ""
 }
 
+// declaresEffect is the runtime half of the capability check: an immediate effect
+// the action never declared is refused here. Host allowlists are enforced by the
+// HTTP provider, not here (§5.8).
 func declaresEffect(a *model.App, call EffectCall) error {
 	if a == nil || call.Action == "" {
 		return nil
