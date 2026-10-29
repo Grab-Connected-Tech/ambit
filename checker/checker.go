@@ -414,11 +414,29 @@ func (v *visitor) checkFuncRef(n ast.Expr, id *ast.Ident, stack []ast.Node) {
 		v.at("AM-CODE-004", n, "wall-clock time is not available to actions",
 			"use c.Clock.Now() and c.Clock.Since() so tests control time")
 	}
-	if isFunc(fn, amPkg, "Unsafe") {
-		if call, ok := parent.(*ast.CallExpr); !ok || ast.Unparen(call.Fun) != n {
-			v.at("AM-SEC-003", n, "am.Unsafe is used as a value, so its block cannot be recorded",
-				`call it directly: am.Unsafe(c, "reason", func(tx am.RawTx) error { ... })`)
+	// A call rule only sees direct calls, so a function that one of them judges may
+	// not be taken as a value: fetch := view.Get; fetch(...) would hide the call.
+	callee := n
+	if len(stack) >= 3 {
+		switch parent.(type) {
+		case *ast.IndexExpr, *ast.IndexListExpr: // f[T](...)
+			callee, parent = parent.(ast.Expr), stack[len(stack)-3]
 		}
+	}
+	if call, ok := parent.(*ast.CallExpr); ok && ast.Unparen(call.Fun) == callee {
+		return
+	}
+	const direct = "call it directly so the checker can see the call"
+	switch {
+	case isFunc(fn, amPkg, "Unsafe"):
+		v.at("AM-SEC-003", n, "am.Unsafe is used as a value, so its block cannot be recorded",
+			`call it directly: am.Unsafe(c, "reason", func(tx am.RawTx) error { ... })`)
+	case isDBCallTyped(fn):
+		v.at("AM-DATA-002", n, fn.Name()+" runs a query and is used as a value, which hides it from the data rules", direct)
+	case isEffectCallTyped(fn):
+		v.at("AM-DATA-003", n, fn.Name()+" runs an effect and is used as a value, which hides its error from the checker", direct)
+	case isLoggerTyped(fn):
+		v.at("AM-SEC-004", n, fn.Name()+" logs or builds an error and is used as a value, which hides Sensitive fields passed to it", direct)
 	}
 }
 

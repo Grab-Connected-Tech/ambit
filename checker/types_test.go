@@ -62,7 +62,7 @@ func TestTypedRulesSeeThroughSpelling(t *testing.T) {
 	}
 	header := "package billing\n\nimport (\n\traw \"github.com/Grab-Connected-Tech/ambit/am\"\n\tclock \"time\"\n\n\t\"myapp/gen\"\n)\n\nvar _ = raw.ID(\"\")\nvar _ = clock.Second\nvar _ *gen.Invoice\n\n"
 	root := tree(t, map[string]string{
-		"go.mod": "module myapp\n\ngo 1.25.0\n\nrequire github.com/Grab-Connected-Tech/ambit v0.0.0\n\nreplace github.com/Grab-Connected-Tech/ambit => " + repo + "\n",
+		"go.mod":     "module myapp\n\ngo 1.25.0\n\nrequire github.com/Grab-Connected-Tech/ambit v0.0.0\n\nreplace github.com/Grab-Connected-Tech/ambit => " + repo + "\n",
 		"go.sum":     string(sum),
 		"gen/gen.go": typedGen,
 		// Evasions: each one is a real rule violation spelled so the text check misses it.
@@ -89,6 +89,20 @@ func unsafeValue() any { f := raw.Unsafe; return f }
 
 func sendIt(c *gen.SendInvoiceCtx) {
 	c.Email.Send(c, nil)
+}
+`,
+		"app/billing/values.go": header + `func hidden(c *gen.SendInvoiceCtx, ids []raw.ID, inv *gen.Invoice) error {
+	fetch := c.DB.Invoices.Get
+	for _, id := range ids {
+		if _, err := fetch(c, id); err != nil {
+			return err
+		}
+	}
+	logf := c.Log.Info
+	logf("invoice", "notes", inv.Notes)
+	send := c.Email.Send
+	_, err := send(c, nil)
+	return err
 }
 `,
 		// Look-alikes: each one trips the text check but is not a violation.
@@ -137,6 +151,9 @@ func fine(c *gen.SendInvoiceCtx, keys []string, m memo, inv *gen.Invoice) int {
 		{"AM-CODE-003", "app/billing/enum.go", 1},
 		{"AM-SEC-004", "app/billing/logs.go", 1},
 		{"AM-DATA-003", "app/billing/logs.go", 1},
+		{"AM-DATA-002", "app/billing/values.go", 1}, // a query method taken as a value
+		{"AM-SEC-004", "app/billing/values.go", 1},  // a logger taken as a value
+		{"AM-DATA-003", "app/billing/values.go", 1}, // an effect taken as a value
 		{"AM-DATA-002", "app/billing/lookalike.go", 0},
 		{"AM-SEC-004", "app/billing/lookalike.go", 0},
 		{"AM-CODE-003", "app/billing/lookalike.go", 0},
