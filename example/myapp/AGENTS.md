@@ -48,6 +48,7 @@ The analyzers enforce the catalog below; `am explain <ID>` says why each exists.
 | AM-CODE-003 | warning |
 | AM-CODE-004 | error |
 | AM-CODE-005 | error |
+| AM-CODE-006 | error |
 | AM-API-001 | error |
 | AM-PERF-001 | error |
 | AM-PERF-002 | warning |
