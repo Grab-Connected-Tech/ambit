@@ -356,11 +356,28 @@ func cmdDiff(args []string) error {
 	default:
 		return fmt.Errorf("unknown format %q", *format)
 	}
-	// Both sides are the committed model and facts: no old code is built (§6.1).
-	headApp, headFacts, err := readSide(os.ReadFile)
+	// The base side is the committed model and facts: no old code is built (§6.1).
+	// The head side is derived from the live spec and source, and refuses to run
+	// when the committed model lags the spec: a stale diff would launder trust.
+	headApp, md, err := loadModel()
 	if err != nil {
 		return err
 	}
+	if hasErrors(md) {
+		return report(md, asJSON, false)
+	}
+	if committed, _, err := readSide(os.ReadFile); err != nil || committed.Hash() != headApp.Hash() {
+		return report(compile.Diags{stale("the spec changed since generated code was written")}, asJSON, false)
+	}
+	path, _ := importPath(".")
+	gomod, _ := os.ReadFile(goModPath())
+	res, err := checker.Run(checker.Config{Root: ".", ModulePath: path, GoMod: string(gomod), App: headApp})
+	if err != nil {
+		return err
+	}
+	headFacts := res.Facts
+	headFacts.ModelHash = headApp.Hash()
+	headFacts.Sorted()
 	prefix, err := gitPrefix()
 	if err != nil {
 		return err

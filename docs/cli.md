@@ -23,7 +23,7 @@ with `--json`: `check`, `gen`, `diff`, `explain`, `context`, `migrate`, `keys ro
 | --- | --- |
 | `am check [--strict] [--json]` | `go build`, `go vet`, model validation, the spec-vs-generated check (AM-CODE-001), the analyzers, and `govulncheck` if installed. Writes `app.facts.json`. `--strict` fails on warnings |
 | `am test [--json]` | `go test ./...` against `AM_TEST_DB_URL`, or a disposable Postgres. Records query shapes for `perf` |
-| `am diff --base <rev> [--format text\|markdown\|json]` | The behavior diff between the committed model at `<rev>` and now. Exits 1 on a blocked change (AM-API-001) |
+| `am diff --base <rev> [--format text\|markdown\|json]` | The behavior diff between the committed model at `<rev>` and the live spec and source. Refuses to run (AM-CODE-001) when `app.model.json` is stale; exits 1 on a blocked change (AM-API-001) |
 | `am perf [--min-rows n]` | Explain the recorded query shapes against `AM_DATABASE_URL` and flag sequential scans on large tables (AM-PERF-002) |
 | `am bench [<module.Action>] [--time 2s\|300x] [--max-p95 ms]` | In-process load test: p50/p95/p99, error rate, allocations per call |
 
