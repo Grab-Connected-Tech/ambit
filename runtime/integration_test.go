@@ -588,13 +588,11 @@ func withUser(u, user string) string {
 		if err != nil {
 			return u
 		}
-		name := user
-		if parsed.User != nil {
-			if _, pw, has := strings.Cut(parsed.User.String(), ":"); has {
-				name = user + ":" + pw
-			}
+		if pw, has := parsed.User.Password(); has {
+			parsed.User = url.UserPassword(user, pw)
+		} else {
+			parsed.User = url.User(user)
 		}
-		parsed.User = url.User(name)
 		return parsed.String()
 	}
 	if strings.Contains(u, "user=") {
@@ -917,6 +915,18 @@ func code(err error) string {
 }
 
 // ---- the guarantees ----
+
+func TestWithUserKeepsPassword(t *testing.T) {
+	for in, want := range map[string]string{
+		"postgres://owner:s3cret@db:5432/app?sslmode=disable": "postgres://am_app:s3cret@db:5432/app?sslmode=disable",
+		"postgres://owner@db/app":                             "postgres://am_app@db/app",
+		"postgres://db/app":                                   "postgres://am_app@db/app",
+	} {
+		if got := withUser(in, "am_app"); got != want {
+			t.Errorf("withUser(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
 
 func TestTenantIsolationInQueryLayer(t *testing.T) {
 	h := setup(t)
