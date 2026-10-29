@@ -258,6 +258,9 @@ type DB struct {
 	start         time.Time
 	providers     *Providers
 	keys          *Keyring
+	// tainted is set when raw SQL changed the security settings; the
+	// transaction then runs nothing more and never commits (§8.6).
+	tainted error
 }
 
 // Stmt is one executed statement, kept for traces and for am perf capture.
@@ -357,8 +360,14 @@ func (d *DB) Clock() am.Clock { return d.clock }
 // Stmts returns the statements run so far, for traces and am perf capture.
 func (d *DB) Stmts() []Stmt { return d.stmts }
 
+// usable refuses any statement after raw SQL tampered with the scope.
+func (d *DB) usable() error { return d.tainted }
+
 // exec runs one statement under the budget.
 func (d *DB) exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if err := d.usable(); err != nil {
+		return pgconn.CommandTag{}, err
+	}
 	start := time.Now()
 	tag, err := d.conn.Exec(ctx, sql, args...)
 	d.record(sql, args, tag.RowsAffected(), start)
@@ -369,6 +378,9 @@ func (d *DB) exec(ctx context.Context, sql string, args ...any) (pgconn.CommandT
 }
 
 func (d *DB) query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	if err := d.usable(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	rows, err := d.conn.Query(ctx, sql, args...)
 	d.record(sql, args, 0, start)

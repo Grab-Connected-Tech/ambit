@@ -563,7 +563,7 @@ func (a *App) attempt(ctx context.Context, h *Handler, actor am.Actor, in *Call,
 	if a.Clock == nil {
 		d.clock = SystemClock{}
 	}
-	call := &Call{Context: ctx, Actor: actor, DB: d, Log: log, Clock: a.Clock, Body: in.Body, Query: in.Query,
+	call := &Call{Context: am.WithRawTx(ctx, &rawTx{d: d}), Actor: actor, DB: d, Log: log, Clock: a.Clock, Body: in.Body, Query: in.Query,
 		Headers: in.Headers, IP: in.IP, Key: in.Key, Invocation: invocation, Trace: in.Trace, App: a}
 	start := time.Now()
 	result, callErr := h.Handle(call)

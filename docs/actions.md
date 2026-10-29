@@ -150,14 +150,22 @@ module's action directly today.
 Raw SQL is available only inside `am.Unsafe(c, "reason", func(tx am.RawTx) error { ... })`.
 The checker records every block, and each one shows up in the behavior diff.
 
-**The runtime does not attach a raw transaction yet**, so a call to `am.Unsafe` currently
-returns an internal error.
+Each `tx.Exec`, `tx.Query` or `tx.ExecOne` call:
 
-Treat an `Unsafe` block as outside both layers of protection. Raw SQL runs on the action's
-transaction with its tenant settings, but nothing stops it from calling
-`set_config('am.cross_tenant', 'on', true)` itself, and then the row-level security backstop
-no longer applies inside the block. Review each block's SQL as if no access rules existed.
+- runs exactly one statement on the action's transaction, under its tenant settings, so
+  row-level security still applies. A stacked `...; ...` is refused by Postgres.
+- must be a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `WITH`, `VALUES` or `TABLE`
+  statement. Calls that change session settings or run SQL from a string
+  (`set_config`, `query_to_xml`, `ts_stat`, `dblink`, ...) are refused.
+- counts against the action's query and row budgets. Rows are read in full and checked
+  before they reach your code.
+- is followed by a check that the tenant, actor, role and timeout settings are unchanged.
+  If a statement changed them (say, through a function in the schema), its rows are
+  withheld, every later statement fails, and the transaction cannot commit, even if the
+  action swallows the error.
 
+Raw SQL still skips the query layer: the compiled access rules, field read rules and the
+audit log do not apply inside the block. Review its SQL with that in mind.
 ---
 
 <sub>Ambit is built and maintained by [Grab Connected Tech](https://www.grabians.com/). Need a team to build or scale a product on Ambit? Write to [hello@grabians.com](mailto:hello@grabians.com).</sub>

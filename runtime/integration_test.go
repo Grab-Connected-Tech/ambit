@@ -473,6 +473,7 @@ type harness struct {
 	admin   am.Actor
 	member  am.Actor
 	other   am.Actor
+	owner   string // the schema owner's connection string, for DDL a test needs
 }
 
 func setup(t *testing.T) *harness {
@@ -546,7 +547,7 @@ func setup(t *testing.T) *harness {
 	}
 	t.Cleanup(app.Close)
 
-	h := &harness{t: t, app: app, pool: app.Pool, tenants: map[string]am.ID{}}
+	h := &harness{t: t, app: app, pool: app.Pool, tenants: map[string]am.ID{}, owner: ownerURL}
 	for _, orgName := range []string{"Acme", "Globex"} {
 		id := h.insertOrg(ctx, orgName)
 		h.tenants[orgName] = id
@@ -921,9 +922,9 @@ func code(err error) string {
 func TestWithUserSwapsCredentials(t *testing.T) {
 	for in, want := range map[string]string{
 		"postgres://owner:s3cret@db:5432/app?sslmode=disable": "postgres://am_app:pw@db:5432/app?sslmode=disable",
-		"postgres://db/app":                                   "postgres://am_app:pw@db/app",
-		"host=db user=owner password=s3cret dbname=app":       "host=db user=am_app password=pw dbname=app",
-		"host=db dbname=app":                                  "host=db dbname=app user=am_app password=pw",
+		"postgres://db/app":                             "postgres://am_app:pw@db/app",
+		"host=db user=owner password=s3cret dbname=app": "host=db user=am_app password=pw dbname=app",
+		"host=db dbname=app":                            "host=db dbname=app user=am_app password=pw",
 	} {
 		if got := withUser(in, "am_app", "pw"); got != want {
 			t.Errorf("withUser(%q) = %q, want %q", in, got, want)
@@ -1768,3 +1769,113 @@ func cookieRequest(c *http.Cookie) *http.Request {
 }
 
 var _ = debug.Stack
+
+// TestUnsafeStaysInsideTheScope is §8.6: raw SQL still runs under the tenant's RLS
+// scope, one statement at a time, and a statement that widens that scope can neither
+// hand its rows to the action nor commit.
+func TestUnsafeStaysInsideTheScope(t *testing.T) {
+	h := setup(t)
+	h.newCustomer(h.member, "AcmeCo")
+	h.newCustomer(h.other, "GlobexCo")
+	// A schema function that flips the scope is out of the lexical guard's reach, so
+	// the settings re-check is what has to catch it.
+	owner, err := pgx.Connect(context.Background(), h.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = owner.Exec(context.Background(), `CREATE FUNCTION widen() RETURNS text LANGUAGE sql AS $$ SELECT set_config('am.cross_tenant','on',true) $$`)
+	owner.Close(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(fn func(c *runtime.Call) error) error {
+		hd := &runtime.Handler{
+			Ref: "billing.Raw", Module: "billing", Name: "Raw", Kind: model.KindMutation, Path: "/api/billing/Raw",
+			Spec:   model.Action{Name: "Raw", Kind: model.KindMutation, Requires: policy.Role("member")},
+			Handle: func(c *runtime.Call) (any, error) { return struct{}{}, fn(c) },
+		}
+		_, err := h.app.Run(context.Background(), hd, h.member, &runtime.Call{Actor: h.member}, h.app.Log)
+		return err
+	}
+
+	var names []string
+	var renamed int64
+	err = run(func(c *runtime.Call) error {
+		return am.Unsafe(c.Context, "test", func(tx am.RawTx) error {
+			rows, err := tx.Query(c.Context, "SELECT name FROM customer ORDER BY name")
+			if err != nil {
+				return err
+			}
+			for rows.Next() {
+				var n string
+				if err := rows.Scan(&n); err != nil {
+					return err
+				}
+				names = append(names, n)
+			}
+			renamed, err = tx.Exec(c.Context, "UPDATE customer SET name = name || '!'")
+			return err
+		})
+	})
+	if err != nil || len(names) != 1 || names[0] != "AcmeCo" || renamed != 1 {
+		t.Fatalf("raw SQL must see and touch only its own tenant: names=%v renamed=%d err=%v", names, renamed, detail(err))
+	}
+
+	for _, sql := range []string{
+		"SELECT 1; DELETE FROM customer",
+		"SELECT set_config('am.cross_tenant','on',true)",
+		`SELECT "set_config"('am.tenant_id','',true)`,
+		"SET LOCAL am.cross_tenant = 'on'",
+		"DO $$ BEGIN PERFORM 1; END $$",
+		"SELECT query_to_xml('select 1', true, true, '')",
+		`SELECT U&"\0073et_config"('am.cross_tenant','on',true)`,
+	} {
+		err := run(func(c *runtime.Call) error {
+			return am.Unsafe(c.Context, "test", func(tx am.RawTx) error {
+				_, err := tx.Exec(c.Context, sql)
+				return err
+			})
+		})
+		if err == nil {
+			t.Fatalf("%q must be refused", sql)
+		}
+		if why := fmt.Sprint(detail(err)); !strings.Contains(why, "Invalid input") && !strings.Contains(why, "multiple commands") {
+			t.Fatalf("%q was refused for the wrong reason: %s", sql, why)
+		}
+	}
+	if n := h.count("SELECT count(*) FROM customer"); n != 2 {
+		t.Fatalf("a stacked statement ran: %d customers left", n)
+	}
+
+	var leaked []string
+	err = run(func(c *runtime.Call) error {
+		_ = am.Unsafe(c.Context, "test", func(tx am.RawTx) error {
+			if _, err := tx.Exec(c.Context, "UPDATE customer SET name = 'Renamed'"); err != nil {
+				return err
+			}
+			rows, err := tx.Query(c.Context, "SELECT widen(), name FROM customer")
+			if err != nil {
+				return err
+			}
+			for rows.Next() {
+				var w, n string
+				_ = rows.Scan(&w, &n)
+				leaked = append(leaked, n)
+			}
+			return nil
+		})
+		return nil // the action swallows the error; the commit must refuse anyway
+	})
+	if len(leaked) != 0 {
+		t.Fatalf("rows read under a widened scope reached the action: %v", leaked)
+	}
+	if err == nil {
+		t.Fatal("a transaction whose scope was widened must not commit")
+	}
+	if why := fmt.Sprint(detail(err)); !strings.Contains(why, "security settings") {
+		t.Fatalf("the commit must be refused by the settings check, got %s", why)
+	}
+	if n := h.count("SELECT count(*) FROM customer WHERE name = 'Renamed'"); n != 0 {
+		t.Fatalf("a write from the tampered transaction committed (%d rows)", n)
+	}
+}

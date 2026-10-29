@@ -220,6 +220,9 @@ func (b *Query[T]) Count(ctx context.Context) (int64, error) {
 	}
 	sql := fmt.Sprintf("SELECT count(*) FROM %s t WHERE %s", v.t.Table, where)
 	var n int64
+	if err := v.db.usable(); err != nil {
+		return 0, err
+	}
 	start := time.Now()
 	if err := v.db.conn.QueryRow(ctx, sql, sb.params...).Scan(&n); err != nil {
 		return 0, translate(err)

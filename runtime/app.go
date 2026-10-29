@@ -529,6 +529,9 @@ func (a *App) Commit(ctx context.Context, d *DB, tx pgx.Tx) error {
 		a.Rollback(ctx, tx)
 		return err
 	}
+	if err := d.usable(); err != nil {
+		return fail(err)
+	}
 	// Generations first: flushAudit consumes the write log they are derived from.
 	if err := bumpGenerations(ctx, tx, d); err != nil {
 		return fail(err)
