@@ -16,48 +16,91 @@ when the spec changes; edit the spec, not this file.
 - **billing** — resources Invoice; actions CountDrafts, DailyReminders, ListInvoices, MarkPaid, RefundCharge, SendInvoice, SendReminders
 - **customers** — resources Customer; actions CreateCustomer, GetCustomer, ListCustomers
 
+## The pattern
+
+Behaviour is declared in the module's `spec.go`; the action body only does the work.
+
+```go
+// spec.go — who may call it, what it touches, how it can fail
+var SendInvoice = s.Mutation("SendInvoice",
+	s.Input(s.ID("invoice_id", Invoice)),
+	s.Returns(Invoice),
+	s.Requires(app.Admin.Or(app.Accountant)),
+	s.Writes(Invoice),
+	s.Effects(s.EmailEffect()),
+	s.Errors("not_draft"),
+)
+
+// actions.go — signature fixed by am gen; data via c.DB, time via c.Clock, effects via c
+func sendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, error) {
+	inv, err := c.DB.Invoices.Get(c, in.InvoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if inv.Status != gen.InvoiceStatusDraft {
+		return nil, gen.ErrSendInvoiceNotDraft()
+	}
+	updated, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{
+		Status: am.Set(gen.InvoiceStatusSent),
+		SentAt: am.Set(c.Clock.Now()),
+	}.Assignments())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.Email.Send(c, []byte("{}")); err != nil { // sent only if the transaction commits
+		return nil, err
+	}
+	return updated, nil
+}
+```
+
+`am check` refuses `database/sql`, `net/http`, `time.Now` and `go` statements in an
+action. Role checks do not belong there either: access is declared in the spec.
+`am context <module>` or `am context --action <module.Action>` prints the
+spec and generated signatures for just the code you are changing.
+
 ## Rules
 
 Access rules live in the spec, never in an action body. A query is scoped by the
 tenant and the read rule before your code sees it, so a missing filter is not a leak.
-The analyzers enforce the catalog below; `am explain <ID>` says why each exists.
+`am check` fails on each of these; `am explain <ID>` shows a failing and a passing example.
 
-| Rule | Severity |
-| --- | --- |
-| AM-SPEC-001 | error |
-| AM-SPEC-002 | error |
-| AM-SPEC-003 | error |
-| AM-SPEC-004 | error |
-| AM-SPEC-005 | error |
-| AM-SPEC-006 | error |
-| AM-SEC-001 | error |
-| AM-SEC-002 | error |
-| AM-SEC-003 | error |
-| AM-SEC-004 | error |
-| AM-SEC-005 | error |
-| AM-SEC-006 | warning |
-| AM-SEC-007 | warning |
-| AM-SEC-008 | error |
-| AM-SEC-009 | warning |
-| AM-DATA-001 | error |
-| AM-DATA-002 | error |
-| AM-DATA-003 | error |
-| AM-DATA-004 | warning |
-| AM-CODE-001 | error |
-| AM-CODE-002 | error |
-| AM-CODE-003 | warning |
-| AM-CODE-004 | error |
-| AM-CODE-005 | error |
-| AM-CODE-006 | error |
-| AM-API-001 | error |
-| AM-PERF-001 | error |
-| AM-PERF-002 | warning |
-| AM-PERF-003 | error |
-| AM-MIG-001 | error |
-| AM-MIG-002 | error |
-| AM-MIG-003 | warning |
-| AM-TEST-001 | warning |
-| AM-DEP-001 | error |
+| Rule | Severity | Fails when |
+| --- | --- | --- |
+| AM-SPEC-001 | error | spec file contains non-declarative code |
+| AM-SPEC-002 | error | spec references an unknown role, resource, field or action |
+| AM-SPEC-003 | error | rule or invariant cannot be compiled to SQL |
+| AM-SPEC-004 | error | action declares neither Requires nor Public |
+| AM-SPEC-005 | error | an action's options contradict its kind or ownership |
+| AM-SPEC-006 | error | the same resource is listed in Reads and Writes |
+| AM-SEC-001 | error | action package imports a banned package |
+| AM-SEC-002 | error | environment or secret read outside generated config |
+| AM-SEC-003 | error | unsafe block has no reason |
+| AM-SEC-004 | error | Sensitive field value reaches a log or error message |
+| AM-SEC-005 | error | public mutation has no rate limit |
+| AM-SEC-006 | warning | HTTP effect URL built from input |
+| AM-SEC-007 | warning | Sensitive field has no field-level rule |
+| AM-SEC-008 | error | input declares a runtime-owned field |
+| AM-SEC-009 | warning | immediate effect without an idempotency key |
+| AM-DATA-001 | error | query has no terminal bound |
+| AM-DATA-002 | error | scoped DB call inside a loop |
+| AM-DATA-003 | error | error from a DB or effect call is ignored |
+| AM-DATA-004 | warning | text field has no MaxLen |
+| AM-CODE-001 | error | generated file edited, or committed model differs from spec |
+| AM-CODE-002 | error | import of another module's internals |
+| AM-CODE-003 | warning | switch over a generated enum is not exhaustive |
+| AM-CODE-004 | error | wall-clock time used instead of the context clock |
+| AM-CODE-005 | error | declared action has no implementation |
+| AM-CODE-006 | error | type-aware checks could not run |
+| AM-API-001 | error | breaking API change without a deprecation release |
+| AM-PERF-001 | error | query or row budget exceeded in tests |
+| AM-PERF-002 | warning | captured query plans a sequential scan on a large table |
+| AM-PERF-003 | error | go statement in action code |
+| AM-MIG-001 | error | destructive migration step without approval |
+| AM-MIG-002 | error | applied migration file was modified |
+| AM-MIG-003 | warning | immutable required field has no default |
+| AM-TEST-001 | warning | action has no test |
+| AM-DEP-001 | error | known vulnerability reachable from app code |
 
 ## Commands
 
