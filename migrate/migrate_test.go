@@ -388,3 +388,39 @@ func TestSensitiveToggleHasNoSchemaChange(t *testing.T) {
 		t.Fatalf("a sensitivity toggle must not touch the schema: %v", p.Steps[0].InTx)
 	}
 }
+
+// Every declared value constraint must reach the database. MaxLen used to hide Pattern,
+// and MinLen, Min and Max were never emitted, so a spec's validators held only for
+// action inputs (found by an agent whose amounts were never checked by the database).
+func TestColumnCarriesEveryDeclaredConstraint(t *testing.T) {
+	r := model.Resource{Name: "Thing", Table: "thing"}
+	code := field("code", "code", model.KindText, func(f *model.Field) { f.Type.MaxLen = intp(3); f.Type.Pattern = "^[A-Z]{3}$"; f.Type.MinLen = intp(3) })
+	qty := field("qty", "qty", model.KindInt, func(f *model.Field) { f.Type.Min = "1"; f.Type.Max = "99" })
+	name := field("name", "name", model.KindText, func(f *model.Field) { f.Type.MaxLen = intp(200) })
+	for f, want := range map[*model.Field][]string{
+		&code: {`length("code") <= 3`, `length("code") >= 3`, `"code" ~ '^[A-Z]{3}$'`},
+		&qty:  {`"qty" >= 1`, `"qty" <= 99`},
+	} {
+		ddl := columnDDL(app(), r, *f)
+		if strings.Count(ddl, "CHECK") != 1 {
+			t.Errorf("%s: want one combined CHECK, got %s", f.Name, ddl)
+		}
+		for _, w := range want {
+			if !strings.Contains(ddl, w) {
+				t.Errorf("%s: missing %s in %s", f.Name, w, ddl)
+			}
+		}
+	}
+	// A single constraint keeps its old text, so existing schemas do not change.
+	if got := columnDDL(app(), r, name); !strings.HasSuffix(got, `CHECK (length("name") <= 200)`) {
+		t.Errorf("single constraint text changed: %s", got)
+	}
+	// The planner's rebuild must be valid SQL for an email with limits: two named
+	// constraints, not two CHECK clauses glued into one ADD CONSTRAINT.
+	email := field("email", "email", model.KindEmail, func(f *model.Field) { f.Type.MaxLen = intp(100) })
+	for _, s := range columnCheckSQL("account", email) {
+		if strings.Count(s, "CHECK") > 1 {
+			t.Errorf("one statement, two CHECKs: %s", s)
+		}
+	}
+}

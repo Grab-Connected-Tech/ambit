@@ -111,7 +111,7 @@ func migratePlan(name string, asJSON bool) error {
 		if last.Plan.DDLHash != "" && last.Plan.DDLHash != migrate.DDLHash(head) && migrate.DDLHash(base) != last.Plan.DDLHash {
 			inTx, outside := migrate.UpgradeDDL(head)
 			plan.Steps = append(plan.Steps, migrate.Step{Class: migrate.Safe, Subject: "framework",
-				Detail: "re-apply row-level security and indexes after a framework upgrade", InTx: inTx, OutsideTx: outside})
+				Detail: "re-apply row-level security, indexes and column constraints after a framework upgrade", InTx: inTx, OutsideTx: outside})
 		}
 	}
 	plan.DDLHash = migrate.DDLHash(head)

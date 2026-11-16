@@ -550,19 +550,7 @@ func enumCheckSQL(n model.Resource, f model.Field) []string {
 }
 
 func constraintSQL(n model.Resource, f model.Field, a *model.App, ref string) []string {
-	name := quoteIdent(n.Table + "_" + f.Column + "_check")
-	def := columnDDL(a, n, f)
-	def = strings.TrimSpace(def)
-	// Only the constraint part matters for an existing column.
-	i := strings.Index(def, "CHECK")
-	if i < 0 {
-		return nil
-	}
-	return []string{
-		fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s;", quoteIdent(n.Table), name),
-		fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s %s NOT VALID;", quoteIdent(n.Table), name, def[i:]),
-		fmt.Sprintf("ALTER TABLE %s VALIDATE CONSTRAINT %s;", quoteIdent(n.Table), name),
-	}
+	return columnCheckSQL(n.Table, f)
 }
 
 func sameDefault(a, b model.Field) bool {
@@ -592,7 +580,13 @@ func sameConstraint(a, b model.Field) bool {
 	if a.Type.Kind == model.KindEnum || b.Type.Kind == model.KindEnum {
 		return strings.Join(a.Type.Values, "|") == strings.Join(b.Type.Values, "|")
 	}
-	return maxLenOf(a) == maxLenOf(b) && a.Type.Pattern == b.Type.Pattern &&
+	minLen := func(f model.Field) int {
+		if f.Type.MinLen == nil {
+			return -1
+		}
+		return *f.Type.MinLen
+	}
+	return maxLenOf(a) == maxLenOf(b) && minLen(a) == minLen(b) && a.Type.Pattern == b.Type.Pattern &&
 		a.Type.Min == b.Type.Min && a.Type.Max == b.Type.Max && a.Type.Encrypted == b.Type.Encrypted
 }
 

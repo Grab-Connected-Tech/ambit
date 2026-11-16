@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Grab-Connected-Tech/ambit/model"
@@ -230,7 +231,11 @@ func columnDDL(a *model.App, r model.Resource, f model.Field) string {
 		if f.Optional {
 			null = ""
 		}
-		return fmt.Sprintf("  %s %s%s%s", quoteIdent(f.Column), f.SQLType(), null, defaultSQL(f))
+		extra := ""
+		if conds := fieldChecks(f); len(conds) > 0 {
+			extra = " " + checkClause(conds)
+		}
+		return fmt.Sprintf("  %s %s%s%s%s", quoteIdent(f.Column), f.SQLType(), null, defaultSQL(f), extra)
 	case model.KindBytes:
 		null := " NOT NULL"
 		if f.Optional {
@@ -271,11 +276,8 @@ func columnDDL(a *model.App, r model.Resource, f model.Field) string {
 		}
 		def := defaultSQL(f)
 		extra := ""
-		switch {
-		case f.Type.MaxLen != nil && !f.Type.Encrypted:
-			extra = fmt.Sprintf(" CHECK (length(%s) <= %d)", quoteIdent(f.Column), *f.Type.MaxLen)
-		case f.Type.Pattern != "" && !f.Type.Encrypted:
-			extra = fmt.Sprintf(" CHECK (%s ~ %s)", quoteIdent(f.Column), quoteSQL(f.Type.Pattern))
+		if conds := fieldChecks(f); len(conds) > 0 {
+			extra = " " + checkClause(conds)
 		}
 		ck := ""
 		if f.Type.Kind == model.KindEmail && !f.Type.Encrypted {
@@ -283,6 +285,75 @@ func columnDDL(a *model.App, r model.Resource, f model.Field) string {
 		}
 		return fmt.Sprintf("  %s %s%s%s%s%s", quoteIdent(f.Column), typ, null, def, extra, ck)
 	}
+}
+
+// fieldChecks is every value constraint a field declares, as SQL conditions on its column.
+// All of them go into one CHECK, so the database enforces each one; an earlier version
+// kept only the first (MaxLen hid Pattern) and never emitted MinLen, Min or Max.
+func fieldChecks(f model.Field) []string {
+	if f.Type.Encrypted {
+		return nil
+	}
+	col := quoteIdent(f.Column)
+	var out []string
+	switch f.Type.Kind {
+	case model.KindInt, model.KindDecimal:
+		// Only numbers reach SQL; anything else was refused by the compiler already.
+		if _, err := strconv.ParseFloat(f.Type.Min, 64); err == nil {
+			out = append(out, col+" >= "+f.Type.Min)
+		}
+		if _, err := strconv.ParseFloat(f.Type.Max, 64); err == nil {
+			out = append(out, col+" <= "+f.Type.Max)
+		}
+	case model.KindText, model.KindEmail, model.KindURL:
+		if f.Type.MaxLen != nil {
+			out = append(out, fmt.Sprintf("length(%s) <= %d", col, *f.Type.MaxLen))
+		}
+		if f.Type.MinLen != nil {
+			out = append(out, fmt.Sprintf("length(%s) >= %d", col, *f.Type.MinLen))
+		}
+		if f.Type.Pattern != "" {
+			out = append(out, col+" ~ "+quoteSQL(f.Type.Pattern))
+		}
+	}
+	return out
+}
+
+// checkClause joins conditions into one CHECK. A single condition keeps the text it
+// always had, so existing schemas do not change.
+func checkClause(conds []string) string {
+	if len(conds) == 1 {
+		return "CHECK (" + conds[0] + ")"
+	}
+	return "CHECK ((" + strings.Join(conds, ") AND (") + "))"
+}
+
+// columnCheckSQL rebuilds a column's CHECK constraints on an existing table under the
+// names Postgres gives a fresh one: <table>_<column>_check for the first inline CHECK and
+// _check1 for the second (an email's format check when the field also declares limits).
+// Constraints are added NOT VALID and then validated, so the long lock is a scan, not a
+// rewrite. ponytail: Postgres shortens auto names past 63 bytes differently from a plain
+// cut; very long table and column names would need its ChooseConstraintName rules.
+func columnCheckSQL(table string, f model.Field) []string {
+	t, base := quoteIdent(table), table+"_"+f.Column+"_check"
+	stmts := []string{
+		fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s;", t, quoteIdent(base)),
+		fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s;", t, quoteIdent(base+"1")),
+	}
+	name := base
+	add := func(clause string) {
+		stmts = append(stmts,
+			fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s %s NOT VALID;", t, quoteIdent(name), clause),
+			fmt.Sprintf("ALTER TABLE %s VALIDATE CONSTRAINT %s;", t, quoteIdent(name)))
+		name = base + "1"
+	}
+	if conds := fieldChecks(f); len(conds) > 0 {
+		add(checkClause(conds))
+	}
+	if f.Type.Kind == model.KindEmail && !f.Type.Encrypted {
+		add(fmt.Sprintf("CHECK (%s ~ %s)", quoteIdent(f.Column), quoteSQL(emailPattern)))
+	}
+	return stmts
 }
 
 const emailPattern = `^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$`
@@ -489,6 +560,27 @@ func UpgradeDDL(a *model.App) (inTx, outside []string) {
 	}
 	if a.Account != nil {
 		tables = append(tables, quoteSQL(a.Account.Table))
+	}
+	// Column constraints this framework version enforces and an older one did not (Min,
+	// Max, MinLen, Pattern next to MaxLen) are re-applied, so an upgraded database
+	// enforces what a fresh one would. ponytail: every declared column CHECK is
+	// re-validated on each framework upgrade, one table scan per constrained column.
+	recheck := func(table string, fields []model.Field) {
+		for _, f := range fields {
+			if len(fieldChecks(f)) > 0 {
+				inTx = append(inTx, columnCheckSQL(table, f)...)
+			}
+		}
+	}
+	for _, r := range a.AllResources() {
+		if !frameworkOwned(a, r.Resource) { // am_* tables have hand-written DDL; tenant and account follow
+			recheck(r.Resource.Table, r.Resource.Fields)
+		}
+	}
+	for _, t := range []*model.Tenant{a.Tenant, a.Account} {
+		if t != nil {
+			recheck(t.Table, t.Fields)
+		}
 	}
 	if len(keep) == 0 {
 		keep = append(keep, "''")
