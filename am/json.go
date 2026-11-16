@@ -188,7 +188,14 @@ func (w *W) OptTime(o Opt[time.Time]) {
 }
 
 // ID writes an identifier.
-func (w *W) ID(id ID) { w.Str(string(id)) }
+// ID writes null for the nil id, which is how an unset optional reference goes out.
+func (w *W) ID(id ID) {
+	if id == NilID {
+		w.Null()
+		return
+	}
+	w.Str(string(id))
+}
 
 // Money writes the "12.34 USD" minor-unit pair as an object.
 func (w *W) Money(m Money) {

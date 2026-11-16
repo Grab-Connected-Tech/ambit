@@ -24,10 +24,6 @@ var (
 // CountDraftsInput is the action's argument list. Fields are validated before
 // the action runs, so an action never re-checks shape (§7.1).
 type CountDraftsInput struct {
-	// Cursor is the opaque keyset position from the previous page.
-	Cursor string `json:"cursor"`
-	// Limit is clamped to the app's maximum page size.
-	Limit int `json:"limit"`
 }
 
 func (in *CountDraftsInput) Validate() *am.Error {

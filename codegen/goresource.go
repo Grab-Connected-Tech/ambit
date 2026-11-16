@@ -359,6 +359,11 @@ func scanFor(f *model.Field, g, gotype string) func(i int) string {
 		default: // an enum: a named string type
 			read = fmt.Sprintf("%s(row.Str(%d))", gotype, i)
 		}
+		if f.Optional && f.Type.Kind == model.KindRef {
+			// A reference field is a plain am.ID; no reference is the nil id, which the
+			// relation loader already skips.
+			return fmt.Sprintf("if !row.Null(%d) { out.%s = %s }", i, g, read)
+		}
 		if f.Optional {
 			return fmt.Sprintf("if row.Null(%d) { out.%s = am.Unset[%s]() } else { out.%s = am.Set(%s) }", i, g, gotype, g, read)
 		}

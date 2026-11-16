@@ -95,7 +95,7 @@ func writeAction(b *strings.Builder, app *model.App, module string, a *model.Act
 			b.WriteString("\t// Effect is the immediate effect whose action did not commit.\n\tEffect runtime.EffectCall `json:\"effect\"`\n" +
 				"\t// Result is what the provider returned when the effect ran.\n\tResult runtime.EffectResult `json:\"result\"`\n")
 		}
-		if a.Kind == model.KindQuery {
+		if a.Kind == model.KindQuery && a.Output.Page != "" {
 			// A list takes a cursor and a size without the spec naming them: the runtime
 			// clamps the size to the configured maximum, so a client cannot ask for the
 			// whole table (§8.1, §8.4).
