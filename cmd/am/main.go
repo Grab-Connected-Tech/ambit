@@ -46,6 +46,7 @@ const usage = `usage: am <command> [flags]
   upgrade [version]                 move to another framework version, regenerate, plan
   outbox list|inspect|replay        operate on pending and dead-lettered effects
   jobs list|inspect|replay          operate on jobs
+  actor create [--tenant id] --field col=v --role r   create an account, its roles and an API token
   version                           print which build of am this is
 
 Every command accepts --json.
@@ -67,7 +68,7 @@ func main() {
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
 		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
 		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs, "perf": cmdPerf, "bench": cmdBench, "upgrade": cmdUpgrade,
-		"version": cmdVersion,
+		"version": cmdVersion, "actor": cmdActor,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {
