@@ -3,6 +3,7 @@ package checker
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Grab-Connected-Tech/ambit/compile"
@@ -60,9 +61,23 @@ func TestTypedRulesSeeThroughSpelling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The framework's own requirements, so go list resolves from them alone. With only
+	// the framework required, -mod=mod loads the full module graph, which needs go.mod
+	// files (testify, via pgpassfile) that a fresh CI module cache does not hold.
+	mod, err := os.ReadFile(filepath.Join(repo, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reqs strings.Builder
+	for _, line := range strings.Split(string(mod), "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), "// indirect"))
+		if f := strings.Fields(strings.TrimPrefix(line, "require ")); len(f) == 2 && strings.HasPrefix(f[1], "v") {
+			reqs.WriteString("require " + f[0] + " " + f[1] + "\n")
+		}
+	}
 	header := "package billing\n\nimport (\n\traw \"github.com/Grab-Connected-Tech/ambit/am\"\n\tclock \"time\"\n\n\t\"myapp/gen\"\n)\n\nvar _ = raw.ID(\"\")\nvar _ = clock.Second\nvar _ *gen.Invoice\n\n"
 	root := tree(t, map[string]string{
-		"go.mod":     "module myapp\n\ngo 1.25.0\n\nrequire github.com/Grab-Connected-Tech/ambit v0.0.0\n\nreplace github.com/Grab-Connected-Tech/ambit => " + repo + "\n",
+		"go.mod":     "module myapp\n\ngo 1.25.0\n\nrequire github.com/Grab-Connected-Tech/ambit v0.0.0\n" + reqs.String() + "\nreplace github.com/Grab-Connected-Tech/ambit => " + repo + "\n",
 		"go.sum":     string(sum),
 		"gen/gen.go": typedGen,
 		// Evasions: each one is a real rule violation spelled so the text check misses it.
@@ -126,7 +141,7 @@ func fine(c *gen.SendInvoiceCtx, keys []string, m memo, inv *gen.Invoice) int {
 }
 `,
 	})
-	t.Setenv("GOFLAGS", "-mod=mod")
+	t.Setenv("GOFLAGS", "-mod=readonly")
 	t.Setenv("GOPROXY", "off")
 	res, err := Run(Config{Root: root, ModulePath: "myapp", App: testApp(), Types: true})
 	if err != nil {
