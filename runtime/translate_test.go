@@ -23,4 +23,9 @@ func TestTranslateNamesTheConstraint(t *testing.T) {
 	if e == nil || e.Code != am.CodeInvariant || !strings.Contains(e.Message, "expense_amount_positive") {
 		t.Errorf("check violation: %+v", e)
 	}
+	e = nil
+	errors.As(translate(&pgconn.PgError{Code: "23502", ColumnName: "owner_id"}), &e)
+	if e == nil || e.Code != am.CodeInvalid || e.Fields["owner_id"] == "" {
+		t.Errorf("not-null violation: %+v", e)
+	}
 }

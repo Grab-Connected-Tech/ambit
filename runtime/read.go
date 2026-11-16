@@ -432,6 +432,9 @@ func translate(err error) error {
 				return am.Invariant(pgErr.ConstraintName)
 			}
 			return am.Invariant("check constraint")
+		case "23502":
+			// A required field the insert left out: name it, instead of a bare 500.
+			return am.Invalid(pgErr.ColumnName, "is required")
 		case "23503":
 			return am.Invalid("reference", "the referenced row does not exist")
 		case "40001":
