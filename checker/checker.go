@@ -622,7 +622,7 @@ func (v *visitor) checkImports() {
 		case p == "github.com/Grab-Connected-Tech/ambit/spec":
 			if v.kind == fileAction {
 				v.at("AM-CODE-001", imp, "action code may not import the spec package",
-					"actions use generated types; the spec is the declaration of what exists")
+					"actions use generated types; if this file declares spec, name it *spec.go (e.g. thing_spec.go): only spec.go, *spec.go and app.go are read as spec")
 			}
 		case strings.HasPrefix(p, "github.com/Grab-Connected-Tech/ambit"):
 		case strings.HasPrefix(p, v.cfg.ModulePath):
