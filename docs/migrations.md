@@ -76,8 +76,22 @@ Instances refuse to start against a schema older than their model.
 
 A new Ambit version can generate different policies or indexes for the same model.
 `am upgrade` updates the framework, regenerates, and plans a `framework_upgrade` migration
-when that happens. The step re-applies row-level security and brings the indexes in line,
-rebuilding them concurrently.
+when that happens. The step re-applies row-level security, brings the indexes in line
+(rebuilding them concurrently), and re-applies column constraints. A constraint the framework
+now enforces and an older version did not, such as a resource field's `.Min`, is added and
+validated, so the step fails if existing rows break it: fix the rows, then apply again.
+
+## Starting over before the first deploy
+
+While nothing is deployed, the migration history is yours to rewrite. Delete `migrations/`
+except `migrations.go`, recreate the development database, and plan again:
+
+```sh
+find migrations -type f ! -name migrations.go -delete
+am gen && am migrate plan && am migrate apply
+```
+
+After a migration has run anywhere you keep, never edit or delete it (AM-MIG-002); plan a new one.
 
 ---
 
