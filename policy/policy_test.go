@@ -321,3 +321,26 @@ func TestPlaceSkipsQuotedQuestionMark(t *testing.T) {
 		t.Fatalf("got %q %v", sql, args)
 	}
 }
+
+// Eval is two-valued; SQL is not. Not(x) over a NULL column must come out true in a query
+// and a policy, as it does in Eval, or Not(Owner("reviewer")) refuses every row with no
+// reviewer. A CHECK constraint already passes on NULL, so its text is left alone.
+func TestNotIsTwoValuedOutsideDDL(t *testing.T) {
+	n := Logic(OpNot, Cmp(OpEq, FieldRef("notes"), Literal(StringLit("x"))))
+	for _, target := range []Target{TargetQuery, TargetPolicy} {
+		s, err := TableSQL(n, invoiceTable, target, "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(s.Text, "NOT COALESCE((") {
+			t.Errorf("target %v: NOT must treat NULL as false: %s", target, s.Text)
+		}
+	}
+	s, err := TableSQL(n, invoiceTable, TargetDDL, "invoice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(s.Text, "COALESCE") {
+		t.Errorf("a CHECK constraint must keep its text: %s", s.Text)
+	}
+}

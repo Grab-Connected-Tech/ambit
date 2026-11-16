@@ -333,10 +333,22 @@ func (c *comp) expr(n *Node) string {
 			parts[i] = "(" + c.expr(k) + ")"
 		}
 		return strings.Join(parts, " OR ")
+	// SQL is three-valued: a comparison with NULL is NULL, and NOT NULL is still NULL.
+	// A WHERE clause or a policy reads NULL as false, so Not(Owner("reviewer")) on a row
+	// with no reviewer would refuse while Eval says true. Outside DDL, COALESCE makes NOT
+	// and Implies two-valued, matching Eval; the positive forms stay bare so they can
+	// still use an index. A CHECK constraint passes on NULL, which already agrees with
+	// Eval here, so its text (and every app's schema) is unchanged.
 	case OpNot:
-		return "NOT (" + c.expr(n.Kids[0]) + ")"
+		if c.target == TargetDDL {
+			return "NOT (" + c.expr(n.Kids[0]) + ")"
+		}
+		return "NOT COALESCE((" + c.expr(n.Kids[0]) + "), false)"
 	case OpImplies:
-		return "(NOT (" + c.expr(n.Kids[0]) + ") OR (" + c.expr(n.Kids[1]) + "))"
+		if c.target == TargetDDL {
+			return "(NOT (" + c.expr(n.Kids[0]) + ") OR (" + c.expr(n.Kids[1]) + "))"
+		}
+		return "(NOT COALESCE((" + c.expr(n.Kids[0]) + "), false) OR (" + c.expr(n.Kids[1]) + "))"
 	case OpIsSet, OpIsNull:
 		inner := c.setOperand(n.Kids[0])
 		if n.Op == OpIsSet {
