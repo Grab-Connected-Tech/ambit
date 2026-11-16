@@ -256,7 +256,7 @@ func (v *View[T]) checkDeferred(ctx context.Context, row *T, update bool) error 
 		}
 		if found {
 			if c.Forbidden {
-				return am.Forbidden("the value after the change is not allowed")
+				return am.Forbidden("the UpdateAfter rule does not allow the row this change would produce")
 			}
 			return am.Invariant(c.Name)
 		}

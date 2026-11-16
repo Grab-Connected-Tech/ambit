@@ -422,8 +422,15 @@ func translate(err error) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505":
-			return am.Conflict()
+			// Not am.Conflict: that one means a stale version, and sends people
+			// looking for a concurrent writer that does not exist.
+			e := am.NewError(am.CodeConflict, 409, fmt.Sprintf("A record that must be unique already exists (%s).", pgErr.ConstraintName))
+			e.Internal = err
+			return e
 		case "23514":
+			if pgErr.ConstraintName != "" {
+				return am.Invariant(pgErr.ConstraintName)
+			}
 			return am.Invariant("check constraint")
 		case "23503":
 			return am.Invalid("reference", "the referenced row does not exist")
