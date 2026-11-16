@@ -85,7 +85,7 @@ automatically. The table name is the snake-cased resource name.
 | `s.Timestamp(name)`, `s.Date(name)` | `time.Time` | `.DefaultNow()` |
 | `s.Enum(name, values...)` | a generated named string type | e.g. `gen.InvoiceStatusDraft` |
 | `s.Email(name)`, `s.URL(name)` | `string` | Validated on input; `.Schemes(...)` for URLs |
-| `s.JSON(name)`, `s.Bytes(name)` | raw JSON, `[]byte` | `.MaxSize(n)` |
+| `s.JSON[T](name)`, `s.Bytes(name)` | `json.RawMessage`, `[]byte` | `T` is a named Go type (declare it in the app package, e.g. `app.CategoryTotals`) and documents the shape; generated code carries raw JSON for now, so marshal a `T` into it. Use it for a query that returns a list of rows. `.MaxSize(n)` |
 | `s.ID(name, resource)` | `am.ID` | An id input that refers to a resource |
 | `s.Ref(name, resource)` | `am.ID` (`<Name>ID`) | A foreign key; `.OnDelete("restrict"\|"cascade"\|"set_null")` |
 

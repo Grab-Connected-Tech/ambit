@@ -295,7 +295,16 @@ func (v *visitor) walkExpr(e ast.Expr, depth int) {
 		for _, a := range x.Args {
 			v.walkExpr(a, depth+1)
 		}
-		switch x.Fun.(type) {
+		fun := x.Fun
+		// s.JSON[T]("name") is a generic builder: the call's function is the
+		// instantiation, whose base must still be a builder name.
+		switch ix := fun.(type) {
+		case *ast.IndexExpr:
+			fun = ix.X
+		case *ast.IndexListExpr:
+			fun = ix.X
+		}
+		switch fun.(type) {
 		case *ast.SelectorExpr, *ast.Ident:
 			// a builder call or a conversion; conversions of non-literals are rare enough
 			// to allow here and are still reviewed as text

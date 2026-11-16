@@ -509,6 +509,26 @@ var SendInvoice = s.Mutation("SendInvoice", s.Requires(app.Admin))
 	has(t, d, "AM-SPEC-001")
 }
 
+// s.JSON[T] is a spec builder; an agent that tried it got AM-SPEC-001 and fell back to a
+// text field holding a JSON string.
+func TestGenericBuilderIsDeclarative(t *testing.T) {
+	files := specFiles(map[string]string{
+		"app/billing/spec.go": `package billing
+
+import (
+	s "github.com/Grab-Connected-Tech/ambit/spec"
+	"myapp/app"
+)
+
+var Totals = s.Query("Totals",
+	s.Returns(s.JSON[app.Totals]("totals")),
+	s.Requires(app.Admin),
+)
+`,
+	})
+	lacks(t, check(t, files), "AM-SPEC-001")
+}
+
 func TestMissingImplementation(t *testing.T) {
 	d := check(t, specFiles(map[string]string{"app/billing/actions/send_invoice.go": ""}))
 	got := has(t, d, "AM-CODE-005")
