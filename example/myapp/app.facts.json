@@ -92,7 +92,7 @@
     },
     {
       "action": "customers.CreateCustomer",
-      "sql": "c.DB.Customers.Insert(c, sets)",
+      "sql": "c.DB.Customers.Insert(c, gen.CustomerPatch{\n\tName:\tam.Set(in.Name),\n\tEmail:\tam.Set(in.Email),\n\tOwner:\tam.Set(in.Owner.Or(c.Actor.ID)),\n}.Assignments())",
       "table": "",
       "rows": 0,
       "count": 1
