@@ -57,12 +57,11 @@ page, err := c.DB.Invoices.Q().
 	Page(c, in.Cursor, in.Limit)                          // keyset pagination, size capped by config
 
 first, err := c.DB.Invoices.Q().Where(...).First(c)
-n, err := c.DB.Invoices.Q().Where(...).Count(c)          // needs s.Counts() on the action
 err = c.DB.Invoices.Q().Where(...).Each(c, 200, func(inv *gen.Invoice) error { ... }) // jobs
 ```
 
-A query must end in `Get`, `First`, `Page`, `Count` or `Each`. There is no unbounded
-"all rows" (AM-DATA-001). Relations load only through `.With(...)`, and a scoped call inside a
+A query must end in `Get`, `First`, `Page`, `Each` or an aggregate (below). There is no
+unbounded "all rows" (AM-DATA-001). Relations load only through `.With(...)`, and a scoped call inside a
 loop is flagged (AM-DATA-002).
 
 Column descriptors live in `gen.<Plural>` (`gen.Invoices.Status`, `gen.Customers.Name`):
@@ -72,6 +71,32 @@ Column descriptors live in `gen.<Plural>` (`gen.Invoices.Status`, `gen.Customers
 | `.Eq`, `.Ne`, `.Gt`, `.Gte`, `.Lt`, `.Lte`, `.In`, `.NotIn`, `.IsNull`, `.IsNotNull` | most columns |
 | `.Contains(s)`, `.HasPrefix(s)` | text columns |
 | `.Asc()`, `.Desc()` | any column, for `OrderBy` |
+
+### Totals and groups
+
+Aggregates read every visible row, so the action declares `s.Counts()` in the spec
+(AM-DATA-005). They see exactly what `Page` would: the tenant, the `Read` rule and your
+`Where` all apply, and a field the caller may not read counts as empty.
+
+```go
+n, err := c.DB.Invoices.Q().Where(...).Count(c)                            // int64
+qty, err := c.DB.Items.Q().Where(...).Sum(c, gen.Items.Quantity)           // int64 column -> int64
+total, err := c.DB.Invoices.Q().SumMoney(c, gen.Invoices.Amount, "USD")    // am.Money, USD rows only
+
+// One row per key, ordered by key: []runtime.Group[K, V]{Key, Count, Sum}
+byStatus, err := runtime.GroupBy(c.DB.Invoices.Q(), gen.Invoices.Status).Count(c)
+perCustomer, err := runtime.GroupBy(c.DB.Invoices.Q().Where(...), gen.Invoices.CustomerID).
+	SumMoney(c, gen.Invoices.Amount, "USD")
+perCurrency, err := runtime.GroupBy(c.DB.Invoices.Q(), gen.Invoices.Amount.Currency).
+	Sum(c, gen.Invoices.Amount.Minor)
+```
+
+- `SumMoney` takes the currency and skips rows in any other one, so a total never mixes
+  currencies. For totals in every currency, group by `Amount.Currency` and sum `Amount.Minor`.
+- A sum over no rows is zero. An optional key column groups its empty rows under a `nil` key.
+- A grouped read returns at most `limits.maxPageSize` groups. More is a `too_many_groups`
+  error, never a cut-short list: narrow the query with `Where`.
+- Encrypted columns cannot be summed or grouped.
 
 ## Writing
 

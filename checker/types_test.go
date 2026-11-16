@@ -120,6 +120,30 @@ func sendIt(c *gen.SendInvoiceCtx) {
 	return err
 }
 `,
+		// Aggregates: SendInvoice did not declare Counts(), ListInvoices does here.
+		"app/billing/aggregate.go": `package billing
+
+import (
+	"github.com/Grab-Connected-Tech/ambit/runtime"
+
+	"myapp/gen"
+)
+
+func SendInvoice(c *gen.SendInvoiceCtx) error {
+	q := c.DB.Invoices.Q()
+	if _, err := q.Count(c); err != nil {
+		return err
+	}
+	_, err := runtime.GroupBy(q, runtime.NewCol[string]("t.status")).Count(c)
+	return err
+}
+`,
+		"app/billing/counted.go": `package billing
+
+import "myapp/gen"
+
+func listInvoices(c *gen.SendInvoiceCtx) (int64, error) { return c.DB.Invoices.Q().Count(c) }
+`,
 		// Look-alikes: each one trips the text check but is not a violation.
 		"app/billing/lookalike.go": header + `type cache map[string]int
 
@@ -143,7 +167,9 @@ func fine(c *gen.SendInvoiceCtx, keys []string, m memo, inv *gen.Invoice) int {
 	})
 	t.Setenv("GOFLAGS", "-mod=readonly")
 	t.Setenv("GOPROXY", "off")
-	res, err := Run(Config{Root: root, ModulePath: "myapp", App: testApp(), Types: true})
+	app := testApp()
+	app.Modules[0].Actions[1].Counts = true // ListInvoices
+	res, err := Run(Config{Root: root, ModulePath: "myapp", App: app, Types: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +195,8 @@ func fine(c *gen.SendInvoiceCtx, keys []string, m memo, inv *gen.Invoice) int {
 		{"AM-DATA-002", "app/billing/values.go", 1}, // a query method taken as a value
 		{"AM-SEC-004", "app/billing/values.go", 1},  // a logger taken as a value
 		{"AM-DATA-003", "app/billing/values.go", 1}, // an effect taken as a value
+		{"AM-DATA-005", "app/billing/aggregate.go", 2},
+		{"AM-DATA-005", "app/billing/counted.go", 0},
 		{"AM-DATA-002", "app/billing/lookalike.go", 0},
 		{"AM-SEC-004", "app/billing/lookalike.go", 0},
 		{"AM-CODE-003", "app/billing/lookalike.go", 0},
@@ -181,7 +209,9 @@ func fine(c *gen.SendInvoiceCtx, keys []string, m memo, inv *gen.Invoice) int {
 
 func TestFailedTypeCheckIsLoud(t *testing.T) {
 	root := tree(t, map[string]string{"app/billing/x.go": "package billing\n"}) // no go.mod
-	res, err := Run(Config{Root: root, ModulePath: "myapp", App: testApp(), Types: true})
+	app := testApp()
+	app.Modules[0].Actions[1].Counts = true // ListInvoices
+	res, err := Run(Config{Root: root, ModulePath: "myapp", App: app, Types: true})
 	if err != nil {
 		t.Fatal(err)
 	}

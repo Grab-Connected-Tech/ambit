@@ -489,6 +489,9 @@ func (v *visitor) checkCall(x *ast.CallExpr, loopDepth int) {
 	if isEffectCall(text) && stmtDiscardsResult(v.file, x) && !strings.Contains(text, ".Send(") {
 		v.at("AM-DATA-003", x, "the error from an effect call is ignored", "check the error or return it")
 	}
+	if isAggregateCall(text) && !v.inner(x) {
+		v.checkAggregate(x)
+	}
 	if strings.Contains(text, ".Query()") && !hasTerminalBound(text) && !v.inner(x) {
 		v.at("AM-DATA-001", x, "the query has no terminal bound",
 			"end the chain with Page, First, Get, Count or Each (AM-DATA-001)")
@@ -521,6 +524,9 @@ func (v *visitor) checkCallTyped(x *ast.CallExpr, text string, loopDepth int) {
 	case isFunc(fn, amPkg, "Unsafe"):
 		v.checkUnsafe(x)
 	case isDBCallTyped(fn):
+		if isAggregateTyped(fn) {
+			v.checkAggregate(x)
+		}
 		v.checkDBCall(x, text, loopDepth)
 	case isEffectCallTyped(fn):
 		if stmtDiscardsResult(v.file, x) {
@@ -542,6 +548,18 @@ func (v *visitor) checkCallTyped(x *ast.CallExpr, text string, loopDepth int) {
 				return true
 			})
 		}
+	}
+}
+
+// checkAggregate reports an aggregate read in an action that did not declare Counts():
+// it scans every visible row, which the spec has to say out loud (AM-DATA-005).
+func (v *visitor) checkAggregate(x ast.Node) {
+	if v.cfg.App == nil {
+		return
+	}
+	if _, a := v.cfg.App.FindAction(v.module + "." + v.action); a != nil && !a.Counts {
+		v.at("AM-DATA-005", x, "an aggregate read (Count, Sum, SumMoney or GroupBy) in an action that does not declare Counts()",
+			"add s.Counts() to the action in the spec")
 	}
 }
 
@@ -817,6 +835,19 @@ func (v *visitor) collectFacts() {
 
 func isDBCall(text string) bool {
 	for _, m := range []string{".DB.", ".Query(", ".Get(", ".Insert(", ".Update(", ".Delete(", "Query().", ".Count("} {
+		if strings.Contains(text, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// isAggregateCall is the syntax-only guess at an aggregate terminal on a query chain.
+func isAggregateCall(text string) bool {
+	if !strings.Contains(text, ".Q()") && !strings.Contains(text, "Query()") && !strings.Contains(text, "GroupBy(") {
+		return false
+	}
+	for _, m := range []string{".Count(", ".Sum(", ".SumMoney("} {
 		if strings.Contains(text, m) {
 			return true
 		}

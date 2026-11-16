@@ -198,7 +198,7 @@ var DailyReminders = s.Schedule("DailyReminders", s.Cron("0 9 * * *"), s.Runs(Se
 | `RateLimit(s.PerActor/PerIP/PerTenant(n, period))` | Request limits |
 | `Idempotent()` | Requires an `Idempotency-Key`; a repeat returns the stored result |
 | `Timeout(d)`, `QueryBudget(n)`, `RowsBudget(n)` | Override the app defaults |
-| `Counts()` | Allows `Count()` queries |
+| `Counts()` | Allows aggregate reads: `Count`, `Sum`, `SumMoney`, `runtime.GroupBy` (AM-DATA-005) |
 | `Get()` | Also answer `GET` with query parameters |
 | `ReplicaOK()`, `Serializable()` | Read from the replica; serializable isolation with automatic retries |
 | `CrossTenant()` | May read across tenants (high-risk in the diff) |

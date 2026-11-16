@@ -34,7 +34,8 @@ RULES OF THE ROAD
 - Actions reach data only through c.DB (scoped: tenant + Read rule are always applied),
   effects only through the context's declared handles, time only through c.Clock.
 - Return declared failures with gen.Err<Action><Code>(); anything else is an internal error.
-- Queries end in Get, First, Page or a job's Each; Count needs Counts(). No raw SQL outside am.Unsafe.
+- Queries end in Get, First, Page or a job's Each; aggregates (Count, Sum, SumMoney, runtime.GroupBy)
+  need Counts(). No raw SQL outside am.Unsafe.
 - Optional values are am.Opt[T]; money is am.Money (minor units); ids are am.ID.
 - Tests: env := amtest.New(t, gen.Model); amtest.Call(env, actor, gen.XHandler, Actions.X, input).
 `

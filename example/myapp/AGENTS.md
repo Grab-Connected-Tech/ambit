@@ -89,6 +89,7 @@ tenant and the read rule before your code sees it, so a missing filter is not a 
 | AM-DATA-001 | error | query has no terminal bound |
 | AM-DATA-002 | error | scoped DB call inside a loop |
 | AM-DATA-003 | error | error from a DB or effect call is ignored |
+| AM-DATA-005 | error | aggregate read without Counts() |
 | AM-DATA-004 | warning | text field has no MaxLen |
 | AM-CODE-001 | error | generated file edited, or committed model differs from spec |
 | AM-CODE-002 | error | import of another module's internals |

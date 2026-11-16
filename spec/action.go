@@ -254,7 +254,8 @@ func RowsBudget(n int) AOption {
 	return aOptionFunc(func(d *ActionDecl) { d.limits.RowBudget = n })
 }
 
-// Counts permits a Query().Count() call, which is otherwise unbounded (§8.1).
+// Counts permits aggregate reads (Count, Sum, SumMoney, runtime.GroupBy), which scan
+// every visible row (§8.1, AM-DATA-005).
 func Counts() AOption {
 	return aOptionFunc(func(d *ActionDecl) { d.limits.QueryBudget |= 0; d.counts = true })
 }

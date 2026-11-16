@@ -158,7 +158,14 @@ func takesContext(fn *types.Func) bool {
 
 // isDBCallTyped is a call that runs SQL through the action's scoped database.
 func isDBCallTyped(fn *types.Func) bool {
-	return fn != nil && isType(recvOf(fn), runtimePkg, "View", "Query", "DB") && takesContext(fn)
+	return fn != nil && isType(recvOf(fn), runtimePkg, "View", "Query", "DB", "Grouped") && takesContext(fn)
+}
+
+// isAggregateTyped is a terminal that scans every visible row: Count and the sums on a
+// query, and anything run on a grouped query.
+func isAggregateTyped(fn *types.Func) bool {
+	return isType(recvOf(fn), runtimePkg, "Grouped") ||
+		(isType(recvOf(fn), runtimePkg, "Query") && slices.Contains([]string{"Count", "Sum", "SumMoney"}, fn.Name()))
 }
 
 // isEffectCallTyped is a call that records or runs a declared effect.

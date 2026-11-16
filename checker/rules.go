@@ -128,7 +128,7 @@ unless the mutation carries an idempotency key.`,
 		`s.Idempotent(), s.Effects(s.HTTP(s.Hosts("api.example.com")).Immediate())`, "actions"},
 	{"AM-DATA-001", "error", "query has no terminal bound", "8.1",
 		`An unbounded query is an out-of-memory error with a route attached. Every query must
-end in Page, First, Get, Count or Each.`,
+end in Page, First, Get, Each, or an aggregate (Count, Sum, SumMoney, GroupBy).`,
 		`rows, err := c.DB.Invoices.Query().All(c)`,
 		`page, err := c.DB.Invoices.Query().Page(c, in.Cursor, 50)`, "actions"},
 	{"AM-DATA-002", "error", "scoped DB call inside a loop", "8.2",
@@ -148,6 +148,14 @@ transaction may still commit.`,
 		`if _, err := c.DB.Invoices.Update(c, id, ver, patch); err != nil {
     return nil, err
 }`, "actions"},
+	{"AM-DATA-005", "error", "aggregate read without Counts()", "8.1",
+		`Count, Sum, SumMoney and GroupBy read every visible row, however many there are. The
+action has to say so in the spec with s.Counts(), so the cost shows up in review and in the
+behavior diff.`,
+		`var InvoiceTotals = s.Query("InvoiceTotals", s.Reads(Invoice))
+// actions: total, err := c.DB.Invoices.Q().SumMoney(c, gen.Invoices.Amount, "USD")`,
+		`var InvoiceTotals = s.Query("InvoiceTotals", s.Reads(Invoice), s.Counts())
+// actions: total, err := c.DB.Invoices.Q().SumMoney(c, gen.Invoices.Amount, "USD")`, "actions"},
 	{"AM-DATA-004", "warning", "text field has no MaxLen", "5.2",
 		`An unbounded string turns one row into an arbitrarily large response and makes the
 p99 latency of a list endpoint a function of user input.`,

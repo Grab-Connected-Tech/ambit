@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -197,38 +196,6 @@ func (b *Query[T]) First(ctx context.Context) (*T, error) {
 		return nil, am.NotFound()
 	}
 	return page.Rows[0], nil
-}
-
-// Count totals the visible rows. It exists only for actions that declared Counts(),
-// which is enforced in the generated method set, not here.
-func (b *Query[T]) Count(ctx context.Context) (int64, error) {
-	v := b.v
-	sb := &sqlBuilder{a: actorValues(v.db.actor)}
-	var extra []string
-	for _, c := range b.conds {
-		sql, err := sb.text(c.SQL, c.Args...)
-		if err != nil {
-			return 0, err
-		}
-		if sql != "" {
-			extra = append(extra, sql)
-		}
-	}
-	where, err := v.whereWithRead(sb, extra)
-	if err != nil {
-		return 0, err
-	}
-	sql := fmt.Sprintf("SELECT count(*) FROM %s t WHERE %s", v.t.Table, where)
-	var n int64
-	if err := v.db.usable(); err != nil {
-		return 0, err
-	}
-	start := time.Now()
-	if err := v.db.conn.QueryRow(ctx, sql, sb.params...).Scan(&n); err != nil {
-		return 0, translate(err)
-	}
-	v.db.record(sql, sb.params, 1, start)
-	return n, nil
 }
 
 // Each walks every visible row in batches, for jobs (§8.1).

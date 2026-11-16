@@ -374,6 +374,22 @@ func ListInvoices(c *gen.ListInvoicesCtx, in gen.ListInvoicesInput) (*gen.Invoic
 	has(t, check(t, files), "AM-DATA-001")
 }
 
+func TestAggregateNeedsCounts(t *testing.T) {
+	body := `(c *gen.Ctx, in gen.Input) (int64, error) {
+	return c.DB.Invoices.Q().Where(gen.Invoices.Status.Eq(gen.InvoiceStatusDraft)).Count(c)
+}
+`
+	files := specFiles(map[string]string{"app/billing/actions/list_invoices.go": "package actions\n\nfunc ListInvoices" + body})
+	has(t, check(t, files), "AM-DATA-005")
+	app := testApp()
+	app.Modules[0].Actions[1].Counts = true // ListInvoices
+	res, err := Run(Config{Root: tree(t, files), ModulePath: "myapp", App: app})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lacks(t, res.Diags, "AM-DATA-005")
+}
+
 func TestScopedCallInALoop(t *testing.T) {
 	inLoop := `package actions
 
@@ -687,7 +703,7 @@ func TestExplainCoversEveryReportedRule(t *testing.T) {
 	}
 	for _, rule := range []string{
 		"AM-SPEC-001", "AM-SPEC-002", "AM-SPEC-003", "AM-SPEC-004", "AM-SEC-001", "AM-SEC-002",
-		"AM-SEC-003", "AM-SEC-004", "AM-SEC-005", "AM-DATA-001", "AM-DATA-002", "AM-DATA-003",
+		"AM-SEC-003", "AM-SEC-004", "AM-SEC-005", "AM-DATA-001", "AM-DATA-002", "AM-DATA-003", "AM-DATA-005",
 		"AM-CODE-001", "AM-CODE-002", "AM-CODE-003", "AM-CODE-004", "AM-PERF-003", "AM-MIG-001",
 		"AM-TEST-001",
 	} {
