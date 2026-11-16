@@ -1,0 +1,30 @@
+name: test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["15", "17"] # the oldest supported version and a current one
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 15
+    env:
+      AM_TEST_DB_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      AM_REQUIRE_DB: "1" # integration tests fail instead of skipping without Postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - name: example app is in step with codegen
+        working-directory: example/myapp
+        run: go run ../../cmd/am gen && git diff --exit-code

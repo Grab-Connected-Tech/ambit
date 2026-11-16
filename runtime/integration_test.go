@@ -44,6 +44,9 @@ func pool(t *testing.T) *pgxpool.Pool {
 	poolOnce.Do(func() { testPool, testErr = connect(t) })
 	_ = localCluster
 	if testErr != nil {
+		if os.Getenv("AM_REQUIRE_DB") != "" { // CI sets it: a skipped suite proves nothing
+			t.Fatalf("AM_REQUIRE_DB is set but no postgres is available: %v", testErr)
+		}
 		t.Skipf("no postgres available: %v", testErr)
 	}
 	return testPool

@@ -51,6 +51,9 @@ func TestGenerateExampleIsStableBuildsAndApplies(t *testing.T) {
 
 	url := os.Getenv("AM_TEST_DB_URL")
 	if url == "" {
+		if os.Getenv("AM_REQUIRE_DB") != "" {
+			t.Fatal("AM_REQUIRE_DB is set but AM_TEST_DB_URL is not")
+		}
 		t.Log("AM_TEST_DB_URL unset; schema not applied")
 		return
 	}
