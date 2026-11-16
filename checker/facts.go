@@ -202,7 +202,8 @@ func checkTests(cfg Config, res *Result) {
 				res.Diags = append(res.Diags, compile.Diag{
 					Rule: "AM-TEST-001", Severity: compile.SevWarning, Decl: model.Qual(m.Name, act.Name),
 					Message: fmt.Sprintf("%s has no test that calls it", model.Qual(m.Name, act.Name)),
-					Fix:     "add env.Call(actor, actions." + act.Name + ", ...) in " + m.Name + "/actions",
+					Fix: "add amtest.Call(env, actor, gen." + act.Name + "Handler, Actions." + act.Name +
+						", gen." + act.Name + "Input{...}) to a test in app/" + m.Name,
 					Docs:    "am explain AM-TEST-001",
 				})
 			}
