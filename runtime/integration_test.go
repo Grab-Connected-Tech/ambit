@@ -1942,3 +1942,23 @@ func TestUpdateAfterDoesNotJudgeAnInsert(t *testing.T) {
 		t.Fatal("insert refused")
 	}
 }
+
+// An API token issued with no scopes must work: the column is NOT NULL, and a nil slice
+// went in as NULL, so every unscoped token failed to issue.
+func TestAPITokenAuthenticates(t *testing.T) {
+	h := setup(t)
+	actor := h.actor(h.tenants["Acme"], "member")
+	token, err := h.app.NewAPIToken(context.Background(), actor.Tenant, actor.ID, "cli", nil)
+	if err != nil {
+		t.Fatalf("issue: %v", detail(err))
+	}
+	req, _ := http.NewRequest("GET", "http://x/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	got, err := h.app.Authenticate(req)
+	if err != nil {
+		t.Fatal(detail(err))
+	}
+	if got.ID != actor.ID || got.Tenant != actor.Tenant || !contains(got.Roles, "member") {
+		t.Fatalf("token resolved to %+v, want %+v with member", got, actor)
+	}
+}

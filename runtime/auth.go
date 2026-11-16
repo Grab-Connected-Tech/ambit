@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -259,13 +260,28 @@ func (a *App) Rotate(ctx context.Context, current string, actor am.Actor) (strin
 // NewAPIToken creates a service token; only its hash is stored, and the plaintext is
 // shown once (§9.2).
 func (a *App) NewAPIToken(ctx context.Context, tenant, actor am.ID, name string, scopes []string) (string, error) {
-	token := "am_" + randomToken(24)
-	if err := a.framework(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx,
-			`INSERT INTO am_api_token (id, tenant_id, actor_id, name, token_hash, scopes, created_at) VALUES ($1,$2,$3,$4,$5,$6,now())`,
-			am.NewID(), tenant, actor, name, hashToken(token), scopes)
+	var token string
+	err := a.framework(ctx, func(tx pgx.Tx) error {
+		var err error
+		token, err = IssueAPIToken(ctx, tx, tenant, actor, name, scopes)
 		return err
-	}); err != nil {
+	})
+	if err != nil {
+		return "", translate(err)
+	}
+	return token, nil
+}
+
+// IssueAPIToken is NewAPIToken inside a transaction the caller holds, which is how
+// am actor create issues one in the same transaction that creates the account.
+func IssueAPIToken(ctx context.Context, tx Conn, tenant, actor am.ID, name string, scopes []string) (string, error) {
+	token := "am_" + randomToken(24)
+	if scopes == nil {
+		scopes = []string{} // the column is NOT NULL; a nil slice would go in as NULL
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO am_api_token (id, tenant_id, actor_id, name, token_hash, scopes, created_at) VALUES ($1,$2,$3,$4,$5,$6,now())`,
+		am.NewID(), tenant, actor, name, hashToken(token), scopes); err != nil {
 		return "", translate(err)
 	}
 	return token, nil
@@ -274,25 +290,18 @@ func (a *App) NewAPIToken(ctx context.Context, tenant, actor am.ID, name string,
 // GrantRole grants a role to an actor in a tenant. It is a spec-visible write, so the
 // membership table has RLS like everything else (§5.1).
 func (a *App) GrantRole(ctx context.Context, tx Conn, tenant, actor am.ID, role string) error {
-	if !a.roleExists(role) {
+	return GrantRoleTx(ctx, tx, a.Model, tenant, actor, role)
+}
+
+// GrantRoleTx is GrantRole for a caller that has the model but no running App.
+func GrantRoleTx(ctx context.Context, tx Conn, m *model.App, tenant, actor am.ID, role string) error {
+	if m == nil || !slices.Contains(m.Roles, role) {
 		return am.Invalid("role", fmt.Sprintf("the app does not declare the role %q", role))
 	}
 	_, err := tx.Exec(ctx,
 		`INSERT INTO am_membership (id, tenant_id, actor_id, role, created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (tenant_id, actor_id, role) DO NOTHING`,
 		am.NewID(), tenant, actor, role)
 	return translate(err)
-}
-
-func (a *App) roleExists(role string) bool {
-	if a.Model == nil {
-		return false
-	}
-	for _, r := range a.Model.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
 }
 
 // HashPassword produces the stored form: PBKDF2-HMAC-SHA256 with a per-password salt.
