@@ -91,9 +91,7 @@ func (d *DB) RecordEffect(ctx context.Context, call EffectCall) error {
 	if call.Type == "" {
 		return am.InternalError(errors.New("runtime: effect with no type"))
 	}
-	if call.IdempotencyKey == "" {
-		call.IdempotencyKey = DerivedIdempotencyKey(call.Invocation, call.Seq)
-	}
+	d.stampEffect(&call)
 	if call.ID == "" {
 		call.ID = am.NewID()
 	}
@@ -110,6 +108,29 @@ func (d *DB) RecordEffect(ctx context.Context, call EffectCall) error {
 	// run the provider twice. The outbox row exists so the trace shows it happened.
 	d.EffectsQueued = append(d.EffectsQueued, call)
 	return nil
+}
+
+// stampEffect gives an effect its invocation, action, sequence number and derived
+// idempotency key. It runs before an immediate effect reaches its provider, so the key
+// the provider sees is the key the outbox records. Every effect of one invocation gets
+// its own sequence number, so two effects never share a key.
+func (d *DB) stampEffect(call *EffectCall) {
+	if d.invocation.IsNil() {
+		d.invocation = am.NewID() // a DB used outside the server pipeline still needs one
+	}
+	if call.Invocation.IsNil() {
+		call.Invocation = d.invocation
+	}
+	if call.Action == "" {
+		call.Action = d.action
+	}
+	if call.IdempotencyKey == "" {
+		if call.Seq == 0 {
+			d.effectSeq++
+			call.Seq = d.effectSeq
+		}
+		call.IdempotencyKey = DerivedIdempotencyKey(call.Invocation, call.Seq)
+	}
 }
 
 // EffectHandle is the capability an action holds for one declared effect. It is a method

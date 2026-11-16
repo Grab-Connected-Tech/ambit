@@ -255,6 +255,7 @@ type DB struct {
 	traceID       string
 	action        string
 	invocation    am.ID
+	effectSeq     int // last sequence number handed to an effect of this invocation
 	start         time.Time
 	providers     *Providers
 	keys          *Keyring
@@ -521,9 +522,7 @@ func actorValues(a am.Actor) policy.ActorValues {
 // database through a resource is a typed one.
 type Query[T any] struct {
 	v      *View[T]
-	parts  []string
-	parts2 []Cond
-	args   []any
+	conds  []Cond
 	order  []orderTerm
 	withs  []With[T]
 	limit  int
@@ -553,8 +552,7 @@ func (b *Query[T]) Where(c ...Cond) *Query[T] {
 		if x.SQL == "" {
 			continue
 		}
-		b.parts = append(b.parts, x.SQL)
-		b.args = append(b.args, x.Args...)
+		b.conds = append(b.conds, x)
 	}
 	return b
 }
@@ -704,12 +702,7 @@ func (d *DB) CallEffect(ctx context.Context, call EffectCall) (EffectResult, err
 	if call.Mode == "" {
 		call.Mode = "immediate"
 	}
-	if call.Invocation.IsNil() {
-		call.Invocation = d.invocation
-	}
-	if call.Action == "" {
-		call.Action = d.action
-	}
+	d.stampEffect(&call)
 	res, err := d.callProvider(ctx, call)
 	if err != nil {
 		return res, err

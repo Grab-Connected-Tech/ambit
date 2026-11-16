@@ -1879,3 +1879,63 @@ func TestUnsafeStaysInsideTheScope(t *testing.T) {
 		t.Fatalf("a write from the tampered transaction committed (%d rows)", n)
 	}
 }
+
+// Regressions found by an agent building an app from scratch: each one passed every
+// test above because those tests never exercised the default path.
+
+func TestWhereNarrowsPageAndCount(t *testing.T) {
+	h := setup(t)
+	cust := h.newCustomer(h.member, "FilterCo")
+	h.newInvoice(h.admin, cust, 1000, "draft")
+	h.newInvoice(h.admin, cust, 2000, "sent")
+	sent := runtime.Col[string]{SQL: "t.status", Cast: "::text"}.Eq("sent")
+	if err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
+		page, err := runtime.Scoped(d, invTable).Q().Where(sent).Page(ctx, "", 100)
+		if err != nil {
+			return err
+		}
+		all, err := runtime.Scoped(d, invTable).Q().Count(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := runtime.Scoped(d, invTable).Q().Where(sent).Count(ctx)
+		if err != nil {
+			return err
+		}
+		if int64(len(page.Rows)) != n || n == 0 || n >= all {
+			// Not t.Fatalf: that would exit inside the open transaction.
+			return fmt.Errorf("Where must narrow the query: page %d, filtered count %d, all %d", len(page.Rows), n, all)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(detail(err))
+	}
+}
+
+func TestDeferredEffectsGetDistinctKeys(t *testing.T) {
+	h := setup(t)
+	send := func(ctx context.Context, d *runtime.DB) error {
+		return d.RecordEffect(ctx, runtime.EffectCall{Type: model.EffectEmail, Payload: []byte(`{}`)})
+	}
+	// Two effects in one invocation, then a second invocation: none may share a key.
+	if err := h.call(h.admin, func(ctx context.Context, d *runtime.DB) error {
+		if err := send(ctx, d); err != nil {
+			return err
+		}
+		return send(ctx, d)
+	}); err != nil {
+		t.Fatalf("two effects in one invocation: %v", detail(err))
+	}
+	if err := h.call(h.admin, send); err != nil {
+		t.Fatalf("an effect in a second invocation: %v", detail(err))
+	}
+}
+
+func TestUpdateAfterDoesNotJudgeAnInsert(t *testing.T) {
+	h := setup(t)
+	cust := h.newCustomer(h.member, "VoidCo")
+	// UpdateAfter refuses a change *to* void; creating a row that starts void is not a change.
+	if inv := h.newInvoice(h.admin, cust, 3000, "void"); inv == nil {
+		t.Fatal("insert refused")
+	}
+}

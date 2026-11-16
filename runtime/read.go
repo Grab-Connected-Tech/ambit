@@ -127,7 +127,7 @@ func (b *Query[T]) Page(ctx context.Context, cursor string, size int) (*PageOf[T
 	// Generated conditions carry ? placeholders, which are numbered here in statement
 	// order so a filter can never borrow the projection's parameters.
 	var extra []string
-	for _, c := range b.parts2 {
+	for _, c := range b.conds {
 		sql, err := sb.text(c.SQL, c.Args...)
 		if err != nil {
 			return nil, err
@@ -205,7 +205,7 @@ func (b *Query[T]) Count(ctx context.Context) (int64, error) {
 	v := b.v
 	sb := &sqlBuilder{a: actorValues(v.db.actor)}
 	var extra []string
-	for _, c := range b.parts2 {
+	for _, c := range b.conds {
 		sql, err := sb.text(c.SQL, c.Args...)
 		if err != nil {
 			return 0, err

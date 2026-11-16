@@ -55,7 +55,7 @@ func (v *View[T]) Insert(ctx context.Context, sets []Assignment, withs ...With[T
 		return nil, am.Forbidden("the Create rule refused the row")
 	}
 	created := out[0]
-	if err := v.checkDeferred(ctx, created); err != nil {
+	if err := v.checkDeferred(ctx, created, false); err != nil {
 		return nil, err
 	}
 	d.recordAudit("insert", v.t.Ref, v.idOf(created), nil, created)
@@ -139,7 +139,7 @@ func (v *View[T]) Update(ctx context.Context, id am.ID, version am.Version, sets
 		return nil, am.Forbidden("a write rule refused the change")
 	}
 	after := out[0]
-	if err := v.checkDeferred(ctx, after); err != nil {
+	if err := v.checkDeferred(ctx, after, true); err != nil {
 		return nil, err
 	}
 	d.recordAudit("update", v.t.Ref, id, before, after)
@@ -224,12 +224,16 @@ func (v *View[T]) whereWith(extra []string, args []any, rule Frag) (string, []an
 
 // checkDeferred runs the row rules that cannot be CHECK constraints: those crossing a
 // relation, and UpdateAfter rules, which need the row as it now is (§5.5, §5.6).
-func (v *View[T]) checkDeferred(ctx context.Context, row *T) error {
+// UpdateAfter rules (the Forbidden checks) judge a change, so an insert skips them.
+func (v *View[T]) checkDeferred(ctx context.Context, row *T, update bool) error {
 	id := v.idOf(row)
 	if id.IsNil() {
 		return nil
 	}
 	for _, c := range v.t.Checks {
+		if c.Forbidden && !update {
+			continue
+		}
 		sb := &sqlBuilder{a: actorValues(v.db.actor)}
 		idSQL, err := sb.text("t."+quote(v.t.IDColumn)+" = ?", id.Bytes())
 		if err != nil {
