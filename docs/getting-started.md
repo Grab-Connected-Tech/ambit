@@ -60,7 +60,7 @@ Every feature follows the same seven steps. `AGENTS.md` describes them to agents
 4. **Implement** the action bodies in `actions.go`. See [Writing actions](actions.md).
 5. **Check.** `am check --json` until it reports no errors. `--strict` also fails on warnings.
 6. **Test.** `am test --json` until generated and written tests pass. See [Testing](testing.md).
-7. **Review.** `am diff --base main` prints what the app can now do that it could not before.
+7. **Review.** `am diff --base main` prints what the app can now do that it could not before. The CI workflow `am init` writes posts it as a comment on each pull request and in the run summary.
 
 ## Run it
 

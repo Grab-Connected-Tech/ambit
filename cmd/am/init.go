@@ -164,6 +164,9 @@ on: [push, pull_request]
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # the behavior diff is posted on the PR
     services:
       postgres:
         image: postgres:16
@@ -184,5 +187,22 @@ jobs:
       - run: am check --strict
       - run: am test
       - run: am migrate verify
-      - run: am diff --base origin/${{ github.base_ref || 'main' }} --format markdown
+      # The behavior diff is what a reviewer reads (§15.3): the run summary, plus one
+      # PR comment kept current on each push. It runs even when tests fail, and a
+      # blocked change still fails the job after the report is posted.
+      - name: am diff
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          status=0
+          am diff --base origin/${{ github.base_ref || 'main' }} --format markdown > am-diff.md || status=$?
+          cat am-diff.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$PR" ]; then
+            gh pr comment "$PR" --edit-last --body-file am-diff.md 2>/dev/null ||
+              gh pr comment "$PR" --body-file am-diff.md ||
+              echo "::warning::could not comment on the PR (a fork PR's token is read-only)"
+          fi
+          exit $status
 `
