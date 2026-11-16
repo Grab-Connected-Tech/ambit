@@ -63,7 +63,11 @@ func AgentsMarkdown(app *model.App, preserved string) []byte {
 		"}\n" +
 		"```\n\n" +
 		"`am check` refuses `database/sql`, `net/http`, `time.Now` and `go` statements in an\n" +
-		"action. Role checks do not belong there either: access is declared in the spec.\n" +
+		"action. Role checks do not belong there either: access is declared in the spec, and so\n" +
+		"are checks against the caller. \"Nobody approves their own expense\" is\n" +
+		"`s.Update(app.Approver.And(s.Not(s.Owner(\"submitter\"))))`, not an `if` on `c.Actor.ID`.\n" +
+		"A value rule such as a positive amount goes on the resource field (`.Min(1)`) or in\n" +
+		"`s.Invariants`, so the database enforces it for every write, not only on one input.\n" +
 		"`am context <module>` or `am context --action <module.Action>` prints the\n" +
 		"spec and generated signatures for just the code you are changing.\n")
 	b.WriteString("\n## Rules\n\n")
@@ -81,7 +85,8 @@ func AgentsMarkdown(app *model.App, preserved string) []byte {
 		"| `am test` | generated and written tests against Postgres |\n" +
 		"| `am migrate plan/apply/status` | schema work, classified |\n" +
 		"| `am diff --base main` | behaviour diff for review |\n" +
-		"| `am explain <RULE-ID>` | why a rule exists, with a fix |\n\n")
+		"| `am explain <RULE-ID>` | why a rule exists, with a fix |\n" +
+		"| `am actor create --field email=... --role ...` | an account and API token to call the app with; run it after `am dev` starts |\n\n")
 	b.WriteString("<!-- am:team-notes -->\n")
 	if preserved != "" {
 		b.WriteString(preserved + "\n")

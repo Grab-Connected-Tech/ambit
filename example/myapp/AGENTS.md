@@ -55,7 +55,11 @@ func sendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, 
 ```
 
 `am check` refuses `database/sql`, `net/http`, `time.Now` and `go` statements in an
-action. Role checks do not belong there either: access is declared in the spec.
+action. Role checks do not belong there either: access is declared in the spec, and so
+are checks against the caller. "Nobody approves their own expense" is
+`s.Update(app.Approver.And(s.Not(s.Owner("submitter"))))`, not an `if` on `c.Actor.ID`.
+A value rule such as a positive amount goes on the resource field (`.Min(1)`) or in
+`s.Invariants`, so the database enforces it for every write, not only on one input.
 `am context <module>` or `am context --action <module.Action>` prints the
 spec and generated signatures for just the code you are changing.
 
@@ -112,6 +116,7 @@ tenant and the read rule before your code sees it, so a missing filter is not a 
 | `am migrate plan/apply/status` | schema work, classified |
 | `am diff --base main` | behaviour diff for review |
 | `am explain <RULE-ID>` | why a rule exists, with a fix |
+| `am actor create --field email=... --role ...` | an account and API token to call the app with; run it after `am dev` starts |
 
 <!-- am:team-notes -->
 ## Project notes

@@ -58,6 +58,8 @@ The development API, served only with `AM_DEV=1`:
 | `am outbox list [--state s] [--limit n]`, `inspect <id>`, `replay <id>` | Pending and dead-lettered effects |
 | `am jobs list`, `inspect <id>`, `replay <id>` | Jobs |
 | `am upgrade [version]` | Update the framework (default `latest`), regenerate, and plan a framework-upgrade migration |
+| `am actor create [--tenant id \| --tenant-field col=v...] --field col=v... --role r...` | Create an account (and a tenant, without `--tenant`), grant roles and print an API token once. Uses `AM_DATABASE_URL` |
+| `am version` | Which build of `am` is running |
 
 The app binary itself answers `myapp migrate apply [--plan] [--allow-destructive]` and
 `myapp migrate status`, from the migrations embedded in it.

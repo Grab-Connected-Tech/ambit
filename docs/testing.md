@@ -55,11 +55,11 @@ func TestSendInvoice(t *testing.T) {
 | --- | --- |
 | `amtest.New(t, gen.Model)` | A fresh app and database. Skips the test when `AM_TEST_DB_URL` is unset (`am test` sets it) |
 | `env.Tenant()` | A new tenant row. Returns its id |
-| `env.Actor(tenant, roles...)` | A new account in the tenant, holding those roles (spec roles or strings) |
+| `env.Actor(tenant, roles...)` | A new account in the tenant, holding those roles (spec roles or strings). Pass a `map[string]any` among them to set account columns, e.g. `map[string]any{"email": "mia@acme.test"}`; do not `amtest.Create` the account again |
 | `amtest.Create(env, gen.XTable, gen.X{...})` | Inserts a fixture row as-is, bypassing access rules |
 | `env.Fixture("billing.Invoice", tenant)` | A row with placeholder values, creating whatever it references |
 | `amtest.Call(env, actor, gen.XHandler, Actions.X, input)` | Runs the action through the full pipeline: auth, validation, transaction, rules, invariants |
-| `env.Emails()`, `env.Effects()` | Effects that committed (a rolled-back action's are not there) |
+| `env.Emails()`, `env.Effects()` | Effects that happened, each once: deferred effects of a rolled-back action are not there; immediate ones, which already ran, are |
 | `env.StubHTTP(host, body)` | The response an HTTP effect to that host receives |
 | `env.Clock.Advance(d)` | Moves time forward |
 | `env.AssertQueriesAtMost(n)` | Fails if the last action ran more statements |

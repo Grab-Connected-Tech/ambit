@@ -117,8 +117,19 @@ Anything else is the anonymous actor. Configure the methods in `app/app.go` with
 > **Current limitation.** The generated server has no login, logout, signup or OIDC callback
 > endpoints, and actions cannot set cookies. Sessions and tokens are issued from Go through the
 > runtime: `app.Login(...)`, `app.NewAPIToken(...)`, `app.Link(...)` for OIDC, and
-> `app.GrantRole(...)`. So today an app needs its own small program (an admin script, or a
-> custom main that builds the app with `gen.New`) to issue them.
+> `app.GrantRole(...)`. So a browser login flow still needs a custom main that builds the app
+> with `gen.New`.
+
+For service callers, scripts and development, `am actor create` issues an API token without
+any Go:
+
+```sh
+am actor create --tenant-field name=Acme --field email=mia@acme.test --role member
+```
+
+It creates the tenant (or pass `--tenant <id>`), the account, its roles and a token, and prints
+the token once. `am dev` resets the database to the seed files when it starts and on
+`POST /_am/reset`, which removes accounts and tokens, so run it after `am dev` is up.
 
 ## Deployment
 

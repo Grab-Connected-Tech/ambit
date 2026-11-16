@@ -2,7 +2,9 @@
 
 A spec is Go code that only declares things. Each module's `spec.go` holds package-level
 `var` declarations built from the `spec` package, imported as `s`. Spec files may not contain
-functions or control flow (`am check` enforces this, rule AM-SPEC-001). `am gen` runs the
+functions or control flow (`am check` enforces this, rule AM-SPEC-001). A module may split its
+spec across files, but each must be named `spec.go` or `*spec.go` (e.g. `thing_spec.go`); any
+other file is checked as action code. `am gen` runs the
 declarations once at build time and compiles them into `app.model.json`.
 
 ```go
@@ -96,7 +98,7 @@ Modifiers that apply to any field:
 | `.Unique()` | Unique (within the tenant, for tenant resources) |
 | `.Immutable()` | Cannot change after insert (enforced by a trigger) |
 | `.Sensitive()` | Redacted from logs, traces and audit diffs. Pair with a `FieldRead` rule (AM-SEC-007) |
-| `.Pattern(re)`, `.MinLen(n)`, `.Trim()` | Input validation |
+| `.Pattern(re)`, `.MinLen(n)`, `.Trim()` | Validation. On an action input they are checked before the action runs; on a resource field, `.MaxLen`, `.MinLen`, `.Pattern`, `.Min` and `.Max` also become one database `CHECK`, so every write path obeys them |
 | `.RenameFrom("old")` | Lets a migration rename a column instead of dropping and re-adding it |
 | `s.Encrypted(field)` | Encrypted at rest with the app's key; see [Operations](operations.md#encryption-at-rest) |
 
@@ -124,6 +126,7 @@ Access rules and invariants share one small expression language:
 | `s.F("status")` | A field of the row. `.Eq(v)`, `.Ne`, `.Gt`, `.Gte`, `.Lt`, `.Lte`, `.In(v...)`, `.IsSet()`, `.IsNull()`, `.HasPrefix(s)` |
 | `app.Admin` | The caller holds the role in the row's tenant |
 | `s.Owner("owner")` | The field equals the caller's actor id |
+| `s.Not(s.Owner("submitter"))` | The caller is not that person: "nobody approves their own expense" belongs in the spec like this, not in the action |
 | `a.And(b)`, `a.Or(b)`, `a.Not()`, `a.Implies(b)` | Combinators; `s.Not(a)` also works |
 | `s.Always()`, `s.Never()` | Constants |
 
@@ -134,7 +137,7 @@ s.Access(
 	s.Read(app.Member),
 	s.Create(app.Admin.Or(app.Accountant)),
 	s.Update(app.Admin.Or(app.Accountant).And(s.F("status").In("draft", "sent"))),
-	s.UpdateAfter(s.F("status").Ne("void")),     // checked on the row a write would produce
+	s.UpdateAfter(s.F("status").Ne("void")),     // checked on the row an update would produce; inserts are judged by Create
 	s.Delete(s.Never()),
 	s.FieldRead("notes", app.Admin.Or(app.Accountant)),
 	s.FieldWrite("tax_id", app.Admin),
