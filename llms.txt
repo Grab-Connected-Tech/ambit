@@ -4,6 +4,18 @@
 
 Ambit needs Go 1.25+ and PostgreSQL 15+. The CLI is `am`. The module path is `github.com/Grab-Connected-Tech/ambit`.
 
+## Start an app
+
+Build the CLI from a checkout of this repository, then create the app outside it:
+
+```sh
+go install ./cmd/am
+am init myapp --framework /path/to/ambit
+cd myapp && am check && am test
+```
+
+The app's generated AGENTS.md is the working guide from then on; `am docs --llm` prints the full reference in one file.
+
 ## Docs
 
 - [README](README.md): overview, quickstart and FAQ

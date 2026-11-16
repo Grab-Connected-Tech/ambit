@@ -249,6 +249,13 @@ func Generate(o Options) (*Result, error) {
 	if err := write("AGENTS.md", AgentsMarkdown(app, preserved), false); err != nil {
 		return nil, err
 	}
+	// Claude Code reads CLAUDE.md, not AGENTS.md; an import line points it there. Created
+	// once and never overwritten, so a team's own CLAUDE.md is left alone.
+	if _, err := os.Stat(filepath.Join(o.Dir, "CLAUDE.md")); os.IsNotExist(err) {
+		if err := write("CLAUDE.md", []byte("@AGENTS.md\n"), false); err != nil {
+			return nil, err
+		}
+	}
 	if err := pruneGenerated(o.Dir, goDir, res.Files); err != nil {
 		return nil, err
 	}

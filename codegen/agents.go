@@ -35,13 +35,44 @@ func AgentsMarkdown(app *model.App, preserved string) []byte {
 		}
 		fmt.Fprintf(&b, "- **%s** — resources %s; actions %s\n", m.Name, orNone(res), orNone(acts))
 	}
+	b.WriteString("\n## The pattern\n\n" +
+		"Behaviour is declared in the module's `spec.go`; the action body only does the work.\n\n" +
+		"```go\n" +
+		"// spec.go — who may call it, what it touches, how it can fail\n" +
+		"var SendInvoice = s.Mutation(\"SendInvoice\",\n" +
+		"\ts.Input(s.ID(\"invoice_id\", Invoice)),\n" +
+		"\ts.Returns(Invoice),\n" +
+		"\ts.Requires(app.Admin.Or(app.Accountant)),\n" +
+		"\ts.Writes(Invoice),\n" +
+		"\ts.Effects(s.EmailEffect()),\n" +
+		"\ts.Errors(\"not_draft\"),\n" +
+		")\n\n" +
+		"// actions.go — signature fixed by am gen; data via c.DB, time via c.Clock, effects via c\n" +
+		"func sendInvoice(c *gen.SendInvoiceCtx, in gen.SendInvoiceInput) (*gen.Invoice, error) {\n" +
+		"\tinv, err := c.DB.Invoices.Get(c, in.InvoiceID)\n" +
+		"\tif err != nil {\n\t\treturn nil, err\n\t}\n" +
+		"\tif inv.Status != gen.InvoiceStatusDraft {\n\t\treturn nil, gen.ErrSendInvoiceNotDraft()\n\t}\n" +
+		"\tupdated, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{\n" +
+		"\t\tStatus: am.Set(gen.InvoiceStatusSent),\n" +
+		"\t\tSentAt: am.Set(c.Clock.Now()),\n" +
+		"\t}.Assignments())\n" +
+		"\tif err != nil {\n\t\treturn nil, err\n\t}\n" +
+		"\tif _, err := c.Email.Send(c, []byte(\"{}\")); err != nil { // sent only if the transaction commits\n" +
+		"\t\treturn nil, err\n\t}\n" +
+		"\treturn updated, nil\n" +
+		"}\n" +
+		"```\n\n" +
+		"`am check` refuses `database/sql`, `net/http`, `time.Now` and `go` statements in an\n" +
+		"action. Role checks do not belong there either: access is declared in the spec.\n" +
+		"`am context <module>` or `am context --action <module.Action>` prints the\n" +
+		"spec and generated signatures for just the code you are changing.\n")
 	b.WriteString("\n## Rules\n\n")
 	b.WriteString("Access rules live in the spec, never in an action body. A query is scoped by the\n" +
 		"tenant and the read rule before your code sees it, so a missing filter is not a leak.\n" +
-		"The analyzers enforce the catalog below; `am explain <ID>` says why each exists.\n\n")
-	b.WriteString("| Rule | Severity |\n| --- | --- |\n")
+		"`am check` fails on each of these; `am explain <ID>` shows a failing and a passing example.\n\n")
+	b.WriteString("| Rule | Severity | Fails when |\n| --- | --- | --- |\n")
 	for _, r := range checker.Catalog {
-		fmt.Fprintf(&b, "| %s | %s |\n", r.ID, r.Severity)
+		fmt.Fprintf(&b, "| %s | %s | %s |\n", r.ID, r.Severity, r.Title)
 	}
 	b.WriteString("\n## Commands\n\n" +
 		"| Command | What it does |\n| --- | --- |\n" +
