@@ -61,8 +61,8 @@ func (x Customer) MarshalJSON() ([]byte, error) {
 	return w.Bytes(), w.Err()
 }
 
-// CustomerPatch is the set of columns an update may change. A field that is unset
-// is not written at all, which is what makes PATCH mean PATCH (§7.1).
+// CustomerPatch is the set of columns an insert or an update may write. A field that
+// is unset is not written at all, which is what makes PATCH mean PATCH (§7.1).
 type CustomerPatch struct {
 	Email      am.Opt[string]
 	ExternalId am.Opt[string]

@@ -64,6 +64,9 @@ func TestGenerateRegressions(t *testing.T) {
 	if strings.Contains(string(res), "out.ApproverID = am.Unset") || strings.Contains(string(res), "out.ApproverID = am.Set") {
 		t.Error("an optional reference is a plain am.ID; it must not be assigned an am.Opt")
 	}
+	if !strings.Contains(string(res), `runtime.SetColumn("amount_minor", v.Minor)`) {
+		t.Error("a money patch writes the model's own columns, not amount_minor_minor")
+	}
 	acts, err := os.ReadFile(filepath.Join(dir, "gen", "billing.actions.gen.go"))
 	if err != nil {
 		t.Fatal(err)

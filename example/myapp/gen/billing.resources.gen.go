@@ -80,8 +80,8 @@ const (
 	InvoiceStatusVoid  InvoiceStatus = "void"
 )
 
-// InvoicePatch is the set of columns an update may change. A field that is unset
-// is not written at all, which is what makes PATCH mean PATCH (§7.1).
+// InvoicePatch is the set of columns an insert or an update may write. A field that
+// is unset is not written at all, which is what makes PATCH mean PATCH (§7.1).
 type InvoicePatch struct {
 	Amount   am.Opt[am.Money]
 	Customer am.Opt[am.ID]
@@ -99,8 +99,8 @@ func (p InvoicePatch) Assignments() []runtime.Assignment {
 	if p.Amount.Present() {
 		v, _ := p.Amount.Get()
 		out = append(out,
-			runtime.SetColumn("amount_minor_minor", v.Minor),
-			runtime.SetColumn("amount_minor_currency", v.Currency))
+			runtime.SetColumn("amount_minor", v.Minor),
+			runtime.SetColumn("amount_currency", v.Currency))
 	}
 	if p.Customer.Present() {
 		v, _ := p.Customer.Get()

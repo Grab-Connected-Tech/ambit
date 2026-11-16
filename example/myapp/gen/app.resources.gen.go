@@ -58,8 +58,8 @@ const (
 	OrgPlanPro        OrgPlan = "pro"
 )
 
-// OrgPatch is the set of columns an update may change. A field that is unset
-// is not written at all, which is what makes PATCH mean PATCH (§7.1).
+// OrgPatch is the set of columns an insert or an update may write. A field that
+// is unset is not written at all, which is what makes PATCH mean PATCH (§7.1).
 type OrgPatch struct {
 	Name am.Opt[string]
 	Plan am.Opt[OrgPlan]
@@ -167,8 +167,8 @@ func (x User) MarshalJSON() ([]byte, error) {
 	return w.Bytes(), w.Err()
 }
 
-// UserPatch is the set of columns an update may change. A field that is unset
-// is not written at all, which is what makes PATCH mean PATCH (§7.1).
+// UserPatch is the set of columns an insert or an update may write. A field that
+// is unset is not written at all, which is what makes PATCH mean PATCH (§7.1).
 type UserPatch struct {
 	Email        am.Opt[string]
 	Name         am.Opt[string]

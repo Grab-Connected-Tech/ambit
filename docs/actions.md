@@ -76,12 +76,15 @@ Column descriptors live in `gen.<Plural>` (`gen.Invoices.Status`, `gen.Customers
 ## Writing
 
 ```go
-// Insert: tenant_id comes from the actor, never from input; the Create rule is applied.
-cust, err := c.DB.Customers.Insert(c, []runtime.Assignment{
-	runtime.SetColumn("name", in.Name),
-	runtime.SetColumn("email", in.Email),
-	runtime.SetColumn("owner_id", in.Owner.Or(c.Actor.ID).Bytes()),
-})
+// Insert: the same generated Patch type builds the row, so money fields and references
+// write their own columns. tenant_id comes from the actor, never from input, and the
+// Create rule is applied. A reference is never filled in for you: set an owner to
+// c.Actor.ID yourself. Leaving out a required field fails the insert.
+cust, err := c.DB.Customers.Insert(c, gen.CustomerPatch{
+	Name:  am.Set(in.Name),
+	Email: am.Set(in.Email),
+	Owner: am.Set(in.Owner.Or(c.Actor.ID)),
+}.Assignments())
 
 // Update: pass the version you read. A concurrent change returns a conflict (409).
 updated, err := c.DB.Invoices.Update(c, inv.ID, inv.Version, gen.InvoicePatch{

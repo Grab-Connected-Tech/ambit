@@ -3,6 +3,7 @@
 package customers
 
 import (
+	"github.com/Grab-Connected-Tech/ambit/am"
 	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
 	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
@@ -20,13 +21,12 @@ var Actions = struct {
 // createCustomer is a write path, so the spec declares it idempotent: a retried POST with
 // the same key returns the first result instead of inserting a second customer (§5.7).
 func createCustomer(c *gen.CreateCustomerCtx, in gen.CreateCustomerInput) (*gen.Customer, error) {
-	sets := []runtime.Assignment{
-		runtime.SetColumn("name", in.Name),
-		runtime.SetColumn("email", in.Email),
-	}
 	// The owner is required on the row but optional in the input: it defaults to the caller.
-	sets = append(sets, runtime.SetColumn("owner_id", in.Owner.Or(c.Actor.ID).Bytes()))
-	return c.DB.Customers.Insert(c, sets)
+	return c.DB.Customers.Insert(c, gen.CustomerPatch{
+		Name:  am.Set(in.Name),
+		Email: am.Set(in.Email),
+		Owner: am.Set(in.Owner.Or(c.Actor.ID)),
+	}.Assignments())
 }
 
 // getCustomer is the read other modules call. It runs in the caller's transaction as the

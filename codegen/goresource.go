@@ -33,6 +33,8 @@ type col struct {
 	nullable bool
 	ref      bool
 	money    bool
+	// moneyCols are a money field's two SQL columns (amount_minor, amount_currency).
+	moneyCols [2]string
 }
 
 func writeGoResources(b *strings.Builder, app *model.App, module string, resources []model.Resource) error {
@@ -124,9 +126,6 @@ func writeResource(b *strings.Builder, app *model.App, module string, res *model
 	return nil
 }
 
-// writePatch emits the patch type and, next to it, the assignment list generated code uses
-// for inserts and updates: the same rule for both, so a column cannot be written one way on
-// a create and another way on an update (§9.1).
 // writePatch emits the patch type and the assignment list both inserts and updates use:
 // one rule for how a field becomes a column write, so a field cannot be written one way on
 // a create and another way on an update (§9.1).
@@ -145,8 +144,8 @@ func writePatch(b *strings.Builder, name string, res *model.Resource, cols []col
 		}
 		return c.descName != "" && c.gotype != ""
 	}
-	b.WriteString("// " + name + "Patch is the set of columns an update may change. A field that is unset\n")
-	b.WriteString("// is not written at all, which is what makes PATCH mean PATCH (§7.1).\n")
+	b.WriteString("// " + name + "Patch is the set of columns an insert or an update may write. A field that\n")
+	b.WriteString("// is unset is not written at all, which is what makes PATCH mean PATCH (§7.1).\n")
 	b.WriteString("type " + name + "Patch struct {\n")
 	for _, c := range cols {
 		if !writable(c) {
@@ -168,7 +167,7 @@ func writePatch(b *strings.Builder, name string, res *model.Resource, cols []col
 		switch c.patchKind() {
 		case "money":
 			b.WriteString("\t\tv, _ := p." + f + ".Get()\n")
-			b.WriteString("\t\tout = append(out,\n\t\t\truntime.SetColumn(\"" + c.column + "_minor\", v.Minor),\n\t\t\truntime.SetColumn(\"" + c.column + "_currency\", v.Currency))\n")
+			b.WriteString("\t\tout = append(out,\n\t\t\truntime.SetColumn(\"" + c.moneyCols[0] + "\", v.Minor),\n\t\t\truntime.SetColumn(\"" + c.moneyCols[1] + "\", v.Currency))\n")
 		case "id":
 			b.WriteString("\t\tv, _ := p." + f + ".Get()\n")
 			b.WriteString("\t\tout = append(out, runtime.SetColumn(\"" + c.column + "\", v.Bytes()))\n")
@@ -308,6 +307,7 @@ func declaredColumn(res *model.Resource, f *model.Field) col {
 		if len(f.Columns) == 2 {
 			minor, currency = "t."+f.Columns[0], "t."+f.Columns[1]
 		}
+		c.moneyCols = [2]string{strings.TrimPrefix(minor, "t."), strings.TrimPrefix(currency, "t.")}
 		c.descType, c.expr, c.width = "runtime.MoneyCol", `runtime.NewMoneyCol("`+minor+`", "`+currency+`")`, 2
 	case c.ref || f.Type.Kind == model.KindID:
 		c.descType = "runtime.IDCol"
