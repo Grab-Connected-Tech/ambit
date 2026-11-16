@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -45,6 +46,7 @@ const usage = `usage: am <command> [flags]
   upgrade [version]                 move to another framework version, regenerate, plan
   outbox list|inspect|replay        operate on pending and dead-lettered effects
   jobs list|inspect|replay          operate on jobs
+  version                           print which build of am this is
 
 Every command accepts --json.
 `
@@ -65,6 +67,7 @@ func main() {
 		"dev": cmdDev, "context": cmdContext, "explain": cmdExplain, "migrate": cmdMigrate,
 		"client": cmdClient, "build": cmdBuild, "keys": cmdKeys,
 		"outbox": cmdOutbox, "jobs": cmdJobs, "new": cmdNew, "docs": cmdDocs, "perf": cmdPerf, "bench": cmdBench, "upgrade": cmdUpgrade,
+		"version": cmdVersion,
 	}
 	run, ok := cmds[os.Args[1]]
 	if !ok {
@@ -501,5 +504,28 @@ func cmdTest(args []string) error {
 	if err := cmd.Run(); err != nil {
 		return exitError{1}
 	}
+	return nil
+}
+
+// cmdVersion prints which build of am is running: the module version when installed
+// with go install ...@version, plus the VCS revision when built from a checkout.
+func cmdVersion([]string) error {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		fmt.Println("am (unknown build)")
+		return nil
+	}
+	line := "am " + info.Main.Version
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			line += " " + s.Value
+		case "vcs.modified":
+			if s.Value == "true" {
+				line += " (modified)"
+			}
+		}
+	}
+	fmt.Println(line + " " + info.GoVersion)
 	return nil
 }
