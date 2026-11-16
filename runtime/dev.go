@@ -239,6 +239,25 @@ func (a *App) ResetToSeed(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, "SET LOCAL am.cross_tenant = 'on'; SET LOCAL am.actor_system = 'on'"); err != nil {
 		return err
 	}
+	// Some framework tables exist only when the app uses the feature (am_identity_link
+	// needs OIDC), so truncate only the ones that are there.
+	rows, err := tx.Query(ctx, "SELECT t FROM unnest($1::text[]) AS t WHERE to_regclass(t) IS NOT NULL", tables)
+	if err != nil {
+		return err
+	}
+	tables = tables[:0]
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			rows.Close()
+			return err
+		}
+		tables = append(tables, t)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, "TRUNCATE "+strings.Join(tables, ", ")+" CASCADE"); err != nil {
 		return err
 	}
