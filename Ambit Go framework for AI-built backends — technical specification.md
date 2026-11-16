@@ -813,12 +813,12 @@ Backfills run as resumable jobs in batches of 1,000 rows by default, keyed by pr
 
 | Category | High risk | Medium risk | Low risk |
 | --- | --- | --- | --- |
-| Access | Any rule widened; `CrossTenant()` added; new `Public()` action | `FieldRead` widened | Rule narrowed |
+| Access | Any rule widened; `CrossTenant()` added; new `Public()` action; a new resource's rule that any caller passes | `FieldRead` widened; a new resource's rule that a role passes on every row | Rule narrowed; a new resource's rule limited by a row condition |
 | Actions | New action that writes data | Inputs or outputs changed | New query action |
-| Effects | New effect or new HTTP host; effect made `Immediate()` | Retry policy changed | Effect removed |
+| Effects | New effect (including on a new action) or new HTTP host; effect made `Immediate()` | Retry policy changed | Effect removed |
 | Data model | Destructive migration | Needs-backfill or needs-plan migration; invariant removed | Field or resource added; invariant added |
 | Code | New `unsafe` block; new `//am:allow` suppression | — | — |
-| Dependencies | New Go module or major version | Minor version bump | Patch bump |
+| Dependencies | New direct Go module or major version | New indirect module; minor version bump | Patch bump |
 | API | Breaking change | Deprecation | Compatible addition |
 | Limits | Rate limit removed or raised more than 10x; query budget raised | Timeout raised | Limit tightened |
 

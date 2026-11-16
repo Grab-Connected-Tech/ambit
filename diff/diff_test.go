@@ -179,7 +179,12 @@ func TestCodeFactsAreHighRisk(t *testing.T) {
 	if r.Unsafe != 1 || r.Allow != 1 || r.NewDeps != 1 {
 		t.Fatalf("counts: %+v", r)
 	}
-	find(t, r, Change{Risk: High, Category: CatCode, Subject: "unsafe blocks", Detail: "1 new raw-SQL"})
+	find(t, r, Change{Risk: High, Category: CatCode, Subject: "app/billing/actions/send_invoice.go:22", Detail: "new unsafe block"})
+	for _, c := range r.Changes {
+		if c.Subject == "unsafe blocks" {
+			t.Fatal("each unsafe block is its own row; a count row repeats it")
+		}
+	}
 	find(t, r, Change{Risk: High, Category: CatCode, Subject: "suppressions", Detail: "1 new //am:allow"})
 	find(t, r, Change{Risk: High, Category: CatDep, Subject: "github.com/stripe/stripe-go/v78", Detail: "new dependency"})
 	if r.Count(High) < 3 {
@@ -288,6 +293,32 @@ func TestUnknownBaseIsAllHighRisk(t *testing.T) {
 	r := Between(nil, u, model.Facts{}, model.Facts{})
 	find(t, r, Change{Risk: High, Category: CatAction, Subject: "billing.SendInvoice", Detail: "new action that writes"})
 	find(t, r, Change{Risk: Low, Category: CatAction, Subject: "billing.ListInvoices", Detail: "new query action"})
+}
+
+func TestFirstReleaseShowsRulesAndEffects(t *testing.T) {
+	u := base()
+	inv := &u.Modules[0].Resources[0]
+	inv.Fields = append(inv.Fields, model.Field{Name: "owner", GoName: "Owner", Column: "owner_id", Type: model.Type{Kind: model.KindText}})
+	inv.Access.Create = policy.Always()
+	inv.Access.UpdateAfter = policy.Owner("owner")
+	hf := model.Facts{Deps: []model.Dep{
+		{Path: "github.com/Grab-Connected-Tech/ambit", Version: "v0.1.0"},
+		{Path: "github.com/jackc/pgx/v5", Version: "v5.11.0", Indirect: true},
+	}}
+	r := Between(nil, u, model.Facts{}, hf)
+	// "Every member reads every invoice" must be visible, not folded into "resource added".
+	find(t, r, Change{Risk: Medium, Category: CatAccess, Subject: "billing.Invoice.read", Detail: "new rule: role[member]"})
+	find(t, r, Change{Risk: High, Category: CatAccess, Subject: "billing.Invoice.create", Detail: "new rule"})
+	find(t, r, Change{Risk: Low, Category: CatAccess, Subject: "billing.Invoice.updateAfter", Detail: "new rule"})
+	find(t, r, Change{Risk: Low, Category: CatAccess, Subject: "billing.Invoice.update", Detail: "new rule"}) // roles AND a status condition
+	for _, c := range r.Changes {
+		if c.Subject == "billing.Invoice.delete" {
+			t.Fatalf("Never() grants nothing and needs no row: %+v", c)
+		}
+	}
+	find(t, r, Change{Risk: High, Category: CatEffect, Subject: "billing.SendInvoice", Detail: "new effect: email"})
+	find(t, r, Change{Risk: High, Category: CatDep, Subject: "github.com/Grab-Connected-Tech/ambit", Detail: "new dependency"})
+	find(t, r, Change{Risk: Medium, Category: CatDep, Subject: "github.com/jackc/pgx/v5", Detail: "new indirect dependency"})
 }
 
 func TestBreakingChangesNeedADeprecationRelease(t *testing.T) {

@@ -130,10 +130,6 @@ func Between(base, head *model.App, bf, hf model.Facts) Report {
 		NewDeps: countNewDeps(bf.Deps, hf.Deps),
 		Allow:   countNew(bf.Allows, hf.Allows, func(x, y model.AllowFact) bool { return x.Key() == y.Key() }),
 	}
-	if r.Unsafe > 0 {
-		r.Changes = append([]Change{{Risk: High, Category: CatCode, Subject: "unsafe blocks",
-			Detail: fmt.Sprintf("%d new raw-SQL or escape-hatch block(s)", r.Unsafe)}}, r.Changes...)
-	}
 	if r.Allow > 0 {
 		r.Changes = append([]Change{{Risk: High, Category: CatCode, Subject: "suppressions",
 			Detail: fmt.Sprintf("%d new //am:allow suppression(s)", r.Allow)}}, r.Changes...)
@@ -207,22 +203,32 @@ func accessChanges(base, head *model.App) []Change {
 				Why:    "false alarms are acceptable, missed widenings are not"})
 		}
 	}
+	rules := map[string]func(m *model.Resource) *policy.Node{
+		"read":        func(m *model.Resource) *policy.Node { return m.Access.Read },
+		"create":      func(m *model.Resource) *policy.Node { return m.Access.Create },
+		"update":      func(m *model.Resource) *policy.Node { return m.Access.Update },
+		"updateAfter": func(m *model.Resource) *policy.Node { return m.Access.UpdateAfter },
+		"delete":      func(m *model.Resource) *policy.Node { return m.Access.Delete },
+	}
 	for _, ref := range union(aRes(base), aRes(head)) {
 		o, n := base.FindResource(ref), head.FindResource(ref)
 		if o == nil {
 			out = append(out, Change{Risk: Low, Category: CatAccess, Subject: ref, Detail: "resource added"})
+			// A new resource has nothing to be widened from, so each rule it grants is
+			// shown and ranked by how far it reaches; otherwise a first release hides
+			// who may read and write the app's data.
+			for kind, pick := range rules {
+				if risk, ok := reach(pick(n)); ok {
+					out = append(out, Change{Risk: risk, Category: CatAccess, Subject: ref + "." + kind,
+						Detail: "new rule: " + policy.Canonical(pick(n)), Why: reachWhy[risk]})
+				}
+			}
 			continue
 		}
 		if n == nil {
 			continue // reported under data
 		}
-		for kind, pick := range map[string]func(m *model.Resource) *policy.Node{
-			"read":        func(m *model.Resource) *policy.Node { return m.Access.Read },
-			"create":      func(m *model.Resource) *policy.Node { return m.Access.Create },
-			"update":      func(m *model.Resource) *policy.Node { return m.Access.Update },
-			"updateAfter": func(m *model.Resource) *policy.Node { return m.Access.UpdateAfter },
-			"delete":      func(m *model.Resource) *policy.Node { return m.Access.Delete },
-		} {
+		for kind, pick := range rules {
 			cmp(ref, kind, pick(o), pick(n), 0)
 		}
 		for _, f := range unionFieldRules(o.Access.FieldRead, n.Access.FieldRead, "read") {
@@ -254,6 +260,49 @@ func accessChanges(base, head *model.App) []Change {
 		cmp(ref, "requires", o.Requires(), n.Requires(), 0)
 	}
 	return out
+}
+
+// reach ranks how far a rule grants access: High when any caller may pass it,
+// Medium when a role passes on every row of the tenant, Low when a row condition
+// such as Owner narrows it. ok is false for a rule that grants nothing.
+func reach(n *policy.Node) (Risk, bool) {
+	if n == nil {
+		return 0, false
+	}
+	switch n.Op {
+	case policy.OpNever:
+		return 0, false
+	case policy.OpAlways, policy.OpNot, policy.OpImplies:
+		// Not and Implies accept every caller the inner rule rejects: read them as open.
+		return High, true
+	case policy.OpRole:
+		return Medium, true
+	case policy.OpOr:
+		best, granted := Low, false
+		for _, k := range n.Kids {
+			if r, ok := reach(k); ok {
+				best, granted = max(best, r), true
+			}
+		}
+		return best, granted
+	case policy.OpAnd:
+		least := High
+		for _, k := range n.Kids {
+			r, ok := reach(k)
+			if !ok {
+				return 0, false
+			}
+			least = min(least, r)
+		}
+		return least, true
+	}
+	return Low, true // a row or actor condition
+}
+
+var reachWhy = map[Risk]string{
+	High:   "any caller passes this rule",
+	Medium: "the role passes on every row in the tenant",
+	Low:    "a row condition limits which rows pass",
 }
 
 // pair bundles an action with its module name. The methods keep the diff code
@@ -450,10 +499,13 @@ func effectChanges(base, head *model.App) []Change {
 	for _, ref := range union(aActs(base), aActs(head)) {
 		o, had := findAction(base, ref)
 		n, has := findAction(head, ref)
-		if !had || !has {
+		if !has {
 			continue
 		}
-		om := effectMap(o.effects())
+		var om map[string]model.Effect
+		if had {
+			om = effectMap(o.effects())
+		}
 		nm := effectMap(n.effects())
 		for _, k := range union(keysOf(om), keysOf(nm)) {
 			oe, hasO := om[k]
@@ -486,7 +538,7 @@ func effectChanges(base, head *model.App) []Change {
 				}
 			}
 		}
-		if !sameRetry(o.Retry(), n.Retry()) {
+		if had && !sameRetry(o.Retry(), n.Retry()) {
 			out = append(out, Change{Risk: Medium, Category: CatEffect, Subject: ref,
 				Detail: "retry policy changed: " + retryText(o.Retry()) + " -> " + retryText(n.Retry())})
 		}
@@ -1130,9 +1182,14 @@ func depChanges(bd, hd []model.Dep) []Change {
 	for _, d := range hd {
 		prev, had := before[d.Path]
 		if !had {
-			out = append(out, Change{Risk: High, Category: CatDep, Subject: d.Path,
+			c := Change{Risk: High, Category: CatDep, Subject: d.Path,
 				Detail: "new dependency at " + d.Version,
-				Why:    "a new module dependency is a new supply chain"})
+				Why:    "a new module dependency is a new supply chain"}
+			if d.Indirect {
+				// It arrives with a direct dependency that is already its own row.
+				c.Risk, c.Detail = Medium, "new indirect dependency at "+d.Version
+			}
+			out = append(out, c)
 			continue
 		}
 		if prev.Version == d.Version {
