@@ -609,6 +609,12 @@ func (v *visitor) checkImports() {
 			// diff come from here, not from a separate scan.
 			v.res.Facts.Imports = append(v.res.Facts.Imports, p)
 		}
+		if v.kind == fileOther && !strings.HasPrefix(v.path, "app/") {
+			// Outside app/ is not action code: actions cannot import it (AM-CODE-002),
+			// and a custom main or a dev tool needs net/http. Its imports are still
+			// recorded above for the behavior diff.
+			continue
+		}
 		if v.kind == fileTest {
 			switch {
 			case p == "testing", p == "context", strings.HasSuffix(p, "/amtest"), strings.HasSuffix(p, "/go/assert"),

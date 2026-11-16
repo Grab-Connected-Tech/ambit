@@ -529,6 +529,19 @@ var Totals = s.Query("Totals",
 	lacks(t, check(t, files), "AM-SPEC-001")
 }
 
+// Code outside app/ is not action code: a custom main that serves login or a dev tool
+// needs net/http. Under app/ the rules still hold, because actions may import app.
+func TestImportRulesStopAtApp(t *testing.T) {
+	files := specFiles(map[string]string{
+		"tools/devserver/main.go": "package main\n\nimport _ \"net/http/httputil\"\n\nfunc main() {}\n",
+	})
+	lacks(t, check(t, files), "AM-SEC-001")
+	files = specFiles(map[string]string{
+		"app/helpers.go": "package app\n\nimport _ \"net/http/httputil\"\n",
+	})
+	has(t, check(t, files), "AM-SEC-001")
+}
+
 func TestMissingImplementation(t *testing.T) {
 	d := check(t, specFiles(map[string]string{"app/billing/actions/send_invoice.go": ""}))
 	got := has(t, d, "AM-CODE-005")
