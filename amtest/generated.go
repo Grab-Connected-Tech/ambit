@@ -616,11 +616,11 @@ func randomValue(rng *rand.Rand, f model.Field, ids map[string][]am.ID, now time
 		if f.Type.Kind == model.KindURL {
 			return "https://example.test/" + string(letters), true
 		}
-		return string(letters), true
+		return validText(f, string(letters)), true
 	case model.KindEmail:
 		return fmt.Sprintf("u%d@example.test", rng.Intn(1_000_000)), true
 	case model.KindInt:
-		return rng.Intn(1000), true
+		return int(clampToBounds(f, float64(rng.Intn(1000)))), true
 	case model.KindBool:
 		return rng.Intn(2) == 0, true
 	case model.KindEnum:

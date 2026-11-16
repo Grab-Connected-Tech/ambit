@@ -11,6 +11,7 @@ import (
 	"github.com/Grab-Connected-Tech/ambit/amtest"
 	"github.com/Grab-Connected-Tech/ambit/example/myapp/app"
 	"github.com/Grab-Connected-Tech/ambit/example/myapp/gen"
+	"github.com/Grab-Connected-Tech/ambit/model"
 	"github.com/Grab-Connected-Tech/ambit/runtime"
 )
 
@@ -102,6 +103,17 @@ func TestMarkPaid(t *testing.T) {
 	}
 	if out.Status != gen.InvoiceStatusPaid || !out.PaidAt.Present() {
 		t.Fatalf("paid invoice: %+v", out)
+	}
+	// The capture is one immediate effect: it has an outbox row and a recorder copy,
+	// and Effects lists it once.
+	captures := 0
+	for _, e := range w.env.Effects() {
+		if e.Type == model.EffectHTTP {
+			captures++
+		}
+	}
+	if captures != 1 {
+		t.Fatalf("one capture ran, Effects lists %d", captures)
 	}
 	// A paid invoice is outside the Update rule (draft or sent), so a second payment
 	// cannot even see it as writable.

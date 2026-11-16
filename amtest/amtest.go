@@ -20,6 +20,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"regexp/syntax"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -250,13 +253,21 @@ func (e *Env) Tenant(fields ...map[string]any) am.ID {
 }
 
 // Actor creates an account in the tenant holding the given roles: role names, or the
-// spec's role declarations (anything with a Name() string method).
+// spec's role declarations (anything with a Name() string method). A map[string]any
+// among them sets columns of the account row, e.g. map[string]any{"email": "mia@x.test"};
+// the account already exists afterwards, so do not Create it again.
 func (e *Env) Actor(tenant am.ID, roles ...any) am.Actor {
 	e.T.Helper()
 	a := am.Actor{Kind: am.ActorUser, ID: am.NewID(), Tenant: tenant, Authed: true}
+	set := map[string]any{}
 	for _, r := range roles {
 		var name string
 		switch r := r.(type) {
+		case map[string]any:
+			for k, v := range r {
+				set[k] = v
+			}
+			continue
 		case string:
 			name = r
 		case interface{ Name() string }:
@@ -269,7 +280,6 @@ func (e *Env) Actor(tenant am.ID, roles ...any) am.Actor {
 		}
 	}
 	if acc := e.Model.Account; acc != nil {
-		set := map[string]any{}
 		if columnOf(acc.Fields, "tenant_id") {
 			set["tenant_id"] = tenant
 		}
@@ -384,13 +394,15 @@ func (e *Env) exec(table string, cols []string, args []any) {
 func placeholder(f model.Field, now time.Time) (any, bool) {
 	switch f.Type.Kind {
 	case model.KindText:
-		return "test " + f.Name, true
+		return validText(f, "test "+f.Name), true
 	case model.KindEmail:
 		return strings.ToLower(string(am.NewID()))[24:] + "@example.test", true
 	case model.KindURL:
 		return "https://example.test/", true
-	case model.KindInt, model.KindDecimal:
-		return 0, true
+	case model.KindInt:
+		return int(clampToBounds(f, 0)), true
+	case model.KindDecimal:
+		return clampToBounds(f, 0), true
 	case model.KindBool:
 		return false, true
 	case model.KindEnum:
@@ -405,6 +417,90 @@ func placeholder(f model.Field, now time.Time) (any, bool) {
 		return "{}", true
 	}
 	return nil, false
+}
+
+// validText fits a sample string to the field's declared constraints, so a fixture never
+// trips the CHECK constraints those constraints compile to: a Pattern gets a string
+// that matches it, then MinLen and MaxLen are honoured.
+func validText(f model.Field, s string) string {
+	if f.Type.Pattern != "" {
+		if m, ok := patternSample(f.Type.Pattern); ok {
+			return m
+		}
+	}
+	if f.Type.MaxLen != nil && len(s) > *f.Type.MaxLen {
+		s = s[:*f.Type.MaxLen]
+	}
+	if f.Type.MinLen != nil && len(s) < *f.Type.MinLen {
+		s += strings.Repeat("x", *f.Type.MinLen-len(s))
+	}
+	return s
+}
+
+// clampToBounds moves v inside the field's Min and Max.
+func clampToBounds(f model.Field, v float64) float64 {
+	if lo, err := strconv.ParseFloat(f.Type.Min, 64); err == nil && v < lo {
+		v = lo
+	}
+	if hi, err := strconv.ParseFloat(f.Type.Max, 64); err == nil && v > hi {
+		v = hi
+	}
+	return v
+}
+
+// patternSample builds the shortest string a regular expression accepts by walking its
+// syntax tree: the first branch of an alternation, the first character of a class, the
+// minimum count of a repeat. It reports false for anything it cannot build, and checks
+// its answer against the pattern before returning it.
+func patternSample(pattern string) (string, bool) {
+	re, err := syntax.Parse(pattern, syntax.Perl)
+	if err != nil {
+		return "", false
+	}
+	var b strings.Builder
+	var walk func(*syntax.Regexp) bool
+	walk = func(r *syntax.Regexp) bool {
+		switch r.Op {
+		case syntax.OpLiteral:
+			b.WriteString(string(r.Rune))
+		case syntax.OpCharClass:
+			if len(r.Rune) == 0 {
+				return false
+			}
+			b.WriteRune(r.Rune[0])
+		case syntax.OpAnyChar, syntax.OpAnyCharNotNL:
+			b.WriteByte('a')
+		case syntax.OpEmptyMatch, syntax.OpBeginLine, syntax.OpEndLine, syntax.OpBeginText,
+			syntax.OpEndText, syntax.OpWordBoundary, syntax.OpNoWordBoundary, syntax.OpStar, syntax.OpQuest:
+		case syntax.OpCapture, syntax.OpPlus:
+			return walk(r.Sub[0])
+		case syntax.OpRepeat:
+			for i := 0; i < r.Min; i++ {
+				if !walk(r.Sub[0]) {
+					return false
+				}
+			}
+		case syntax.OpConcat:
+			for _, sub := range r.Sub {
+				if !walk(sub) {
+					return false
+				}
+			}
+		case syntax.OpAlternate:
+			return walk(r.Sub[0])
+		default:
+			return false
+		}
+		return true
+	}
+	if !walk(re) {
+		return "", false
+	}
+	out := b.String()
+	if ok, _ := regexp.MatchString(pattern, out); !ok {
+		return "", false
+	}
+	return out, true
 }
 
 func columnOf(fields []model.Field, col string) bool {
@@ -653,8 +749,19 @@ func (e *Env) Effects() []runtime.EffectCall {
 		}
 		return rows.Err()
 	})
+	// An immediate effect has an outbox row and a recorder copy with the same key; list
+	// it once. A recorder copy with no row is an immediate effect whose transaction
+	// rolled back: it still happened, so it stays.
+	seen := map[string]bool{}
+	for _, c := range out {
+		seen[c.IdempotencyKey] = true
+	}
 	e.mu.Lock()
-	out = append(out, e.sent...)
+	for _, c := range e.sent {
+		if !seen[c.IdempotencyKey] {
+			out = append(out, c)
+		}
+	}
 	e.mu.Unlock()
 	return out
 }
